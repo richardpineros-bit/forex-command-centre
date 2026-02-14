@@ -8635,6 +8635,20 @@
         
         <section id="tab-journal" class="tab-content">
             
+            <!-- v2.10.0: Edit Mode Banner (Bug Fix #6) -->
+            <div id="edit-mode-banner" style="display:none; background: linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.05)); border: 2px solid var(--color-info); border-radius: var(--radius-md); padding: var(--spacing-md); margin-bottom: var(--spacing-md); position: relative;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.4rem; background: var(--color-info); color: #fff; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">&#x270E;</span>
+                        <div>
+                            <div style="font-weight: 700; color: var(--color-info); font-size: 1rem;">EDITING TRADE</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary);" id="edit-mode-detail">--</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="cancelEditMode()" style="white-space: nowrap;">&#x2715; Cancel Edit</button>
+                </div>
+            </div>
+            
             <!-- Institutional Trade Journal -->
             <div class="card mb-lg">
                 <div class="card-header">
@@ -14242,10 +14256,28 @@
             
             if (!validateTradeData(trade)) return;
             
-            // Calculate R-multiple if closed
+            // Calculate R-multiple if closed (Bug Fix #5: protect auto-captured values)
             if (trade.status === 'closed' && trade.exit && trade.entry && trade.stop) {
-                trade.rMultiple = calculateRMultiple(trade);
-                trade.pnl = calculatePnL(trade);
+                // Only recalculate if NOT editing an auto-captured trade with broker data
+                const existingTrades = loadFromStorage(STORAGE_KEYS.trades, []);
+                const existingTrade = currentEditTradeId ? existingTrades.find(t => t.id === currentEditTradeId) : null;
+                const hasAutoData = existingTrade && (existingTrade.realizedPL !== undefined || existingTrade.autoCapture === true || existingTrade.autoJournalled === true);
+                
+                if (hasAutoData) {
+                    // Preserve broker pnl, only recalculate R if we have riskAmount
+                    trade.rMultiple = calculateRMultiple(trade);
+                    // Keep broker pnl if it exists
+                    if (existingTrade.realizedPL !== undefined) {
+                        trade.pnl = existingTrade.netPL || existingTrade.realizedPL;
+                    } else if (existingTrade.pnl && !trade.riskAmount) {
+                        trade.pnl = existingTrade.pnl;
+                    } else {
+                        trade.pnl = calculatePnL(trade);
+                    }
+                } else {
+                    trade.rMultiple = calculateRMultiple(trade);
+                    trade.pnl = calculatePnL(trade);
+                }
             }
             
             const trades = loadFromStorage(STORAGE_KEYS.trades, []);
@@ -14266,6 +14298,8 @@
                     ];
                     // Only overwrite form fields that have actual values
                     const merged = { ...existing };
+                    // Bug Fix #7: normalise exit/exitPrice
+                    if (!merged.exit && merged.exitPrice) merged.exit = merged.exitPrice;
                     for (const [key, val] of Object.entries(trade)) {
                         // Skip empty/null form values for protected fields
                         if (protectedFields.includes(key) && (val === '' || val === null || val === undefined)) continue;
@@ -14274,6 +14308,10 @@
                         merged[key] = val;
                     }
                     merged.updatedAt = new Date().toISOString();
+                    // Bug Fix #4: tag as edit if was already closed
+                    if (existing.status === 'closed') {
+                        merged._wasEdit = true;
+                    }
                     trades[index] = merged;
                 }
                 currentEditTradeId = null;
@@ -14286,12 +14324,24 @@
             
             saveToStorage(STORAGE_KEYS.trades, trades);
             
-            // Update settings if balance changed
-            if (trade.status === 'closed' && trade.pnl) {
-                updateBalanceFromTrade(trade.pnl);
+            // Update settings if balance changed (Bug Fix #4: only on NEW close, not edits)
+            if (trade.status === 'closed' && trade.pnl && !trade._balanceUpdated) {
+                // Check if this was an edit of an already-closed trade
+                const wasEdit = !!trade._wasEdit;
+                if (!wasEdit) {
+                    updateBalanceFromTrade(trade.pnl);
+                    // Mark so re-saving won't double-count
+                    const allTrades = loadFromStorage(STORAGE_KEYS.trades, []);
+                    const idx = allTrades.findIndex(t => t.id === trade.id);
+                    if (idx !== -1) {
+                        allTrades[idx]._balanceUpdated = true;
+                        saveToStorage(STORAGE_KEYS.trades, allTrades);
+                    }
+                }
             }
             
             clearTradeForm();
+            hideEditModeBanner();
             loadTrades();
             updateDashboard();
             showToast('Trade saved successfully', 'success');
@@ -14618,6 +14668,34 @@
             document.getElementById('trade-notes').value = trade.notes || '';
             document.getElementById('trade-lessons').value = trade.lessons || '';
             
+            // v2.10.0: Populate ALL missing fields (Bug Fix #1,2,3)
+            // Checkboxes - Section C: Execution Quality
+            const setCheckbox = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+            setCheckbox('exec-type-declared', trade.execTypeDeclared);
+            setCheckbox('exec-single-trigger', trade.execSingleTrigger);
+            setCheckbox('exec-planned-price', trade.execPlannedPrice);
+            setCheckbox('exec-stop-invalidation', trade.execStopInvalidation);
+            setCheckbox('exec-spread-ok', trade.execSpreadOk);
+            // Checkboxes - Section D: Management Discipline
+            setCheckbox('mgmt-no-early-stop', trade.mgmtNoEarlyStop);
+            setCheckbox('mgmt-partial-rules', trade.mgmtPartialRules);
+            setCheckbox('mgmt-exit-rules', trade.mgmtExitRules);
+            setCheckbox('mgmt-no-revenge', trade.mgmtNoRevenge);
+            // Missing text/select fields
+            const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== null && val !== undefined) el.value = val; };
+            setVal('trade-type', trade.tradeType);
+            setVal('trade-permission-tf', trade.permissionTF);
+            setVal('trade-execution-tf', trade.executionTF);
+            setVal('trade-entry-trigger', trade.entryTrigger);
+            setVal('trade-risk-pct', trade.riskPct);
+            setVal('trade-slippage', trade.slippage);
+            setVal('trade-mae', trade.mae);
+            setVal('trade-mfe', trade.mfe);
+            setVal('trade-classification', trade.classification);
+            
+            // v2.10.0: Show edit mode banner (Bug Fix #6)
+            showEditModeBanner(trade);
+            
             // v2.9.0: Populate permission log hidden fields + read-only display
             const setIfExists = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
             setIfExists('trade-market-regime', trade.marketRegime);
@@ -14816,6 +14894,30 @@
                 const el = document.getElementById(id);
                 if (el) el.value = '';
             });
+            // v2.10.0: Hide edit mode banner
+            hideEditModeBanner();
+        }
+        
+        // v2.10.0: Edit mode UI (Bug Fix #6)
+        function showEditModeBanner(trade) {
+            const banner = document.getElementById('edit-mode-banner');
+            const detail = document.getElementById('edit-mode-detail');
+            if (banner) {
+                banner.style.display = 'block';
+                const isAuto = trade.autoCapture || trade.autoJournalled || trade.alertType === 'AUTO_CAPTURE';
+                const source = isAuto ? 'Auto-captured' : 'Manual';
+                if (detail) detail.textContent = trade.pair + ' ' + (trade.direction || '').toUpperCase() + ' | ' + source + ' | ID: ' + (trade.id || '').slice(0, 12);
+            }
+        }
+        
+        function hideEditModeBanner() {
+            const banner = document.getElementById('edit-mode-banner');
+            if (banner) banner.style.display = 'none';
+        }
+        
+        function cancelEditMode() {
+            clearTradeForm();
+            showToast('Edit cancelled', 'info');
         }
         
         // v2.9.0: Update read-only permission log display from hidden fields
