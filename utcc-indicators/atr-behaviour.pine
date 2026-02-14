@@ -1,0 +1,405 @@
+//@version=6
+indicator("ATR Visual Levels", overlay=true, max_lines_count=500, max_labels_count=50)
+
+// ============================================================================
+// ATR VISUAL LEVELS v1.0.1
+// ============================================================================
+// PURPOSE: Dynamic SL/TP reference levels based on Daily ATR
+// PHILOSOPHY: ATR level informs position sizing, NOT trade permission
+//             High ATR = adjust size, not skip trades
+// DIRECTION: Auto-detected from 9/21/50 EMA alignment
+// REFERENCE: Previous completed Daily ATR (no intraday bucket flipping)
+// ============================================================================
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === INPUTS ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// --- ATR Settings ---
+GRP_ATR = "ATR Settings"
+atrLength       = input.int(14, "ATR Length", minval=1, group=GRP_ATR)
+percLookback    = input.int(252, "Percentile Lookback", minval=50, maxval=1000, group=GRP_ATR, tooltip="Bars for ATR percentile rank calculation")
+
+// --- EMA Settings (Direction Detection) ---
+GRP_EMA = "Direction Detection (EMA)"
+fastLen         = input.int(9, "Fast EMA", minval=1, group=GRP_EMA)
+midLen          = input.int(21, "Mid EMA", minval=1, group=GRP_EMA)
+slowLen         = input.int(50, "Slow EMA", minval=1, group=GRP_EMA)
+dirOverride     = input.string("Auto", "Direction Override", options=["Auto", "Long", "Short", "Both"], group=GRP_EMA, tooltip="Auto uses EMA alignment. Both shows levels in both directions simultaneously.")
+
+// --- SL Multipliers ---
+GRP_SL = "Stop Loss Levels (ATR Multiples)"
+showSL1         = input.bool(true, "Show 1.0x ATR SL", group=GRP_SL, inline="SL1")
+sl1Mult         = input.float(1.0, "", minval=0.1, maxval=5.0, step=0.1, group=GRP_SL, inline="SL1")
+sl1Color        = input.color(color.rgb(239, 83, 80, 40), "", group=GRP_SL, inline="SL1")
+
+showSL2         = input.bool(true, "Show 1.5x ATR SL", group=GRP_SL, inline="SL2")
+sl2Mult         = input.float(1.5, "", minval=0.1, maxval=5.0, step=0.1, group=GRP_SL, inline="SL2")
+sl2Color        = input.color(color.rgb(239, 83, 80, 60), "", group=GRP_SL, inline="SL2")
+
+showSL3         = input.bool(true, "Show 2.0x ATR SL", group=GRP_SL, inline="SL3")
+sl3Mult         = input.float(2.0, "", minval=0.1, maxval=5.0, step=0.1, group=GRP_SL, inline="SL3")
+sl3Color        = input.color(color.rgb(239, 83, 80, 80), "", group=GRP_SL, inline="SL3")
+
+// --- TP Multipliers ---
+GRP_TP = "Take Profit Levels (ATR Multiples)"
+showTP1         = input.bool(true, "Show 1.5x ATR TP", group=GRP_TP, inline="TP1")
+tp1Mult         = input.float(1.5, "", minval=0.1, maxval=10.0, step=0.1, group=GRP_TP, inline="TP1")
+tp1Color        = input.color(color.rgb(76, 175, 80, 40), "", group=GRP_TP, inline="TP1")
+
+showTP2         = input.bool(true, "Show 2.0x ATR TP", group=GRP_TP, inline="TP2")
+tp2Mult         = input.float(2.0, "", minval=0.1, maxval=10.0, step=0.1, group=GRP_TP, inline="TP2")
+tp2Color        = input.color(color.rgb(76, 175, 80, 60), "", group=GRP_TP, inline="TP2")
+
+showTP3         = input.bool(true, "Show 3.0x ATR TP", group=GRP_TP, inline="TP3")
+tp3Mult         = input.float(3.0, "", minval=0.1, maxval=10.0, step=0.1, group=GRP_TP, inline="TP3")
+tp3Color        = input.color(color.rgb(76, 175, 80, 80), "", group=GRP_TP, inline="TP3")
+
+// --- Fill Zones ---
+GRP_FILL = "Zone Fills"
+showSLFill      = input.bool(true, "Show SL Zone Fill", group=GRP_FILL, inline="SLF")
+slFillColor     = input.color(color.rgb(239, 83, 80, 90), "", group=GRP_FILL, inline="SLF")
+showTPFill      = input.bool(true, "Show TP Zone Fill", group=GRP_FILL, inline="TPF")
+tpFillColor     = input.color(color.rgb(76, 175, 80, 90), "", group=GRP_FILL, inline="TPF")
+
+// --- Info Label ---
+GRP_INFO = "Information Display"
+showInfoLabel   = input.bool(true, "Show ATR Info Label", group=GRP_INFO)
+showRRLabels    = input.bool(true, "Show R:R at TP Levels", group=GRP_INFO)
+showPipsInfo    = input.bool(false, "FX: Show in Pips", group=GRP_INFO)
+labelOffset     = input.int(5, "Label Offset (bars)", minval=1, maxval=50, group=GRP_INFO)
+
+// --- Line Style ---
+GRP_LINE = "Line Style"
+lineWidthSL     = input.int(1, "SL Line Width", minval=1, maxval=4, group=GRP_LINE)
+lineWidthTP     = input.int(1, "TP Line Width", minval=1, maxval=4, group=GRP_LINE)
+lineStyleInput  = input.string("Dashed", "Line Style", options=["Solid", "Dashed", "Dotted"], group=GRP_LINE)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// --- Daily ATR (previous completed day - locked, no intraday shift) ---
+dATR = request.security(syminfo.tickerid, "D", ta.atr(atrLength)[1], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+// --- Daily ATR Percentile (previous completed day) ---
+dATRForPerc = request.security(syminfo.tickerid, "D", ta.atr(atrLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+atrPercentile = ta.percentrank(dATRForPerc, percLookback)
+
+// --- ATR Level Bucket ---
+string atrLevelStr = ""
+if atrPercentile >= 85
+    atrLevelStr := "EXTREME"
+else if atrPercentile >= 60
+    atrLevelStr := "HIGH"
+else if atrPercentile >= 20
+    atrLevelStr := "NORMAL"
+else
+    atrLevelStr := "LOW"
+
+// --- Pip Calculation ---
+pipSize = syminfo.type == "forex" ? ((syminfo.mintick == 0.00001 or syminfo.mintick == 0.001) ? syminfo.mintick * 10.0 : syminfo.mintick) : syminfo.mintick
+usePips = showPipsInfo and syminfo.type == "forex"
+
+f_formatVal(val) =>
+    if usePips
+        str.tostring(math.round(val / pipSize))
+    else
+        str.tostring(val, format.mintick)
+
+// --- EMA Direction Detection ---
+emaFast = ta.ema(close, fastLen)
+emaMid  = ta.ema(close, midLen)
+emaSlow = ta.ema(close, slowLen)
+
+bullishAlign = emaFast > emaMid and emaMid > emaSlow
+bearishAlign = emaFast < emaMid and emaMid < emaSlow
+tangled      = not bullishAlign and not bearishAlign
+
+// --- Resolved Direction ---
+int direction = 0  // 0 = no direction, 1 = long, -1 = short
+
+if dirOverride == "Long"
+    direction := 1
+else if dirOverride == "Short"
+    direction := -1
+else if dirOverride == "Both"
+    direction := 2  // special: plot both sides
+else
+    // Auto mode
+    if bullishAlign
+        direction := 1
+    else if bearishAlign
+        direction := -1
+    else
+        direction := 0
+
+// --- ATR Valid Check ---
+atrValid = not na(dATR) and dATR > 0
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === LEVEL CALCULATIONS ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// SL levels (from close)
+sl1Long  = close - (dATR * sl1Mult)
+sl2Long  = close - (dATR * sl2Mult)
+sl3Long  = close - (dATR * sl3Mult)
+
+sl1Short = close + (dATR * sl1Mult)
+sl2Short = close + (dATR * sl2Mult)
+sl3Short = close + (dATR * sl3Mult)
+
+// TP levels (from close)
+tp1Long  = close + (dATR * tp1Mult)
+tp2Long  = close + (dATR * tp2Mult)
+tp3Long  = close + (dATR * tp3Mult)
+
+tp1Short = close - (dATR * tp1Mult)
+tp2Short = close - (dATR * tp2Mult)
+tp3Short = close - (dATR * tp3Mult)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CONDITIONAL PLOTTING ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Convert line style
+lineStyle = lineStyleInput == "Solid" ? line.style_solid : lineStyleInput == "Dashed" ? line.style_dashed : line.style_dotted
+
+// --- Determine what to show ---
+showLong  = atrValid and (direction == 1 or direction == 2)
+showShort = atrValid and (direction == -1 or direction == 2)
+showNone  = not atrValid or direction == 0
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PLOT LEVELS (using plot for fills) ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// --- Price reference line (invisible, for fills) ---
+pClose = plot(atrValid and direction != 0 ? close : na, display=display.none, title="Close Reference")
+
+// --- LONG SL Levels ---
+pSL1L = plot(showLong and showSL1 ? sl1Long : na, title="SL 1.0x Long", color=sl1Color, linewidth=lineWidthSL, style=plot.style_linebr)
+pSL2L = plot(showLong and showSL2 ? sl2Long : na, title="SL 1.5x Long", color=sl2Color, linewidth=lineWidthSL, style=plot.style_linebr)
+pSL3L = plot(showLong and showSL3 ? sl3Long : na, title="SL 2.0x Long", color=sl3Color, linewidth=lineWidthSL, style=plot.style_linebr)
+
+// --- LONG TP Levels ---
+pTP1L = plot(showLong and showTP1 ? tp1Long : na, title="TP 1.5x Long", color=tp1Color, linewidth=lineWidthTP, style=plot.style_linebr)
+pTP2L = plot(showLong and showTP2 ? tp2Long : na, title="TP 2.0x Long", color=tp2Color, linewidth=lineWidthTP, style=plot.style_linebr)
+pTP3L = plot(showLong and showTP3 ? tp3Long : na, title="TP 3.0x Long", color=tp3Color, linewidth=lineWidthTP, style=plot.style_linebr)
+
+// --- SHORT SL Levels ---
+pSL1S = plot(showShort and showSL1 ? sl1Short : na, title="SL 1.0x Short", color=sl1Color, linewidth=lineWidthSL, style=plot.style_linebr)
+pSL2S = plot(showShort and showSL2 ? sl2Short : na, title="SL 1.5x Short", color=sl2Color, linewidth=lineWidthSL, style=plot.style_linebr)
+pSL3S = plot(showShort and showSL3 ? sl3Short : na, title="SL 2.0x Short", color=sl3Color, linewidth=lineWidthSL, style=plot.style_linebr)
+
+// --- SHORT TP Levels ---
+pTP1S = plot(showShort and showTP1 ? tp1Short : na, title="TP 1.5x Short", color=tp1Color, linewidth=lineWidthTP, style=plot.style_linebr)
+pTP2S = plot(showShort and showTP2 ? tp2Short : na, title="TP 2.0x Short", color=tp2Color, linewidth=lineWidthTP, style=plot.style_linebr)
+pTP3S = plot(showShort and showTP3 ? tp3Short : na, title="TP 3.0x Short", color=tp3Color, linewidth=lineWidthTP, style=plot.style_linebr)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === ZONE FILLS ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Long fills: close-to-SL (red), close-to-TP (green)
+fill(pClose, pSL1L, color=showSLFill and showLong and showSL1 ? slFillColor : na, title="SL Zone Fill (Long)")
+fill(pClose, pSL1S, color=showSLFill and showShort and showSL1 ? slFillColor : na, title="SL Zone Fill (Short)")
+
+fill(pClose, pTP1L, color=showTPFill and showLong and showTP1 ? tpFillColor : na, title="TP Zone Fill (Long)")
+fill(pClose, pTP1S, color=showTPFill and showShort and showTP1 ? tpFillColor : na, title="TP Zone Fill (Short)")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === R:R LABELS AT TP LEVELS ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Calculate R:R using the tightest SL (1.0x) as risk reference
+if barstate.islast and showRRLabels and atrValid and direction != 0
+
+    // Clean up old labels
+    var label lTP1 = na
+    var label lTP2 = na
+    var label lTP3 = na
+    label.delete(lTP1)
+    label.delete(lTP2)
+    label.delete(lTP3)
+
+    riskRef = dATR * sl1Mult  // risk distance = tightest SL
+
+    if direction == 1 or direction == 2
+        // Long R:R
+        if showTP1
+            rr1 = riskRef > 0 ? (dATR * tp1Mult) / riskRef : 0
+            lTP1 := label.new(bar_index + labelOffset, tp1Long, str.tostring(rr1, "#.#") + "R", color=color.rgb(76, 175, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.small)
+        if showTP2
+            rr2 = riskRef > 0 ? (dATR * tp2Mult) / riskRef : 0
+            lTP2 := label.new(bar_index + labelOffset, tp2Long, str.tostring(rr2, "#.#") + "R", color=color.rgb(76, 175, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.small)
+        if showTP3
+            rr3 = riskRef > 0 ? (dATR * tp3Mult) / riskRef : 0
+            lTP3 := label.new(bar_index + labelOffset, tp3Long, str.tostring(rr3, "#.#") + "R", color=color.rgb(76, 175, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.small)
+    
+    if direction == -1 or direction == 2
+        // Short R:R (reuse labels if direction == 2, need separate set)
+        var label lTP1s = na
+        var label lTP2s = na
+        var label lTP3s = na
+        label.delete(lTP1s)
+        label.delete(lTP2s)
+        label.delete(lTP3s)
+        
+        if showTP1
+            rr1s = riskRef > 0 ? (dATR * tp1Mult) / riskRef : 0
+            lTP1s := label.new(bar_index + labelOffset, tp1Short, str.tostring(rr1s, "#.#") + "R", color=color.rgb(76, 175, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.small)
+        if showTP2
+            rr2s = riskRef > 0 ? (dATR * tp2Mult) / riskRef : 0
+            lTP2s := label.new(bar_index + labelOffset, tp2Short, str.tostring(rr2s, "#.#") + "R", color=color.rgb(76, 175, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.small)
+        if showTP3
+            rr3s = riskRef > 0 ? (dATR * tp3Mult) / riskRef : 0
+            lTP3s := label.new(bar_index + labelOffset, tp3Short, str.tostring(rr3s, "#.#") + "R", color=color.rgb(76, 175, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.small)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === ATR INFO LABEL ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast and showInfoLabel and atrValid
+
+    var label infoLbl = na
+    label.delete(infoLbl)
+
+    // Direction string
+    string dirStr = ""
+    if direction == 1
+        dirStr := "LONG"
+    else if direction == -1
+        dirStr := "SHORT"
+    else if direction == 2
+        dirStr := "BOTH"
+    else
+        dirStr := "NO SETUP"
+
+    // ATR value string
+    atrStr = usePips ? f_formatVal(dATR) + " pips" : f_formatVal(dATR)
+
+    // Percentile colour
+    color percColor = color.gray
+    if atrPercentile >= 85
+        percColor := color.rgb(239, 83, 80)
+    else if atrPercentile >= 60
+        percColor := color.rgb(255, 193, 7)
+    else if atrPercentile >= 20
+        percColor := color.rgb(76, 175, 80)
+    else
+        percColor := color.rgb(100, 181, 246)
+
+    // Direction colour
+    color dirColor = color.gray
+    if direction == 1
+        dirColor := color.rgb(76, 175, 80)
+    else if direction == -1
+        dirColor := color.rgb(239, 83, 80)
+    else if direction == 2
+        dirColor := color.rgb(255, 193, 7)
+
+    infoText = "ATR: " + atrStr + " | " + str.tostring(math.round(atrPercentile)) + "% " + atrLevelStr + "\n" + dirStr
+
+    infoLbl := label.new(bar_index + labelOffset, close, infoText, color=color.rgb(30, 30, 40, 20), style=label.style_label_left, textcolor=color.white, size=size.normal)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === NO-SETUP VISUAL (tangled EMAs) ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Background tint when no direction (subtle reminder)
+bgcolor(showNone and dirOverride == "Auto" ? color.new(color.gray, 95) : na, title="No Setup Background")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SL LEVEL LABELS ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast and atrValid and direction != 0
+
+    var label lSL1 = na
+    var label lSL2 = na
+    var label lSL3 = na
+    label.delete(lSL1)
+    label.delete(lSL2)
+    label.delete(lSL3)
+
+    if direction == 1 or direction == 2
+        if showSL1
+            slVal1 = usePips ? f_formatVal(dATR * sl1Mult) + "p" : f_formatVal(dATR * sl1Mult)
+            lSL1 := label.new(bar_index + labelOffset, sl1Long, str.tostring(sl1Mult, "#.#") + "x SL (" + slVal1 + ")", color=color.rgb(239, 83, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+        if showSL2
+            slVal2 = usePips ? f_formatVal(dATR * sl2Mult) + "p" : f_formatVal(dATR * sl2Mult)
+            lSL2 := label.new(bar_index + labelOffset, sl2Long, str.tostring(sl2Mult, "#.#") + "x SL (" + slVal2 + ")", color=color.rgb(239, 83, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+        if showSL3
+            slVal3 = usePips ? f_formatVal(dATR * sl3Mult) + "p" : f_formatVal(dATR * sl3Mult)
+            lSL3 := label.new(bar_index + labelOffset, sl3Long, str.tostring(sl3Mult, "#.#") + "x SL (" + slVal3 + ")", color=color.rgb(239, 83, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+
+    if direction == -1 or direction == 2
+        var label lSL1s = na
+        var label lSL2s = na
+        var label lSL3s = na
+        label.delete(lSL1s)
+        label.delete(lSL2s)
+        label.delete(lSL3s)
+        
+        if showSL1
+            slVal1s = usePips ? f_formatVal(dATR * sl1Mult) + "p" : f_formatVal(dATR * sl1Mult)
+            lSL1s := label.new(bar_index + labelOffset, sl1Short, str.tostring(sl1Mult, "#.#") + "x SL (" + slVal1s + ")", color=color.rgb(239, 83, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+        if showSL2
+            slVal2s = usePips ? f_formatVal(dATR * sl2Mult) + "p" : f_formatVal(dATR * sl2Mult)
+            lSL2s := label.new(bar_index + labelOffset, sl2Short, str.tostring(sl2Mult, "#.#") + "x SL (" + slVal2s + ")", color=color.rgb(239, 83, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+        if showSL3
+            slVal3s = usePips ? f_formatVal(dATR * sl3Mult) + "p" : f_formatVal(dATR * sl3Mult)
+            lSL3s := label.new(bar_index + labelOffset, sl3Short, str.tostring(sl3Mult, "#.#") + "x SL (" + slVal3s + ")", color=color.rgb(239, 83, 80, 70), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === DOCUMENTATION ===
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// ATR VISUAL LEVELS v1.0.1
+// ────────────────────────
+//
+// PURPOSE:
+// Plots dynamic SL and TP reference levels on chart based on Daily ATR.
+// Levels move with price and ATR changes, providing instant visual feedback
+// on trade geometry without manual calculation.
+//
+// DIRECTION DETECTION:
+// Auto mode uses 9/21/50 EMA alignment:
+//   - 9 > 21 > 50 = Bullish → SL below, TP above
+//   - 9 < 21 < 50 = Bearish → SL above, TP below
+//   - Tangled EMAs = No levels → no setup, don't trade
+//
+// ATR SOURCE:
+// Uses previous completed Daily ATR (ta.atr(14)[1] on Daily).
+// This locks the ATR value for the entire day - no intraday bucket flipping.
+// Cleaner, more predictable levels throughout your session.
+//
+// HOW TO USE:
+// 1. Identify your structure-based SL (swing low/high, S/R zone)
+// 2. Compare it to the ATR bands:
+//    - Structure SL within 1.0-1.5x band = reasonable risk
+//    - Structure SL within 1.5-2.0x band = wider but acceptable
+//    - Structure SL beyond 2.0x band = trade is expensive, reconsider
+// 3. Use TP bands as reference targets, confirm with S/R levels
+// 4. R:R labels auto-calculate based on 1.0x SL as risk reference
+//
+// IMPORTANT:
+// These are REFERENCE levels, not auto-SL/TP.
+// Your actual stop should always be structure-based.
+// ATR levels tell you "is your structure stop reasonable?"
+//
+// ATR PERCENTILE CONTEXT:
+// LOW (<20%)    = Compressed vol, levels tight, expansion likely
+// NORMAL (20-59%) = Healthy, standard sizing
+// HIGH (60-84%)   = Elevated, consider reduced size
+// EXTREME (85%+)  = High vol, definitely reduce size - but DON'T skip
+//
+// KEY PRINCIPLE:
+// High ATR percentile does NOT mean "don't trade"
+// It means "trade with adjusted position size"
+// If your structure stop fits within the ATR bands and R:R works,
+// the trade is valid - just size it appropriately.
+//
+// ════════════════════════════════════════════════════════════════════════════════

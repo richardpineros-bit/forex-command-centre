@@ -1,0 +1,1516 @@
+//@version=6
+indicator("Live Economic Calendar by toodegrees - Unified"
+         , shorttitle="News"
+         , overlay=true
+         , max_lines_count=500
+         , max_labels_count=500)
+
+//#region[Timeframe Limitations]
+if timeframe.in_seconds(timeframe.period)>86400
+    runtime.error("Go to the Daily Timeframe or lower!")
+else if timeframe.in_seconds(timeframe.period)<30
+    runtime.error("Go to the 30-Second Timeframe or higher!")
+//#endregion
+
+//#region[Utility Types and Functions]
+
+// News type definition
+type News
+    string dow
+    string dat
+    int    _t
+    string tod
+    string cur
+    color  imp
+    string ttl
+    int    tmst
+    line   ln
+
+// Utility functions for date/time handling
+isLeapYear() =>
+    Y = year(time,"America/New_York")
+    Y==1980 or Y==1984 or Y==1988 or Y==1992 or Y==1996 or Y==2000 or Y==2004 or Y==2008 or Y==2012 
+     or Y==2016 or Y==2020 or Y==2024 or Y==2028 or Y==2032 or Y==2036 or Y==2040 or Y==2044 or Y==2048 or Y==2052
+     or Y==2056 or Y==2060 or Y==2064 or Y==2068 or Y==2072 or Y==2076 or Y==2080 or Y==2084 or Y==2088 or Y==2092
+
+daysMonth(int M) =>
+    D = switch M
+        1  => 31
+        2  => isLeapYear()?29:28
+        3  => 31
+        4  => 30
+        5  => 31
+        6  => 30
+        7  => 31
+        8  => 31
+        9  => 30
+        10 => 31
+        11 => 30
+        12 => 31
+    D
+
+MMM(int M) =>
+    mmm = switch M
+        1  => "Jan"
+        2  => "Feb"
+        3  => "Mar"
+        4  => "Apr"
+        5  => "May"
+        6  => "Jun"
+        7  => "Jul"
+        8  => "Aug"
+        9  => "Sep"
+        10 => "Oct"
+        11 => "Nov"
+        12 => "Dec"
+    mmm
+
+dow(string D) =>
+    DOW = switch D
+        "1" => "Sun"
+        "2" => "Mon"
+        "3" => "Tue"
+        "4" => "Wed"
+        "5" => "Thu"
+        "6" => "Fri"
+        "7" => "Sat"
+    DOW
+
+// Size conversion functions
+size(string S, int N=na) =>
+    sizes = array.new<string>()
+    sizes.push(size.tiny), sizes.push(size.small), sizes.push(size.normal), sizes.push(size.large), sizes.push(size.huge)
+    size_val = switch S
+        "Tiny"   => 0
+        "Small"  => 1
+        "Normal" => 2
+        "Large"  => 3
+        "Huge"   => 4
+    if not na(N)
+        size_val += N
+        if size_val > 4
+            size_val:=4
+        else if size_val < 0
+            size_val:=0
+    sizes.get(size_val)
+
+lineStyle(string S) =>
+    style = switch S
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+        "Solid"  => line.style_solid
+    style
+
+lineTrnsp(string S) =>
+    transp = switch S
+        "Light"  => 80
+        "Medium" => 50
+        "Heavy"  => 0
+    transp
+
+boxLoc(string X, string Y) =>
+    loc = switch Y+X
+        "TopLeft"      => position.top_left
+        "TopCenter"    => position.top_center
+        "TopRight"     => position.top_right
+        "MiddleLeft"   => position.middle_left
+        "MiddleCenter" => position.middle_center
+        "MiddleRight"  => position.middle_right
+        "BottomLeft"   => position.bottom_left
+        "BottomCenter" => position.bottom_center
+        "BottomRight"  => position.bottom_right
+    loc
+
+// Bubble sort methods
+method bubbleSort_NewsTOD(array<News> N) =>
+    if N.size()>2
+        for i=0 to N.size()-2
+            for j=0 to N.size()-i-2
+                if N.get(j)._t > N.get(j+1)._t
+                    temp=N.get(j)
+                    N.set(j,N.get(j+1))
+                    N.set(j+1,temp)
+
+bubbleSort_News(array<News> N) =>
+    sorted = array.new<News>()
+    temp   = array.new<News>()
+    date = ""
+    if N.size() > 0
+        for i=0 to N.size()-1
+            n=N.get(i)
+            if i==0
+                date:=n.dat
+                temp.push(n)
+            else
+                if date==n.dat
+                    temp.push(n)
+                else
+                    date:=n.dat
+                    temp.bubbleSort_NewsTOD()
+                    for j=0 to temp.size()-1
+                        sorted.push(temp.get(j))
+                    temp.clear()
+                    temp.push(n)
+    if temp.size()>0
+        temp.bubbleSort_NewsTOD()
+        for j=0 to temp.size()-1
+            sorted.push(temp.get(j))
+    sorted
+
+// News filtering functions
+weekNews(array<News> N, array<string> C, array<color> I) =>
+    W = array.new<News>()
+    if N.size()>0
+        for i=N.size()-1 to 0
+            n=N.get(i)
+            if C.indexof(n.cur)!=-1 and I.indexof(n.imp)!=-1
+                W.unshift(n)
+    W
+
+todayNews(array<News> W, array<News> D, bool M) =>
+    if W.size()>0
+        for i=0 to W.size()-1
+            n=W.get(i)
+            date=str.split(n.dat,"")
+            if date.size()>1
+                tmp=date.slice(3, date.size())
+                day=tmp.join()
+                if dayofmonth(time, "America/New_York")+(M?0:1)==str.tonumber(day)
+                    D.push(n)
+    D
+
+// Timezone adjustment
+adjustTimezone(array<News> N, int TZH, int TZM) =>
+    tz = "UTC"+(TZH>0?"+":"-")+str.tostring(math.abs(TZH))+(TZM!=0?str.tostring(TZM):"")
+    if N.size()>0
+        for i=0 to N.size()-1
+            n=N.get(i)
+            tmstmp = n.tmst
+            tz_h   = str.tostring(hour(tmstmp,tz))
+            tz_m   = str.tostring(minute(tmstmp,tz))
+            n.dow := dow(str.tostring(dayofweek(tmstmp,tz)))
+            n.dat := MMM(month(tmstmp,tz))+" "+str.tostring(dayofmonth(tmstmp,tz))
+            n.tod := tz_h+":"+(tz_m=="0"?"00":tz_m)
+    N
+
+// AM/PM conversion
+NewsAMPM_TOD(array<News> N) =>
+    if N.size()>0
+        for i=0 to N.size()-1
+            n=N.get(i)
+            tod = str.split(n.tod,":")
+            if tod.size()>1
+                h = int(str.tonumber(tod.get(0)))
+                if h < 12
+                    n.tod := n.tod+"am"
+                else
+                    n.tod := str.tostring(h-12==0?12:h-12)+":"+tod.get(1)+"pm"
+    N
+
+// Filter creation functions
+impFilter(bool X, bool L, bool M, bool H) =>
+    I = array.new<color>()
+    if X
+        I.push(color.white)
+    if L
+        I.push(color.yellow)
+    if M
+        I.push(color.orange)
+    if H
+        I.push(color.red)
+    I
+
+curFilter(bool A, bool C1, bool C2, bool C3, bool C4, bool C5, bool C6, bool C7, bool C8, bool C9) =>
+    C = array.new<string>()
+    if A
+        if not na(syminfo.basecurrency)
+            C.push(syminfo.basecurrency)
+        if not na(syminfo.currency)
+            C.push(syminfo.currency)
+    else
+        if C1
+            C.push("AUD")
+        if C2
+            C.push("CAD")
+        if C3
+            C.push("CHF")
+        if C4
+            C.push("CNY")
+        if C5
+            C.push("EUR")
+        if C6
+            C.push("GBP")
+        if C7
+            C.push("JPY")
+        if C8
+            C.push("NZD")
+        if C9
+            C.push("USD")
+    C
+
+//#endregion
+
+//#region[Decoding Functions]
+
+// Array to string conversion
+array2string(array<string> S, bool FWD=true) =>
+    string s = ""
+    if S.size()>0
+        if FWD
+            for i=0 to S.size()-1
+                s += S.get(i)
+        else
+            for i=S.size()-1 to 0
+                s += S.get(i)
+    s
+
+// Month conversion
+month2number(string M) =>
+    m = switch M
+        "Jan" => 1
+        "Feb" => 2
+        "Mar" => 3
+        "Apr" => 4
+        "May" => 5
+        "Jun" => 6
+        "Jul" => 7
+        "Aug" => 8
+        "Sep" => 9
+        "Oct" => 10
+        "Nov" => 11
+        "Dec" => 12
+    m
+
+// Date shifting
+shiftFWD_Days(int D=7) =>
+    _day   = dayofmonth(time+(86400000*(D+1)), "America/New_York")
+    _month = month(time+(86400000*(D+1)), "America/New_York")
+    MMM(_month)+" "+str.tostring(_day)
+
+// Forex Factory specific conversions
+ff_dow(string D) =>
+    DOW = switch D
+        "1" => "Sun"
+        "2" => "Mon"
+        "3" => "Tue"
+        "4" => "Wed"
+        "5" => "Thu"
+        "6" => "Fri"
+        "7" => "Sat"
+    DOW
+
+ff_currency(string C) =>
+    CURRENCY = switch C
+        "1" => "AUD"
+        "2" => "CAD"
+        "3" => "CHF"
+        "4" => "CNY"
+        "5" => "EUR"
+        "6" => "GBP"
+        "7" => "JPY"
+        "8" => "NZD"
+        "9" => "USD"
+    CURRENCY
+
+ff_t(string T) =>
+    if T=="9999"
+        -1
+    else
+        tod_array = str.split(T, "")
+        TOD = ""
+        if tod_array.size()>0
+            for i=0 to tod_array.size()-1
+                TOD += tod_array.get(i)
+            int(str.tonumber(TOD))
+
+ff_tod(int T) =>
+    if T==-1
+        "All Day"
+    else
+        tod_array = str.split(str.tostring(T), "")
+        while tod_array.size()!=4
+            tod_array.unshift("0")
+        TOD = ""
+        for j=0 to tod_array.size()-1
+            if j==2
+                TOD += ":"
+            TOD += tod_array.get(j)
+        TOD
+
+ff_impact(string I) =>
+    IMPACT = switch I
+        "1" => color.white
+        "2" => color.yellow
+        "3" => color.orange
+        "4" => color.red
+
+ff_tmst(string D, string T) =>
+    _date = str.split(D, " ")
+    _time = str.split(T, ":")
+    _M=month2number(_date.get(0))
+    _d=int(str.tonumber(_date.get(1)))
+    _h=_time.size()==1?0:int(str.tonumber(_time.get(0)))
+    _m=_time.size()==1?0:int(str.tonumber(_time.get(1)))
+    curr_y = year(time, "America/New_York")
+    curr_m = month(time, "America/New_York")
+    _Y=_M==1?curr_m==1?curr_y:curr_y+1:curr_y
+    timestamp("America/New_York", _Y, _M, _d, _h, _m, 0)
+
+// Event title mapping - First and Second batch (1-200)
+ff_title(string title_id) =>
+    id = str.tonumber(title_id)
+    title = if id < 500
+        switch title_id
+            "1"   => "1-y Loan Prime Rate"
+            "2"   => "10-y Bond Auction"
+            "3"   => "30-y Bond Auction"
+            "4"   => "5-y Loan Prime Rate"
+            "5"   => "ADP Non-Farm Employment Change"
+            "6"   => "AIG Construction Index"
+            "7"   => "AIG Manufacturing Index"
+            "8"   => "AIG Services Index"
+            "9"   => "ANZ Business Confidence"
+            "10"  => "ANZ Commodity Prices m/m"
+            "11"  => "ANZ Job Advertisements m/m"
+            "12"  => "Advance GDP Price Index q/q"
+            "13"  => "Advance GDP q/q"
+            "14"  => "All Industries Activity m/m"
+            "15"  => "Annual Budget Release"
+            "16"  => "Annual Pre-Budget Report"
+            "17"  => "Asset Purchase Facility"
+            "18"  => "Assist Treasury Sec Kashkari Speaks"
+            "19"  => "Autumn Forecast Statement"
+            "20"  => "Average Cash Earnings y/y"
+            "21"  => "Average Earnings Index 3m/y"
+            "22"  => "Average Hourly Earnings m/m"
+            "23"  => "BOC Business Outlook Survey"
+            "24"  => "BOC Financial System Review"
+            "25"  => "BOC Gov Carney Speaks"
+            "26"  => "BOC Gov Macklem Speaks"
+            "27"  => "BOC Gov Poloz Speaks"
+            "28"  => "BOC Monetary Policy Report"
+            "29"  => "BOC Press Conference"
+            "30"  => "BOC Rate Statement"
+            "31"  => "BOC Review"
+            "32"  => "BOC Summary of Deliberations"
+            "33"  => "BOE Credit Conditions Survey"
+            "34"  => "BOE Financial Stability Report"
+            "35"  => "BOE Gov Bailey Speaks"
+            "36"  => "BOE Gov Carney Speaks"
+            "37"  => "BOE Gov King Speaks"
+            "38"  => "BOE Inflation Letter"
+            "39"  => "BOE Monetary Policy Report"
+            "40"  => "BOE Quarterly Bulletin"
+            "41"  => "BOJ Core CPI y/y"
+            "42"  => "BOJ Gov Kuroda Speaks"
+            "43"  => "BOJ Gov Shirakawa Speaks"
+            "44"  => "BOJ Gov Ueda Speaks"
+            "45"  => "BOJ Monthly Report"
+            "46"  => "BOJ Outlook Report"
+            "47"  => "BOJ Policy Rate"
+            "48"  => "BOJ Press Conference"
+            "49"  => "BOJ Summary of Opinions"
+            "50"  => "BRC Retail Sales Monitor y/y"
+            "51"  => "BRC Shop Price Index y/y"
+            "52"  => "BRICS Summit"
+            "53"  => "BSI Manufacturing Index"
+            "54"  => "Bank Holiday"
+            "55"  => "Bank Lending y/y"
+            "56"  => "Bank Stress Test Results"
+            "57"  => "Beige Book"
+            "58"  => "Belgian NBB Business Climate"
+            "59"  => "Building Approvals m/m"
+            "60"  => "Building Consents m/m"
+            "61"  => "Building Permits"
+            "62"  => "Building Permits m/m"
+            "63"  => "Business Inventories m/m"
+            "64"  => "BusinessNZ Manufacturing Index"
+            "65"  => "BusinessNZ Services Index"
+            "66"  => "CB Consumer Confidence"
+            "67"  => "CB Leading Index m/m"
+            "68"  => "CBI Industrial Order Expectations"
+            "69"  => "CBI Realized Sales"
+            "70"  => "CPI Flash Estimate y/y"
+            "71"  => "CPI m/m"
+            "72"  => "CPI q/q"
+            "73"  => "CPI y/y"
+            "74"  => "Caixin Flash Manufacturing PMI"
+            "75"  => "Caixin Manufacturing PMI"
+            "76"  => "Caixin Services PMI"
+            "77"  => "Capacity Utilization Rate"
+            "78"  => "Capital Spending q/y"
+            "79"  => "Cash Rate"
+            "80"  => "Challenger Job Cuts y/y"
+            "81"  => "Chancellor Darling Speaks"
+            "82"  => "Chancellor Osborne Speaks"
+            "83"  => "Chicago PMI"
+            "84"  => "Claimant Count Change"
+            "85"  => "Cleveland Fed Inflation Expectations"
+            "86"  => "Commodity Prices y/y"
+            "87"  => "Common CPI y/y"
+            "88"  => "Company Operating Profits q/q"
+            "89"  => "Congressional Elections"
+            "90"  => "Construction Output m/m"
+            "91"  => "Construction PMI"
+            "92"  => "Construction Spending m/m"
+            "93"  => "Construction Work Done q/q"
+            "94"  => "Consumer Confidence"
+            "95"  => "Consumer Credit m/m"
+            "96"  => "Consumer Inflation Expectations"
+            "97"  => "Core CPI Flash Estimate y/y"
+            "98"  => "Core CPI m/m"
+            "99"  => "Core CPI y/y"
+            "100" => "Core Durable Goods Orders m/m"
+            "101" => "Core Machinery Orders m/m"
+            "102" => "Core PCE Price Index m/m"
+            "103" => "Core PPI m/m"
+            "104" => "Core Retail Sales m/m"
+            "105" => "Core Retail Sales q/q"
+            "106" => "Corporate Profits q/q"
+            "107" => "Credit Card Spending y/y"
+            "108" => "Crude Oil Inventories"
+            "109" => "Current Account"
+            "110" => "Daylight Saving Time Shift"
+            "111" => "Doha Oil Summit"
+            "112" => "Durable Goods Orders m/m"
+            "113" => "Dutch Parliamentary Election"
+            "114" => "EBA Bank Stress Test Results"
+            "115" => "ECB Economic Bulletin"
+            "116" => "ECB Financial Stability Review"
+            "117" => "ECB Monetary Policy Meeting Accounts"
+            "118" => "ECB Monthly Bulletin"
+            "119" => "ECB President Draghi Speaks"
+            "120" => "ECB President Lagarde Speaks"
+            "121" => "ECB President Trichet Speaks"
+            "122" => "ECB Press Conference"
+            "123" => "ECOFIN Meetings"
+            "124" => "EU Economic Forecasts"
+            "125" => "EU Economic Summit"
+            "126" => "EU Membership Court Ruling"
+            "127" => "EU Membership Vote"
+            "128" => "Economic Stabilization Bill Vote"
+            "129" => "Economy Watchers Sentiment"
+            "130" => "Empire State Manufacturing Index"
+            "131" => "Employment Change"
+            "132" => "Employment Change q/q"
+            "133" => "Employment Cost Index q/q"
+            "134" => "Employment Level"
+            "135" => "Euro Summit"
+            "136" => "Eurogroup Meetings"
+            "137" => "European Court of Justice Ruling"
+            "138" => "European Parliamentary Elections"
+            "139" => "Existing Home Sales"
+            "140" => "FOMC Economic Projections"
+            "141" => "FOMC Financial Stability Report"
+            "142" => "FOMC Meeting Minutes"
+            "143" => "FOMC Member Barkin Speaks"
+            "144" => "FOMC Member Barr Speaks"
+            "145" => "FOMC Member Bostic Speaks"
+            "146" => "FOMC Member Bowman Speaks"
+            "147" => "FOMC Member Brainard Speaks"
+            "148" => "FOMC Member Bullard Speaks"
+            "149" => "FOMC Member Clarida Speaks"
+            "150" => "FOMC Member Collins Speaks"
+            "151" => "FOMC Member Cook Speaks"
+            "152" => "FOMC Member Daly Speaks"
+            "153" => "FOMC Member Dudley Speaks"
+            "154" => "FOMC Member Duke Speaks"
+            "155" => "FOMC Member Evans Speaks"
+            "156" => "FOMC Member Fischer Speaks"
+            "157" => "FOMC Member Fisher Speaks"
+            "158" => "FOMC Member Geithner Speaks"
+            "159" => "FOMC Member George Speaks"
+            "160" => "FOMC Member Goolsbee Speaks"
+            "161" => "FOMC Member Harker Speaks"
+            "162" => "FOMC Member Hoenig Speaks"
+            "163" => "FOMC Member Jefferson Speaks"
+            "164" => "FOMC Member Kaplan Speaks"
+            "165" => "FOMC Member Kashkari Speaks"
+            "166" => "FOMC Member Kocherlakota Speaks"
+            "167" => "FOMC Member Kohn Speaks"
+            "168" => "FOMC Member Kroszner Speaks"
+            "169" => "FOMC Member Kugler Speaks"
+            "170" => "FOMC Member Lacker Speaks"
+            "171" => "FOMC Member Lockhart Speaks"
+            "172" => "FOMC Member Logan Speaks"
+            "173" => "FOMC Member Mester Speaks"
+            "174" => "FOMC Member Mishkin Speaks"
+            "175" => "FOMC Member Musalem Speaks"
+            "176" => "FOMC Member Pianalto Speaks"
+            "177" => "FOMC Member Plosser Speaks"
+            "178" => "FOMC Member Powell Speaks"
+            "179" => "FOMC Member Quarles Speaks"
+            "180" => "FOMC Member Raskin Speaks"
+            "181" => "FOMC Member Rosengren Speaks"
+            "182" => "FOMC Member Stein Speaks"
+            "183" => "FOMC Member Stern Speaks"
+            "184" => "FOMC Member Tarullo Speaks"
+            "185" => "FOMC Member Waller Speaks"
+            "186" => "FOMC Member Warsh Speaks"
+            "187" => "FOMC Member Williams Speaks"
+            "188" => "FOMC Member Yellen Speaks"
+            "189" => "FOMC Press Conference"
+            "190" => "FOMC Statement"
+            "191" => "FPC Meeting Minutes"
+            "192" => "FPC Statement"
+            "193" => "FPI m/m"
+            "194" => "Factory Orders m/m"
+            "195" => "Fed Announcement"
+            "196" => "Fed Chair Powell Speaks"
+            "197" => "Fed Chair Powell Testifies"
+            "198" => "Fed Chair Yellen Speaks"
+            "199" => "Fed Chair Yellen Testifies"
+            "200" => "Fed Chairman Bernanke Speaks"
+            "201" => "Fed Chairman Bernanke Testifies"
+            "202" => "Fed Chairman Nomination Vote"
+            "203" => "Fed Gov Nomination Hearings"
+            "204" => "Fed Monetary Policy Report"
+            "205" => "Federal Budget Balance"
+            "206" => "Federal Election"
+            "207" => "Federal Funds Rate"
+            "208" => "Final CPI y/y"
+            "209" => "Final Core CPI y/y"
+            "210" => "Final Employment Change q/q"
+            "211" => "Final GDP Price Index q/q"
+            "212" => "Final GDP Price Index y/y"
+            "213" => "Final GDP q/q"
+            "214" => "Final Manufacturing PMI"
+            "215" => "Final Services PMI"
+            "216" => "Final Wholesale Inventories m/m"
+            "217" => "Fixed Asset Investment ytd/y"
+            "218" => "Flash Employment Change q/q"
+            "219" => "Flash GDP q/q"
+            "220" => "Flash Manufacturing PMI"
+            "221" => "Flash Services PMI"
+            "222" => "Foreign Currency Reserves"
+            "223" => "Foreign Direct Investment ytd/y"
+            "224" => "Foreign Securities Purchases"
+            "225" => "French 10-y Bond Auction"
+            "226" => "French Bank Holiday"
+            "227" => "French Consumer Spending m/m"
+            "228" => "French Final CPI m/m"
+            "229" => "French Final Manufacturing PMI"
+            "230" => "French Final Private Payrolls q/q"
+            "231" => "French Final Services PMI"
+            "232" => "French Flash GDP q/q"
+            "233" => "French Flash Manufacturing PMI"
+            "234" => "French Flash Services PMI"
+            "235" => "French Gov Budget Balance"
+            "236" => "French Industrial Production m/m"
+            "237" => "French Parliamentary Elections"
+            "238" => "French Prelim CPI m/m"
+            "239" => "French Prelim GDP q/q"
+            "240" => "French Prelim Private Payrolls q/q"
+            "241" => "French Presidential Election"
+            "242" => "French Trade Balance"
+            "243" => "G20 Meetings"
+            "244" => "G7 Meetings"
+            "245" => "G8 Meetings"
+            "246" => "GDP m/m"
+            "247" => "GDP q/q"
+            "248" => "GDP q/y"
+            "249" => "GDT Price Index"
+            "250" => "German 10-y Bond Auction"
+            "251" => "German 30-y Bond Auction"
+            "252" => "German Bank Holiday"
+            "253" => "German Buba Monthly Report"
+            "254" => "German Buba President Nagel Speaks"
+            "255" => "German Buba President Weber Speaks"
+            "256" => "German Buba President Weidmann Speaks"
+            "257" => "German Constitutional Court Ruling"
+            "258" => "German Factory Orders m/m"
+            "259" => "German Federal Elections"
+            "260" => "German Final CPI m/m"
+            "261" => "German Final GDP q/q"
+            "262" => "German Final Manufacturing PMI"
+            "263" => "German Final Services PMI"
+            "264" => "German Flash Manufacturing PMI"
+            "265" => "German Flash Services PMI"
+            "266" => "German GfK Consumer Climate"
+            "267" => "German Import Prices m/m"
+            "268" => "German Industrial Production m/m"
+            "269" => "German PPI m/m"
+            "270" => "German Prelim CPI m/m"
+            "271" => "German Prelim GDP q/q"
+            "272" => "German Retail Sales m/m"
+            "273" => "German Trade Balance"
+            "274" => "German Unemployment Change"
+            "275" => "German WPI m/m"
+            "276" => "German ZEW Economic Sentiment"
+            "277" => "German ifo Business Climate"
+            "278" => "GfK Consumer Confidence"
+            "279" => "Goods Trade Balance"
+            "280" => "Gov Board Member Danthine Speaks"
+            "281" => "Gov Board Member Hildebrand Speaks"
+            "282" => "Gov Board Member Jordan Speaks"
+            "283" => "Gov Board Member Maechler Speaks"
+            "284" => "Gov Board Member Martin Speaks"
+            "285" => "Gov Board Member Schlegel Speaks"
+            "286" => "Gov Board Member Zurbrugg Speaks"
+            "287" => "Gov Council Member Beaudry Speaks"
+            "288" => "Gov Council Member Boivin Speaks"
+            "289" => "Gov Council Member Cote Speaks"
+            "290" => "Gov Council Member Duguay Speaks"
+            "291" => "Gov Council Member Gravelle Speaks"
+            "292" => "Gov Council Member Jenkins Speaks"
+            "293" => "Gov Council Member Kennedy Speaks"
+            "294" => "Gov Council Member Kozicki Speaks"
+            "295" => "Gov Council Member Lane Speaks"
+            "296" => "Gov Council Member Leduc Speaks"
+            "297" => "Gov Council Member Longworth Speaks"
+            "298" => "Gov Council Member Macklem Speaks"
+            "299" => "Gov Council Member Mendes Speaks"
+            "300" => "Gov Council Member Murray Speaks"
+            "301" => "Gov Council Member Patterson Speaks"
+            "302" => "Gov Council Member Rogers Speaks"
+            "303" => "Gov Council Member Schembri Speaks"
+            "304" => "Gov Council Member Vincent Speaks"
+            "305" => "Gov Council Member Wilkins Speaks"
+            "306" => "Government Spending Review"
+            "307" => "Govt Confidence Vote"
+            "308" => "Greek Bailout Vote"
+            "309" => "Greek Gov Debt Crisis Vote"
+            "310" => "Greek Parliamentary Election"
+            "311" => "Greek Presidential Elections"
+            "312" => "HIA New Home Sales m/m"
+            "313" => "HPI m/m"
+            "314" => "HPI q/q"
+            "315" => "HPI y/y"
+            "316" => "Halifax HPI m/m"
+            "317" => "High Street Lending"
+            "318" => "Home Loans m/m"
+            "319" => "Household Spending y/y"
+            "320" => "Housing Equity Withdrawal q/q"
+            "321" => "Housing Starts"
+            "322" => "Housing Starts q/q"
+            "323" => "Housing Starts y/y"
+            "324" => "IMF Meetings"
+            "325" => "IPPI m/m"
+            "326" => "ISM Manufacturing PMI"
+            "327" => "ISM Manufacturing Prices"
+            "328" => "ISM Services PMI"
+            "329" => "Import Prices m/m"
+            "330" => "Import Prices q/q"
+            "331" => "Index of Services 3m/3m"
+            "332" => "Industrial New Orders m/m"
+            "333" => "Industrial Production m/m"
+            "334" => "Industrial Production q/q"
+            "335" => "Industrial Production y/y"
+            "336" => "Inflation Expectations q/q"
+            "337" => "Irish Lisbon Treaty Vote"
+            "338" => "Irish Stability Treaty Vote"
+            "339" => "Italian 10-y Bond Auction"
+            "340" => "Italian Bank Holiday"
+            "341" => "Italian Constitution Amendment Vote"
+            "342" => "Italian Industrial Production m/m"
+            "343" => "Italian Manufacturing PMI"
+            "344" => "Italian Monthly Unemployment Rate"
+            "345" => "Italian Parliamentary Election"
+            "346" => "Italian Prelim CPI m/m"
+            "347" => "Italian Prelim GDP q/q"
+            "348" => "Italian Quarterly Unemployment Rate"
+            "349" => "Italian Retail Sales m/m"
+            "350" => "Italian Services PMI"
+            "351" => "Italian Trade Balance"
+            "352" => "Ivey PMI"
+            "353" => "JOLTS Job Openings"
+            "354" => "Jackson Hole Symposium"
+            "355" => "Jeddah Oil Summit"
+            "356" => "KOF Economic Barometer"
+            "357" => "Labor Cost Index q/q"
+            "358" => "Labor Market Conditions Index m/m"
+            "359" => "Labor Productivity q/q"
+            "360" => "Leading Index m/m"
+            "361" => "Leading Indicators"
+            "362" => "Libor Rate"
+            "363" => "Loan Officer Survey"
+            "364" => "Long Term Refinancing Operation"
+            "365" => "Lower House Elections"
+            "366" => "M2 Money Stock y/y"
+            "367" => "M2 Money Supply y/y"
+            "368" => "M3 Money Supply y/y"
+            "369" => "M4 Money Supply m/m"
+            "370" => "MI Inflation Expectations"
+            "371" => "MI Inflation Gauge m/m"
+            "372" => "MI Leading Index m/m"
+            "373" => "MPC Asset Purchase Facility Votes"
+            "374" => "MPC Member Barker Speaks"
+            "375" => "MPC Member Bean Speaks"
+            "376" => "MPC Member Besley Speaks"
+            "377" => "MPC Member Blanchflower Speaks"
+            "378" => "MPC Member Breeden Speaks"
+            "379" => "MPC Member Broadbent Speaks"
+            "380" => "MPC Member Cunliffe Speaks"
+            "381" => "MPC Member Dale Speaks"
+            "382" => "MPC Member Dhingra Speaks"
+            "383" => "MPC Member Fisher Speaks"
+            "384" => "MPC Member Forbes Speaks"
+            "385" => "MPC Member Gieve Speaks"
+            "386" => "MPC Member Greene Speaks"
+            "387" => "MPC Member Haldane Speaks"
+            "388" => "MPC Member Haskel Speaks"
+            "389" => "MPC Member Hogg Speaks"
+            "390" => "MPC Member Mann Speaks"
+            "391" => "MPC Member McCafferty Speaks"
+            "392" => "MPC Member Miles Speaks"
+            "393" => "MPC Member Pill Speaks"
+            "394" => "MPC Member Posen Speaks"
+            "395" => "MPC Member Ramsden Speaks"
+            "396" => "MPC Member Saunders Speaks"
+            "397" => "MPC Member Sentance Speaks"
+            "398" => "MPC Member Shafik Speaks"
+            "399" => "MPC Member Tenreyro Speaks"
+            "400" => "MPC Member Tucker Speaks"
+            "401" => "MPC Member Vlieghe Speaks"
+            "402" => "MPC Member Weale Speaks"
+            "403" => "MPC Official Bank Rate Votes"
+            "404" => "MPC Rate Statement"
+            "405" => "Main Refinancing Rate"
+            "406" => "Manufacturing PMI"
+            "407" => "Manufacturing Production m/m"
+            "408" => "Manufacturing Sales m/m"
+            "409" => "Manufacturing Sales q/q"
+            "410" => "Median CPI y/y"
+            "411" => "Mid-Year Economic and Fiscal Outlook"
+            "412" => "Monetary Base y/y"
+            "413" => "Monetary Policy Meeting Minutes"
+            "414" => "Monetary Policy Report Hearings"
+            "415" => "Monetary Policy Statement"
+            "416" => "Monetary Policy Summary"
+            "417" => "Mortgage Approvals"
+            "418" => "Mortgage Delinquencies"
+            "419" => "NAB Business Confidence"
+            "420" => "NAB Quarterly Business Confidence"
+            "421" => "NAHB Housing Market Index"
+            "422" => "NBS Press Conference"
+            "423" => "NFIB Small Business Index"
+            "424" => "NHPI m/m"
+            "425" => "NIESR GDP Estimate"
+            "426" => "NZIER Business Confidence"
+            "427" => "National Core CPI y/y"
+            "428" => "Nationwide Consumer Confidence"
+            "429" => "Nationwide HPI m/m"
+            "430" => "Natural Gas Storage"
+            "431" => "Net Lending to Individuals m/m"
+            "432" => "New Home Prices m/m"
+            "433" => "New Home Sales"
+            "434" => "New Loans"
+            "435" => "New Motor Vehicle Sales m/m"
+            "436" => "Non-Farm Employment Change"
+            "437" => "Non-Manufacturing PMI"
+            "438" => "ONS HPI y/y"
+            "439" => "OPEC Meetings"
+            "440" => "OPEC-JMMC Meetings"
+            "441" => "Official Bank Rate"
+            "442" => "Official Cash Rate"
+            "443" => "Overnight Call Rate"
+            "444" => "Overnight Rate"
+            "445" => "Overseas Trade Index q/q"
+            "446" => "PPI Input m/m"
+            "447" => "PPI Input q/q"
+            "448" => "PPI Output m/m"
+            "449" => "PPI Output q/q"
+            "450" => "PPI m/m"
+            "451" => "PPI q/q"
+            "452" => "PPI y/y"
+            "453" => "Parliament Brexit Vote"
+            "454" => "Parliamentary Elections"
+            "455" => "Pending Home Sales m/m"
+            "456" => "Personal Income m/m"
+            "457" => "Personal Spending m/m"
+            "458" => "Philly Fed Manufacturing Index"
+            "459" => "Prelim ANZ Business Confidence"
+            "460" => "Prelim Business Investment q/q"
+            "461" => "Prelim Flash GDP q/q"
+            "462" => "Prelim GDP Price Index q/q"
+            "463" => "Prelim GDP Price Index y/y"
+            "464" => "Prelim GDP q/q"
+            "465" => "Prelim Industrial Production m/m"
+            "466" => "Prelim Machine Tool Orders y/y"
+            "467" => "Prelim Mortgage Approvals"
+            "468" => "Prelim Nonfarm Productivity q/q"
+            "469" => "Prelim Unit Labor Costs q/q"
+            "470" => "Prelim UoM Consumer Sentiment"
+            "471" => "Prelim UoM Inflation Expectations"
+            "472" => "Prelim Wholesale Inventories m/m"
+            "473" => "President Biden Speaks"
+            "474" => "President Bush Speaks"
+            "475" => "President Obama Speaks"
+            "476" => "President Trump Speaks"
+            "477" => "Presidential Election"
+            "478" => "Prime Minister Johnson Speaks"
+            "479" => "Prime Minister May Speaks"
+            "480" => "Prime Minister Truss Speaks"
+            "481" => "Private Capital Expenditure q/q"
+            "482" => "Private Loans y/y"
+            "483" => "Private Sector Credit m/m"
+            "484" => "Public Sector Net Borrowing"
+            "485" => "Quarterly Retail Sales q/q"
+            "486" => "RBA Annual Report"
+            "487" => "RBA Assist Gov Edey Speaks"
+            "488" => "RBA Assist Gov Ellis Speaks"
+            "489" => "RBA Assist Gov Hunter Speaks"
+            "490" => "RBA Assist Gov Kent Speaks"
+            "491" => "RBA Bulletin"
+            "492" => "RBA Deputy Gov Battellino Speaks"
+            "493" => "RBA Deputy Gov Debelle Speaks"
+            "494" => "RBA Deputy Gov Hauser Speaks"
+            "495" => "RBA Deputy Gov Lowe Speaks"
+            "496" => "RBA Financial Stability Review"
+            "497" => "RBA Gov Bullock Speaks"
+            "498" => "RBA Gov Lowe Speaks"
+            => "Economic Event #" + title_id
+    else
+        switch title_id
+            "499" => "RBA Gov Stevens Speaks"
+            "500" => "RBA Monetary Policy Statement"
+            "501" => "RBA Press Conference"
+            "502" => "RBA Rate Statement"
+            "503" => "RBNZ Assist Gov McDermott Speaks"
+            "504" => "RBNZ Financial Stability Report"
+            "505" => "RBNZ Gov Bollard Speaks"
+            "506" => "RBNZ Gov Orr Speaks"
+            "507" => "RBNZ Gov Spencer Speaks"
+            "508" => "RBNZ Gov Wheeler Speaks"
+            "509" => "RBNZ Monetary Policy Statement"
+            "510" => "RBNZ Press Conference"
+            "511" => "RBNZ Rate Statement"
+            "512" => "RBNZ Statement of Intent"
+            "513" => "RCM/TIPP Economic Optimism"
+            "514" => "REINZ HPI m/m"
+            "515" => "RICS House Price Balance"
+            "516" => "RMPI m/m"
+            "517" => "RPI y/y"
+            "518" => "Retail PMI"
+            "519" => "Retail Sales m/m"
+            "520" => "Retail Sales q/q"
+            "521" => "Retail Sales y/y"
+            "522" => "Revised Business Investment q/q"
+            "523" => "Revised GDP q/q"
+            "524" => "Revised Industrial Production m/m"
+            "525" => "Revised Nonfarm Productivity q/q"
+            "526" => "Revised Unit Labor Costs q/q"
+            "527" => "Revised UoM Consumer Sentiment"
+            "528" => "Revised UoM Inflation Expectations"
+            "529" => "Richmond Manufacturing Index"
+            "530" => "Rightmove HPI m/m"
+            "531" => "S&P/CS Composite-20 HPI y/y"
+            "532" => "SECO Consumer Climate"
+            "533" => "SECO Economic Forecasts"
+            "534" => "SNB Chairman Hildebrand Speaks"
+            "535" => "SNB Chairman Jordan Speaks"
+            "536" => "SNB Chairman Roth Speaks"
+            "537" => "SNB Financial Stability Report"
+            "538" => "SNB Monetary Policy Assessment"
+            "539" => "SNB Policy Rate"
+            "540" => "SNB Press Conference"
+            "541" => "SNB Quarterly Bulletin"
+            "542" => "SPPI y/y"
+            "543" => "Second Estimate GDP q/q"
+            "544" => "Sentix Investor Confidence"
+            "545" => "Spanish 10-y Bond Auction"
+            "546" => "Spanish Flash CPI y/y"
+            "547" => "Spanish Flash GDP q/q"
+            "548" => "Spanish Manufacturing PMI"
+            "549" => "Spanish Parliamentary Election"
+            "550" => "Spanish Services PMI"
+            "551" => "Spanish Unemployment Change"
+            "552" => "Spanish Unemployment Rate"
+            "553" => "Stimulus Package Announcement"
+            "554" => "TIC Long-Term Purchases"
+            "555" => "Tankan Manufacturing Index"
+            "556" => "Tankan Non-Manufacturing Index"
+            "557" => "Tertiary Industry Activity m/m"
+            "558" => "Tokyo Core CPI y/y"
+            "559" => "Total Vehicle Sales"
+            "560" => "Trade Balance"
+            "561" => "Treasury Currency Report"
+            "562" => "Treasury Sec Geithner Speaks"
+            "563" => "Treasury Sec Lew Speaks"
+            "564" => "Treasury Sec Mnuchin Speaks"
+            "565" => "Treasury Sec Paulson Speaks"
+            "566" => "Treasury Sec Yellen Speaks"
+            "567" => "Trimmed CPI y/y"
+            "568" => "Trimmed Mean CPI q/q"
+            "569" => "UBS Consumption Indicator"
+            "570" => "UBS Economic Expectations"
+            "571" => "USD-Denominated Trade Balance"
+            "572" => "Unconditional Basic Income Vote"
+            "573" => "Unemployment Claims"
+            "574" => "Unemployment Rate"
+            "575" => "Upper House Elections"
+            "576" => "Visitor Arrivals m/m"
+            "577" => "WEF Annual Meetings"
+            "578" => "Wage Price Index q/q"
+            "579" => "Wards Total Vehicle Sales"
+            "580" => "Westpac Consumer Sentiment"
+            "581" => "Wholesale Sales m/m"
+            "582" => "ZEW Economic Sentiment"
+            "583" => "FOMC Member Hammack Speaks"
+            "584" => "SNB Chairman Schlegel Speaks"
+            "585" => "FOMC Member Schmid Speaks"
+            "586" => "Gov Board Member Tschudin Speaks"
+            "587" => "MPC Member Lombardelli Speaks"
+            "588" => "MPC Member Taylor Speaks"
+            "589" => "API Weekly Statistical Bulletin"
+            "590" => "RBNZ Gov Hawkesby Speaks"
+            "591" => "RatingDog Manufacturing PMI"
+            "592" => "RatingDog Services PMI"
+            "593" => "RBA Assist Gov Jones Speaks"
+            "594" => "FOMC Member Miran Speaks"
+            "595" => "Household Spending m/m"
+            => "Check forexfactory.com for more information!"
+    title
+
+// Main decoding function
+decode(int ID) =>
+    if na(ID)
+        na
+    else
+        D_array = str.split(str.tostring(ID), "")
+        if D_array.size() > 0
+            dow_val      = ff_dow(D_array.get(0))
+            date_val     = D_array.get(0) != str.tostring(dayofweek(time+(86400000*(8)), "America/New_York")) ? shiftFWD_Days(6) : shiftFWD_Days()
+            currency_val = ff_currency(D_array.get(1))
+            time_val     = ff_t(array2string(D_array.slice(2,6)))
+            tod_val      = ff_tod(time_val)
+            impact_val   = ff_impact(array2string(D_array.slice(6,7)))
+            title_str    = array2string(D_array.slice(7,D_array.size()))
+            title_val    = ff_title(title_str)
+            tmst_val     = ff_tmst(date_val, tod_val)
+
+            News.new(dow_val, date_val, time_val, tod_val, currency_val, impact_val, title_val, tmst_val, na)
+        else
+            na
+
+method pullNews(array<News> N, float n) =>
+    if not na(n)
+        if int(n)!=999
+            N.push(decode(int(n)))
+
+method readNews(array<News> N, string S) =>
+    news = str.split(S,",")
+    if news.size()>0
+        for i=0 to news.size()-1
+            N.pullNews(str.tonumber(news.get(i)))
+
+//#endregion
+
+//#region[Chart Drawing Functions]
+
+// Line drawing
+FF_OnChartLine(array<News> N, int T, string S) =>
+    tfms = timeframe.in_seconds(timeframe.period)*1000
+    lineColor = map.new<int, color>()
+    colors = array.new<color>()
+    colors.push(color.white), colors.push(color.yellow), colors.push(color.orange), colors.push(color.red)
+    if N.size()>0
+        for i=N.size()-1 to 0
+            n=N.get(i)
+            adj = (n.tmst-time)%tfms!=0?n.tmst-tfms:n.tmst
+            if lineColor.contains(adj)
+                if colors.indexof(lineColor.get(adj))<colors.indexof(n.imp)
+                    lineColor.put(adj, n.imp)
+            else
+                lineColor.put(adj, n.imp)
+        for i=N.size()-1 to 0
+            n=N.get(i)
+            adj = (n.tmst-time)%tfms!=0?n.tmst-tfms:n.tmst
+            n.ln := line.new(adj, low, adj, high, xloc.bar_time, extend.both, color.new(lineColor.get(adj), T), style=S)
+
+// Matrix update method
+method updateStringMatrix(matrix<string> M, int P, string V) =>
+    if M.rows()>P
+        _r = M.row(P)
+        for i=0 to _r.size()-1
+            if na(_r.get(i))
+                M.set(P, i, V)
+                break
+
+// Label drawing - Shows icons for past events (current bar) and future events (all future)
+FF_OnChartLabel(array<News> N, string Y, string S, bool O) =>
+    if N.size()>0
+        // Part 1: Handle events on the CURRENT bar (past events)
+        tfms = timeframe.in_seconds(timeframe.period) * 1000
+        current_candle_start = time
+        current_candle_end = time_close
+        
+        events = matrix.new<string>(4, 45, na)
+        has_events = false
+        has_past = false
+        
+        for i=0 to N.size()-1
+            n=N.get(i)
+            
+            // Check if this event belongs to the current candle
+            if n.tmst >= current_candle_start and n.tmst < current_candle_end
+                has_events := true
+                
+                if n.tmst <= timenow
+                    has_past := true
+                
+                [imp, pos] = switch n.imp
+                    color.white  => ["⚪ ", 0]
+                    color.yellow => ["🟡 ", 1]
+                    color.orange => ["🟠 ", 2]
+                    color.red    => ["🔴 ", 3]
+                
+                event_info = imp + n.ttl + " (" + n.cur + ") - " + n.tod
+                
+                if pos==0
+                    events.updateStringMatrix(0, event_info)
+                if pos==1
+                    events.updateStringMatrix(1, event_info)
+                if pos==2
+                    events.updateStringMatrix(2, event_info)
+                if pos==3
+                    events.updateStringMatrix(3, event_info)
+        
+        // Create labels for current bar events
+        if has_events
+            txt="", _W=0, _Y=0, _O=0, _R=0
+            for r=0 to events.rows()-1 
+                a = events.row(r)
+                if a.size()>0
+                    for e=0 to a.size()-1
+                        if na(a.get(e))
+                            break
+                        else
+                            _W := r==0 and _W==0 ? 1 : _W
+                            _Y := r==1 and _Y==0 ? 1 : _Y
+                            _O := r==2 and _O==0 ? 1 : _O
+                            _R := r==3 and _R==0 ? 1 : _R
+                            txt := a.get(e)+"\n"+txt
+            
+            L=_W+_Y+_O+_R
+            if L > 0
+                side=Y=="Above"?false:Y=="Below"?true:open<close
+                
+                if L==1
+                    c = _W==1 ? color.white : _Y==1 ? color.yellow : _O==1 ? color.orange : color.red
+                    label.new(time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=c, text_font_family=font.family_monospace, tooltip=txt)
+                    if O and has_past
+                        label.new(time, side?low:high, "◯", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.new(chart.fg_color, 30), text_font_family=font.family_monospace, tooltip=txt)
+                else if L==2
+                    c1 = _W==1 ? color.white : _Y==1 ? color.yellow : _O==1 ? color.orange : color.red
+                    c2 = _W==1 and c1!=color.white ? color.white : _Y==1 and c1!=color.yellow ? color.yellow : _O==1 and c1!=color.orange ? color.orange : color.red
+                    label.new(time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=c1, text_font_family=font.family_monospace)
+                    label.new(time, side?low:high, "◐", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=c2, text_font_family=font.family_monospace, tooltip=txt)
+                    if O and has_past
+                        label.new(time, side?low:high, "◯", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.new(chart.fg_color, 30), text_font_family=font.family_monospace, tooltip=txt)
+                else if L==3
+                    label.new(time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.yellow, text_font_family=font.family_monospace)
+                    label.new(time, side?low:high, "◐", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.orange, text_font_family=font.family_monospace)
+                    label.new(time, side?low:high, "◑", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.red, text_font_family=font.family_monospace, tooltip=txt)
+                    if O and has_past
+                        label.new(time, side?low:high, "◯", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.new(chart.fg_color, 30), text_font_family=font.family_monospace, tooltip=txt)
+                else if L==4
+                    label.new(time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.white, text_font_family=font.family_monospace)
+                    label.new(time, side?low:high, "◐", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.yellow, text_font_family=font.family_monospace)
+                    label.new(time, side?low:high, "◑", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.orange, text_font_family=font.family_monospace)
+                    label.new(time, side?low:high, "◒", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.red, text_font_family=font.family_monospace, tooltip=txt)
+                    if O and has_past
+                        label.new(time, side?low:high, "◯", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.new(chart.fg_color, 30), text_font_family=font.family_monospace, tooltip=txt)
+        
+        // Part 2: Handle FUTURE events (only on the last bar to avoid duplicates)
+        if barstate.islast
+            var processed_future = array.new<int>()
+            processed_future.clear()
+            
+            for i=0 to N.size()-1
+                n=N.get(i)
+                
+                // Only process future events
+                if n.tmst > timenow
+                    event_candle_time = n.tmst - (n.tmst % tfms)
+                    
+                    // Skip if already processed
+                    if processed_future.indexof(event_candle_time) != -1
+                        continue
+                    
+                    processed_future.push(event_candle_time)
+                    
+                    // Find all future events on this candle
+                    future_events = matrix.new<string>(4, 45, na)
+                    
+                    for k=0 to N.size()-1
+                        b=N.get(k)
+                        if b.tmst > timenow
+                            b_candle_time = b.tmst - (b.tmst % tfms)
+                            
+                            if b_candle_time == event_candle_time
+                                [imp, pos] = switch b.imp
+                                    color.white  => ["⚪ ", 0]
+                                    color.yellow => ["🟡 ", 1]
+                                    color.orange => ["🟠 ", 2]
+                                    color.red    => ["🔴 ", 3]
+                                
+                                event_info = imp + b.ttl + " (" + b.cur + ") - " + b.tod
+                                
+                                if pos==0
+                                    future_events.updateStringMatrix(0, event_info)
+                                if pos==1
+                                    future_events.updateStringMatrix(1, event_info)
+                                if pos==2
+                                    future_events.updateStringMatrix(2, event_info)
+                                if pos==3
+                                    future_events.updateStringMatrix(3, event_info)
+                    
+                    // Build tooltip and create labels for future events
+                    future_txt="", f_W=0, f_Y=0, f_O=0, f_R=0
+                    for r=0 to future_events.rows()-1 
+                        a = future_events.row(r)
+                        if a.size()>0
+                            for e=0 to a.size()-1
+                                if na(a.get(e))
+                                    break
+                                else
+                                    f_W := r==0 and f_W==0 ? 1 : f_W
+                                    f_Y := r==1 and f_Y==0 ? 1 : f_Y
+                                    f_O := r==2 and f_O==0 ? 1 : f_O
+                                    f_R := r==3 and f_R==0 ? 1 : f_R
+                                    future_txt := a.get(e)+"\n"+future_txt
+                    
+                    f_L=f_W+f_Y+f_O+f_R
+                    if f_L > 0
+                        side=Y=="Above"?false:Y=="Below"?true:open<close
+                        
+                        if f_L==1
+                            c = f_W==1 ? color.white : f_Y==1 ? color.yellow : f_O==1 ? color.orange : color.red
+                            label.new(event_candle_time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=c, text_font_family=font.family_monospace, tooltip=future_txt)
+                        else if f_L==2
+                            c1 = f_W==1 ? color.white : f_Y==1 ? color.yellow : f_O==1 ? color.orange : color.red
+                            c2 = f_W==1 and c1!=color.white ? color.white : f_Y==1 and c1!=color.yellow ? color.yellow : f_O==1 and c1!=color.orange ? color.orange : color.red
+                            label.new(event_candle_time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=c1, text_font_family=font.family_monospace)
+                            label.new(event_candle_time, side?low:high, "◐", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=c2, text_font_family=font.family_monospace, tooltip=future_txt)
+                        else if f_L==3
+                            label.new(event_candle_time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.yellow, text_font_family=font.family_monospace)
+                            label.new(event_candle_time, side?low:high, "◐", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.orange, text_font_family=font.family_monospace)
+                            label.new(event_candle_time, side?low:high, "◑", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.red, text_font_family=font.family_monospace, tooltip=future_txt)
+                        else if f_L==4
+                            label.new(event_candle_time, side?low:high, "●", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.white, text_font_family=font.family_monospace)
+                            label.new(event_candle_time, side?low:high, "◐", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.yellow, text_font_family=font.family_monospace)
+                            label.new(event_candle_time, side?low:high, "◑", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.orange, text_font_family=font.family_monospace)
+                            label.new(event_candle_time, side?low:high, "◒", xloc.bar_time, color=color.new(#000000, 100), size=S, style=side?label.style_label_up:label.style_label_down, textcolor=color.red, text_font_family=font.family_monospace, tooltip=future_txt)
+
+// Historical cleanup
+historical(int T, bool D, bool W, string X) =>
+    var int daysLB    = na
+    var int newDay    = na
+    var int newWeek   = na
+    var int delimiter = na
+    daysLB    := time-(T*timeframe.in_seconds("D")*1000)
+    newDay    := timeframe.change("D") ? time : newDay
+    newWeek   := timeframe.change("W") ? time : newWeek
+    delimiter := if D
+        newDay
+    else if W
+        newWeek
+    else
+        daysLB
+
+    if not na(delimiter)
+        lines=line.all
+        if lines.size()>0
+            for i=0 to lines.size()-1
+                l=lines.get(i)
+                if l.get_x1()<delimiter
+                    l.delete()
+                if X=="Future"
+                    if l.get_x1()<=time
+                        l.delete()
+        labels=label.all
+        if labels.size()>0
+            for i=0 to labels.size()-1
+                l=labels.get(i)
+                if l.get_x()<delimiter
+                    l.delete()
+
+//#endregion
+
+//#region[Table Functions]
+
+newTable(string P, color B=chart.fg_color) =>
+    table.new(P, 5, 1000, chart.bg_color, B, 1, B, 1)
+
+resetTable(string P, string S, color headTextC, color headBgC, color B) =>
+    _table = newTable(P, B)
+    _table.cell(0, 0, "Date"              , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(1, 0, "Time"              , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(2, 0, "Currency"          , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(3, 0, "Impact"            , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(4, 0, "Forex Factory News", text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table
+
+logNews(News N, table TBL, int R, string S, color rowTextC, color rowBgC) =>
+    TBL.cell(0, R, N.dow+" "+N.dat, text_color=rowTextC, bgcolor=rowBgC, text_size=size(S), text_font_family=font.family_monospace)
+    TBL.cell(1, R, N.tod          , text_color=rowTextC, bgcolor=rowBgC, text_size=size(S), text_font_family=font.family_monospace)
+    TBL.cell(2, R, N.cur          , text_color=rowTextC, bgcolor=rowBgC, text_size=size(S), text_font_family=font.family_monospace)
+    TBL.cell(3, R, "⬤"           , text_color=N.imp   , bgcolor=rowBgC, text_size=size(S), text_font_family=font.family_monospace)
+    TBL.cell(4, R, N.ttl          , text_color=rowTextC, bgcolor=rowBgC, text_size=size(S), text_font_family=font.family_monospace)
+
+FF_Table(array<News> N, string P, string S, color headTextC, color headBgC, color rowTextC, color rowBgC, color B=chart.fg_color) =>
+    table _table = na
+    rows = 1
+    _table := resetTable(P, S, headTextC, headBgC, B)
+    if N.size()>0
+        start_d = 1
+        end_d   = 1
+        pDate = ""
+        start_t = 1
+        end_t   = 1
+        pTime = ""
+        for i=0 to N.size()-1
+            n=N.get(i)
+            logNews(n, _table, rows, S, rowTextC, rowBgC)
+            if i==0
+                pDate := n.dat
+                pTime := n.tod
+            else
+                if pDate==n.dat
+                    n.dow := ""
+                    n.dat := ""
+                    end_d   := rows
+                else
+                    pDate := n.dat
+                    if start_d!=end_d
+                        _table.merge_cells(0, start_d, 0, end_d)
+                    start_d := rows
+                    end_d   := rows
+                    if start_t!=end_t
+                        _table.merge_cells(1, start_t, 1, end_t)
+                    start_t := rows
+                    end_t   := rows
+                if pTime==n.tod
+                    n.tod := ""
+                    end_t   := rows
+                else
+                    pTime := n.tod
+                    if start_t!=end_t
+                        _table.merge_cells(1, start_t, 1, end_t)
+                    start_t := rows
+                    end_t   := rows
+            rows += 1
+        if not (start_d >= end_d)
+            _table.merge_cells(0, start_d, 0, end_d)
+        if not (start_t >= end_t)
+            _table.merge_cells(1, start_t, 1, end_t)
+            
+    if rows==1
+        _table.cell(0, rows, "No News", text_color=rowTextC, text_size=size(S), bgcolor=rowBgC, text_font_family=font.family_monospace)
+        _table.cell(1, rows, ""       , text_color=rowTextC, text_size=size(S), bgcolor=rowBgC, text_font_family=font.family_monospace)
+        _table.cell(2, rows, ""       , text_color=rowTextC, text_size=size(S), bgcolor=rowBgC, text_font_family=font.family_monospace)
+        _table.cell(3, rows, ""       , text_color=rowTextC, text_size=size(S), bgcolor=rowBgC, text_font_family=font.family_monospace)
+        _table.cell(4, rows, ""       , text_color=rowTextC, text_size=size(S), bgcolor=rowBgC, text_font_family=font.family_monospace)
+        _table.merge_cells(0, rows, 4, rows)
+        rows+=1
+
+    _table.cell(0, rows, "@toodegrees", text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(1, rows, ""           , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(2, rows, ""           , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(3, rows, ""           , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.cell(4, rows, ""           , text_color=headTextC, text_size=size(S), bgcolor=headBgC, text_font_family=font.family_monospace)
+    _table.merge_cells(0, rows, 4, rows)
+    _table
+
+timeline(array<News> N, table T, color F, int TZH=na, int TZM=na, bool D=false) =>
+    events = array.new<News>()
+    tz = "America/New_York"
+    if not na(TZH)
+        tz := "UTC"+(TZH>0?"+":"-")+str.tostring(math.abs(TZH))+(TZM!=0?str.tostring(TZM):"")
+    tfms = timeframe.in_seconds(timeframe.period)*1000
+    if not D
+        if N.size()>0
+            for i=0 to N.size()-1
+                n=N.get(i)
+                events.push(n)
+    else
+        events := N.copy()
+    
+    if events.size()>0
+        dat = 1
+        for i=0 to events.size()-1
+            n=events.get(i)
+            if timenow>=n.tmst
+                T.cell_set_text_color(1, i+1, F)
+                T.cell_set_text_color(2, i+1, F)
+                T.cell_set_text_color(4, i+1, F)
+
+                if i!=events.size()-1 and not D
+                    p=events.get(i+1)
+                    if dayofmonth(n.tmst, tz)!=dayofmonth(p.tmst, tz)
+                        T.cell_set_text_color(0, dat, F)
+                        dat := i+2
+
+                if i==events.size()-1
+                    T.cell_set_text_color(0, dat, F)
+                    dat := i+1
+                    T.cell_set_text_color(0, dat, F)
+
+method processData(array<News> N, string S1, string S2, string S3, string S4, string S5, string S6, string S7, string S8, string S9) =>
+    N.readNews(S1), N.readNews(S2), N.readNews(S3)
+    N.readNews(S4), N.readNews(S5), N.readNews(S6)
+    N.readNews(S7), N.readNews(S8), N.readNews(S9)
+
+//#endregion
+
+//#region[Global, Functions, Methods]
+var mdnCheck = false
+if hour(time,"America/New_York")==0 and hour(time[1],"America/New_York")!=0 and not mdnCheck
+    mdnCheck := true
+newDay = mdnCheck ? hour(time,"America/New_York")==0 and hour(time[1],"America/New_York")!=0 : timeframe.change("D")
+
+requestData() =>
+    [request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_1",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_2",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_3",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_4",str.tostring(open)+","+str.tostring(high)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_5",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_6",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_7",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_8",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume)),
+     request.seed("seed_toodegrees_toogit","TOODEGREES_FOREX_FACTORY_SLOT_9",str.tostring(open)+","+str.tostring(high)+","+str.tostring(low)+","+str.tostring(close)+","+str.tostring(volume))]
+
+//#endregion
+
+//#region[Tooltips]
+var custom_timezoneTT = "The original Time and Date of the News is based on New York EST. Adjust the Timezone "
+                      + "by matching this setting to the bottom-right Timezone setting on your Chart."
+var expectedImpactTT  = "🔴 High Impact\n🟠 Medium Impact\n🟡 Low Impact\n⚪ Holiday"
+var autoTT            = "Automatically chooses the Currencies' News based on the current symbol on Chart."
+var onChartTT         = "'Today'\nAll historical news will be deleted once a new day starts, only the current day's news "
+                      + "will be shown on chart.\n\n'This Week'\nAll historical news will be deleted once a new week "
+                      + "starts, only the current week's news will be shown on chart.\n\n'Manual'\nWill show the current "
+                      + "week's upcoming news as well as the news in the prior custom number of days (includes weekend days)."
+var labelYTT          = "'Auto' will place the label opposite to the candle's direction."
+var sizeTTT           = "Depending on the Size of the News Table you will be able to see a maximum number of Forex Factory "
+                      + "News events on the chart due to size limitations.\n\nThese limits are roughly:\n'Tiny' ± 46 Forex "
+                      + "Factory News Events\n'Small' ± 38 Forex Factory News Events\n'Normal' ± 28 Forex Factory News Events"
+                      + "\n'Large' ± 20 Forex Factory News Events\n'Huge' ± 11 Forex Factory News Events"
+var tableHeadCTT      = "Text Color - Background Color"
+var tableRowCTT       = "Past News Text Color - Future News Text Color - Background Color"
+//#endregion
+
+//#region[User Input]
+// Custom Timezone - Default set to UTC+10 (Australia)
+custom_timezone = input.bool(true , title="Custom Timezone?", inline="1")
+timezone_h      = input.int(10   , title="UTC"             , inline="1", minval=-10, maxval=13)
+timezone_m      = input.int(0    , title=":"               , inline="1", minval=0  , maxval=59, step=15, tooltip=custom_timezoneTT)
+
+// Expected Impact
+var high_impact = input.bool(true, title="🔴", group="Expected Impact", inline="1")
+var med_impact  = input.bool(true, title="🟠", group="Expected Impact", inline="1")
+var low_impact  = input.bool(true, title="🟡", group="Expected Impact", inline="1")
+var holiday     = input.bool(true, title="⚪", group="Expected Impact", inline="1", tooltip=expectedImpactTT)
+
+// Currencies
+var AUTO = input.bool(true , title="Automatic?", group="Currencies", tooltip=autoTT)
+var AUD  = input.bool(false, title="AUD"       , group="Currencies", inline="1")
+var CAD  = input.bool(false, title="CAD"       , group="Currencies", inline="1")
+var CHF  = input.bool(false, title="CHF"       , group="Currencies", inline="1")
+var CNY  = input.bool(false, title="CNY"       , group="Currencies", inline="2")
+var EUR  = input.bool(false, title="EUR"       , group="Currencies", inline="2")
+var GBP  = input.bool(false, title="GBP"       , group="Currencies", inline="2")
+var JPY  = input.bool(false, title="JPY "      , group="Currencies", inline="3")
+var NZD  = input.bool(false, title="NZD"       , group="Currencies", inline="3")
+var USD  = input.bool(false, title="USD"       , group="Currencies", inline="3")
+
+// On Chart
+var onChartT   = input.string("This Week", title="Chart History        ", group="News On Chart", inline="1", options=["Today", "This Week", "Manual"])
+var onChartLB  = input.int(30         , title=""                      , group="News On Chart", inline="1", tooltip=onChartTT)
+var showLabels = input.bool(true       , title="Show Labels?"          , group="News On Chart", inline="2")
+var labelS     = size(input.string("Normal"   , title=""                      , group="News On Chart", inline="2", options=["Tiny" , "Small", "Normal", "Large", "Huge"]))
+var labelY     = input.string("Auto"     , title=""                      , group="News On Chart", inline="2", options=["Above", "Below", "Auto"] , tooltip=labelYTT)
+var lblOutLn   = input.bool(true       , title="Outline?"              , group="News On Chart", inline="2")
+var showLines  = input.bool(true       , title="Show Lines?  "         , group="News On Chart", inline="3")
+var lineTime   = input.string("Future"   , title=""                      , group="News On Chart", inline="3", options=["Future", "Past+Future"])
+var lineT      = lineTrnsp(input.string("Heavy"    , title=""                      , group="News On Chart", inline="3", options=["Light" , "Medium", "Heavy"]))
+var lineS      = lineStyle(input.string("Solid"    , title=""                      , group="News On Chart", inline="3", options=["Dashed", "Dotted", "Solid"]))
+
+// Table
+var showTable   = input.bool(false      , title="Show?"        , group="News Table", inline="1")
+var tableType   = input.string("This Week", title=""             , group="News Table", inline="1", options=["Today", "This Week"])
+var todType     = input.string("24H"      , title=""             , group="News Table", inline="1", options=["24H"  , "AM/PM"])
+var headTextC   = input.color(#dee1e9  , title="Table Header" , group="News Table", inline="2")
+var headBgC     = input.color(#283c70  , title=""             , group="News Table", inline="2", tooltip=tableHeadCTT)
+var rowTextCP   = input.color(#787b86  , title="Table News   ", group="News Table", inline="3")
+var rowTextCF   = input.color(#000000  , title=""             , group="News Table", inline="3")
+var rowBgC      = input.color(#dee1e9  , title=""             , group="News Table", inline="3", tooltip=tableRowCTT)
+var tableBorder = input.bool(true       , title="Border?"      , group="News Table", inline="4")
+var borderColor = input.color(#000000  , title=""             , group="News Table", inline="4")
+var borderAuto  = input.bool(true       , title="Auto?"        , group="News Table", inline="4")
+var tableX      = input.string("Right"    , title=""             , group="News Table", inline="5", options=["Left", "Center", "Right" ])
+var tableY      = input.string("Bottom"   , title=""             , group="News Table", inline="5", options=["Top" , "Middle", "Bottom"])
+var sizeT       = input.string("Small"    , title=""             , group="News Table", inline="5", options=["Tiny", "Small" , "Normal", "Large", "Huge"], tooltip=sizeTTT)
+
+// Process User Input
+var locT            = boxLoc(tableX,tableY)
+var impact_filter   = impFilter(holiday,low_impact,med_impact,high_impact)
+var currency_filter = curFilter(AUTO,AUD,CAD,CHF,CNY,EUR,GBP,JPY,NZD,USD)
+onChartT           := timeframe.period=="D" and onChartT=="Today"?"This Week":onChartT 
+tableType          := timeframe.period=="D"?"This Week":tableType 
+//#endregion
+
+//#region[Import, Decode, Save]
+var currWeek = array.new<News>()
+var nextWeek = array.new<News>()
+var currDay  = array.new<News>()
+
+// Import Forex Factory News for next week
+[slot1,slot2,slot3,slot4,slot5,slot6,slot7,slot8,slot9] = requestData()
+
+// Save Forex Factory News
+if timeframe.change("W")
+    nextWeek := bubbleSort_News(nextWeek)
+    if custom_timezone
+        nextWeek := adjustTimezone(nextWeek, timezone_h, timezone_m)
+    if todType=="AM/PM"
+        nextWeek := NewsAMPM_TOD(nextWeek)
+    currWeek := nextWeek.copy()
+    currWeek := weekNews(currWeek,currency_filter,impact_filter)
+    nextWeek.clear()
+if newDay
+    currDay.clear()
+    currDay := todayNews(currWeek,currDay,mdnCheck)
+
+// Decode Forex Factory News
+nextWeek.processData(slot1,slot2,slot3,slot4,slot5,slot6,slot7,slot8,slot9)
+//#endregion
+
+//#region[Table & Drawings]
+// Forex Factory News Table (optional - off by default)
+var table_BC = tableBorder ? (borderAuto ? chart.fg_color : borderColor) : na
+var  _table = newTable(locT,table_BC)
+if currWeek.size()>0
+    if showTable
+        if tableType=="Today"
+            if newDay
+                _table := FF_Table(currDay,locT,sizeT,headTextC,headBgC,rowTextCF,rowBgC,table_BC)
+            timeline(currDay,_table,rowTextCP, timezone_h, timezone_m, true)
+        else
+            if timeframe.change("W")
+                _table := FF_Table(currWeek,locT,sizeT,headTextC,headBgC,rowTextCF,rowBgC,table_BC)
+            timeline(currWeek,_table,rowTextCP, timezone_h, timezone_m)
+    else
+        _table.delete()
+else
+    _table.delete()
+
+// Forex Factory News Drawings
+if showLines
+    if onChartT!="Today" and timeframe.change("W")
+        FF_OnChartLine(currWeek,lineT,lineS)
+    else if onChartT=="Today" and newDay
+        FF_OnChartLine(currDay,lineT,lineS)
+
+// Show labels/icons for all events (past and future) with enhanced tooltips
+if showLabels
+    FF_OnChartLabel(currWeek,labelY,labelS,lblOutLn)
+
+historical(onChartLB,onChartT=="Today",onChartT=="This Week",lineTime)
+//#endregion
+
+//#region[Daily Chart Buffer]
+if timeframe.period=="D" and timeframe.change("W") 
+    nextWeek.processData(slot1,slot2,slot3,slot4,slot5,slot6,slot7,slot8,slot9)
+//#endregion

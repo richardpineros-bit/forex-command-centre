@@ -1,0 +1,956 @@
+// @version=6
+indicator("RSI Momentum Scanner - Enhanced", overlay=false, max_lines_count=500, max_labels_count=500)
+
+// ============================================================================
+// RSI MOMENTUM SCANNER - ENHANCED EDITION - COMPLETE DOCUMENTATION
+// ============================================================================
+//
+// PURPOSE:
+// This indicator is designed for rapidly scanning 100+ forex pairs and instruments
+// to identify high-probability trading opportunities based on RSI momentum analysis.
+// It combines three powerful detection methods with extensive visual customization.
+//
+// ============================================================================
+// FEATURE 1: MOMENTUM SHIFT DETECTION
+// ============================================================================
+// 
+// WHAT IT DOES:
+// Detects when RSI crosses the 50 midline after spending time on the opposite side,
+// signaling a clear momentum shift in the market.
+//
+// SIGNALS:
+// ↑ Green Arrow = Bullish momentum (RSI crossed above 50 after being below)
+// ↓ Red Arrow = Bearish momentum (RSI crossed below 50 after being above)
+//
+// WHY IT WORKS:
+// - RSI 50 line is the true momentum divider
+// - Requires RSI to stay on opposite side for minimum bars (filters noise)
+// - Catches early momentum changes before major moves
+// - Zero subjectivity - either crossed or didn't
+//
+// KEY SETTINGS:
+// - Min Bars in Opposite Zone: Default 5 (increase for stronger signals)
+// - Confirmation Bars: Default 1 (wait bars after cross to confirm)
+// - Signal Cooldown: Default 10 (prevents spam signals)
+//
+// VISUAL OPTIONS:
+// - Toggle icons on/off independently
+// - Toggle momentum lines on/off independently
+// - Customize colors and sizes for icons and lines separately
+//
+// ============================================================================
+// FEATURE 2: RSI TRENDLINE BREAKS
+// ============================================================================
+//
+// WHAT IT DOES:
+// Automatically draws trendlines on RSI itself (not price) and alerts when
+// RSI breaks through these trendlines, often preceding price breakouts.
+//
+// SIGNALS:
+// ⚡ Aqua Lightning = RSI broke above resistance trendline (bullish breakout)
+// ⚡ Orange Lightning = RSI broke below support trendline (bearish breakdown)
+//
+// WHY IT WORKS:
+// - RSI often breaks its trendline before price does
+// - Provides early warning of momentum exhaustion or acceleration
+// - More objective than manually drawing trendlines
+// - Uses actual RSI pivot points to construct trendlines
+//
+// HOW IT WORKS:
+// 1. Detects RSI pivot highs and lows
+// 2. Connects recent pivots to form trendlines
+// 3. Calculates where trendline should be at current bar
+// 4. Alerts when RSI breaks through with sufficient strength
+//
+// KEY SETTINGS:
+// - Trendline Pivot Points: Default 5 (lower = more sensitive)
+// - Min Trendline Length: Default 10 bars (ensures valid trendline)
+// - Break Strength: Default 1.0 (RSI must break by this many points)
+//
+// VISUAL OPTIONS:
+// - Toggle lightning icons on/off
+// - Toggle trendline drawing on/off
+// - Customize all colors and sizes independently
+//
+// ============================================================================
+// FEATURE 3: MULTI-TIMEFRAME RSI ALIGNMENT
+// ============================================================================
+//
+// WHAT IT DOES:
+// Shows RSI values across multiple timeframes in a customizable table, with visual
+// indicators showing when all timeframes are aligned. This identifies the
+// strongest trending opportunities.
+//
+// THE PANEL SHOWS:
+// - Current timeframe RSI (optional - can be hidden)
+// - Higher Timeframe 1 RSI (default: 1 Hour)
+// - Higher Timeframe 2 RSI (default: 4 Hour)
+// - Higher Timeframe 3 RSI (default: Daily)
+// - Higher Timeframe 4 RSI (default: Weekly - optional)
+//
+// CUSTOMIZABLE TIMEFRAMES:
+// - Show Current Timeframe: Toggle to include/exclude current chart TF
+// - Show Timeframe 4: Toggle to enable/disable 4th higher timeframe
+// - All timeframes are fully customizable (1H, 4H, 1D, 1W, 1M, etc.)
+//
+// STATUS INDICATORS (4 STYLES):
+// - Dot: ● Classic circular indicators
+// - Arrow: ▲▼ Directional arrows
+// - Text: BULL/BEAR/NEUT text labels
+// - Color Block: Solid colored cells
+//
+// BACKGROUND HIGHLIGHTING:
+// - Bright color = ALL timeframes aligned (strongest signal)
+// - Subtle color = All except 1 aligned (moderate signal)
+// - No highlight = Mixed signals
+//
+// WHY IT WORKS:
+// - Multi-timeframe confirmation dramatically increases win rate
+// - Identifies true trends vs counter-trend noise
+// - Perfect for scanning - instantly see which pairs have alignment
+// - Eliminates need to manually check multiple timeframes
+//
+// KEY SETTINGS:
+// - Alignment Threshold: Default 50 (RSI above = bullish, below = bearish)
+// - Panel Position: 7 options (Top/Bottom/Middle, Left/Right/Center)
+//
+// ============================================================================
+// ENHANCED TABLE CUSTOMIZATION
+// ============================================================================
+//
+// FULL CONTROL OVER TABLE APPEARANCE:
+//
+// LAYOUT & STRUCTURE:
+// - 7 positioning options (all corners + middle positions)
+// - Adjustable border width (0-5 pixels)
+// - Show/hide individual columns:
+//   * Timeframe column
+//   * RSI Value column
+//   * % Change column (shows RSI movement)
+//   * Status column (with 4 different styles)
+//
+// FONT CUSTOMIZATION:
+// - Separate font sizes for headers and data
+// - 6 size options: Auto, Tiny, Small, Normal, Large, Huge
+//
+// COLOR SCHEME (FULLY CUSTOMIZABLE):
+// - Table background color + transparency control
+// - Header background color + transparency control
+// - Alternating row backgrounds for better readability
+// - Custom border color
+// - Independent colors for:
+//   * Header text
+//   * Label text (timeframe names)
+//   * Data text (RSI values)
+//   * Bullish status indicators
+//   * Bearish status indicators
+//   * Neutral status indicators
+//
+// ============================================================================
+// BACKGROUND COLOR CUSTOMIZATION
+// ============================================================================
+//
+// This indicator has 4 independent background layers, all fully customizable:
+//
+// 1. MTF ALIGNMENT BACKGROUND:
+//    - Shows when multiple timeframes align
+//    - Strong Bullish: All timeframes aligned bullish
+//    - Strong Bearish: All timeframes aligned bearish
+//    - Moderate Bullish: All except 1 timeframe bullish
+//    - Moderate Bearish: All except 1 timeframe bearish
+//    - Toggle on/off + customize each color independently
+//
+// 2. RSI MOMENTUM ZONE BACKGROUND:
+//    - Subtle tint based on RSI position relative to 50
+//    - Bullish Zone: RSI above 50 (default: light green)
+//    - Bearish Zone: RSI below 50 (default: light red)
+//    - Toggle on/off + customize both colors
+//
+// 3. OVERBOUGHT/OVERSOLD ZONE FILLS:
+//    - Light background fills in extreme zones
+//    - Overbought Zone: Above 70 line (default: very light red)
+//    - Oversold Zone: Below 30 line (default: very light green)
+//    - Toggle on/off + customize both colors
+//
+// 4. RSI LINE AREA FILLS:
+//    - Colored fills between RSI line and OB/OS levels
+//    - Overbought Area: Between RSI and 70 when RSI > 70 (default: red)
+//    - Oversold Area: Between RSI and 30 when RSI < 30 (default: green)
+//    - Toggle on/off + customize both colors
+//
+// CUSTOMIZATION TIPS:
+// - Each layer can be enabled/disabled independently
+// - Adjust transparency to layer effects without overwhelming the chart
+// - Use contrasting colors for easy visual scanning
+// - Turn off layers you don't need for a cleaner look
+//
+// ============================================================================
+// RSI VISUAL ENHANCEMENTS
+// ============================================================================
+//
+// DYNAMIC RSI LINE COLORING:
+// - RSI line turns RED when > 70 (overbought)
+// - RSI line turns GREEN when < 30 (oversold)
+// - RSI line stays PURPLE between 30-70 (normal)
+//
+// REFERENCE LINES:
+// - Red dotted line at 70 (overbought threshold)
+// - Green dotted line at 30 (oversold threshold)
+// - Gray dotted line at 50 (momentum midline)
+//
+// CURRENT RSI VALUE LABEL:
+// - Shows exact RSI value at current bar
+// - GREEN label when RSI >= 50 (bullish momentum)
+// - RED label when RSI < 50 (bearish momentum)
+// - Updates in real-time as price moves
+//
+// ============================================================================
+// ALERT SYSTEM
+// ============================================================================
+//
+// 8 DIFFERENT ALERT OPTIONS AVAILABLE:
+//
+// Momentum Alerts:
+// - Bullish Momentum Shift
+// - Bearish Momentum Shift
+//
+// Trendline Alerts:
+// - Bullish RSI Trendline Break (RSI broke resistance)
+// - Bearish RSI Trendline Break (RSI broke support)
+//
+// Multi-Timeframe Alerts:
+// - Strong Bullish MTF Alignment (ALL timeframes aligned bullish)
+// - Strong Bearish MTF Alignment (ALL timeframes aligned bearish)
+//
+// Perfect Setup Alerts (Combined Signals):
+// - Perfect Bullish Setup (MTF aligned + momentum shift)
+// - Perfect Bearish Setup (MTF aligned + momentum shift)
+//
+// HOW TO SET UP ALERTS:
+// 1. Click "Alerts" button in TradingView (alarm clock icon)
+// 2. Choose "RSI Momentum Scanner - Enhanced" from the indicator dropdown
+// 3. Select your desired alert condition from the list
+// 4. Configure notification method (popup, email, SMS, webhook)
+// 5. Set alert frequency (Once Per Bar Close recommended)
+// 6. Click "Create"
+//
+// RECOMMENDED FOR SCANNING:
+// - Use "Strong MTF Alignment" alerts for highest probability setups
+// - Use "Perfect Setup" alerts for ultimate confirmation
+// - Set alerts on multiple pairs to catch opportunities across markets
+//
+// ============================================================================
+// RECOMMENDED SETTINGS BY TIMEFRAME
+// ============================================================================
+//
+// FOR 15-MINUTE CHARTS:
+// - Momentum: Min Bars = 3, Cooldown = 5
+// - Trendline: Pivot Points = 3, Min Length = 8
+// - MTF: Current TF + 1H + 4H + D (hide weekly)
+//
+// FOR 1-HOUR CHARTS:
+// - Momentum: Min Bars = 5, Cooldown = 8
+// - Trendline: Pivot Points = 4, Min Length = 10
+// - MTF: 1H + 4H + D + W (hide current)
+//
+// FOR 4-HOUR CHARTS (DEFAULT):
+// - Momentum: Min Bars = 5, Cooldown = 10
+// - Trendline: Pivot Points = 5, Min Length = 10
+// - MTF: 1H + 4H + D + W
+//
+// FOR DAILY CHARTS:
+// - Momentum: Min Bars = 3, Cooldown = 5
+// - Trendline: Pivot Points = 7, Min Length = 15
+// - MTF: D + W + M (hide lower timeframes)
+//
+// ============================================================================
+// USAGE WORKFLOW FOR SCANNING 100+ PAIRS
+// ============================================================================
+//
+// STEP 1: INITIAL SCAN
+// - Flip rapidly through pairs on your preferred timeframe
+// - Look for bright colored background (strong MTF alignment)
+// - These pairs have all timeframes aligned = highest probability
+// - Add these to a watchlist for detailed analysis
+//
+// STEP 2: IDENTIFY PRECISE ENTRIES
+// - On aligned pairs, wait for momentum shift arrows (↑ or ↓)
+// - Or wait for trendline break lightning bolts (⚡)
+// - These provide precise entry timing on already-strong setups
+// - Combine multiple signals for highest confidence
+//
+// STEP 3: SET SMART ALERTS
+// - Set "Strong MTF Alignment" alerts on your watchlist
+// - Get notified when new alignment forms on any pair
+// - Set "Perfect Setup" alerts for combined signal confirmation
+// - Never miss opportunities even when away from charts
+//
+// STEP 4: OPTIMIZE FOR YOUR STYLE
+// - Too many signals? Increase "Min Bars in Opposite Zone"
+// - Want more opportunities? Decrease cooldown periods
+// - Customize colors to match your chart theme
+// - Hide features you don't use for cleaner scanning
+//
+// ============================================================================
+// TIPS & BEST PRACTICES
+// ============================================================================
+//
+// 1. MTF ALIGNMENT IS KING:
+//    When all timeframes align, the market has clear directional consensus.
+//    These setups have the highest win rates and strongest trends.
+//    Focus your trading on these opportunities.
+//
+// 2. USE MOMENTUM SHIFTS FOR TIMING:
+//    Don't trade momentum shifts in isolation.
+//    Use them for entry timing on already-aligned pairs.
+//    Never trade momentum shifts against MTF alignment direction.
+//
+// 3. TRENDLINE BREAKS = ACCELERATION:
+//    RSI breaking trendlines often precedes strong price moves.
+//    Especially powerful when combined with MTF alignment.
+//    The RSI breakout gives you early entry before price confirms.
+//
+// 4. CUSTOMIZE FOR YOUR WORKFLOW:
+//    - Hide features you don't use to reduce visual clutter
+//    - Adjust colors to match your chart theme for easy reading
+//    - Size icons appropriately for your screen/eyesight
+//    - Use alternating row colors in table for quick scanning
+//    - Turn off background layers you find distracting
+//
+// 5. START STRICT, THEN LOOSEN:
+//    Begin with strict settings (higher thresholds, longer cooldowns).
+//    Only decrease if you're missing too many valid setups.
+//    Quality over quantity = better trading results.
+//
+// 6. LAYER YOUR CONFIRMATIONS:
+//    The best trades have multiple confirmations:
+//    - MTF alignment (trend direction)
+//    - Momentum shift (entry timing)
+//    - Trendline break (acceleration confirmation)
+//    Don't trade every signal; trade the best signals.
+//
+// ============================================================================
+// TROUBLESHOOTING
+// ============================================================================
+//
+// TOO MANY SIGNALS:
+// - Increase "Min Bars in Opposite Zone" to 8-10
+// - Increase "Signal Cooldown" to 15-20
+// - Increase "Break Strength" for trendlines to 1.5-2.0
+// - Use stricter MTF threshold (55 for bullish, 45 for bearish)
+//
+// TOO FEW SIGNALS:
+// - Decrease "Min Bars in Opposite Zone" to 3
+// - Decrease "Signal Cooldown" to 5
+// - Lower "Break Strength" to 0.5
+// - Use default MTF threshold of 50
+//
+// SIGNALS NOT SHOWING:
+// - Check if feature is enabled (Enable checkbox)
+// - Check if icons/lines are toggled on in visual settings
+// - Verify cooldown period hasn't blocked recent signals
+// - Ensure you're on a timeframe with enough data
+//
+// MTF PANEL NOT VISIBLE:
+// - Ensure "Show MTF Panel" is enabled in Table Customization
+// - Check panel position setting - try different corners
+// - Verify at least one column is enabled (Timeframe/RSI/Status)
+// - If overlapping with other elements, change position
+//
+// TABLE LOOKS WRONG:
+// - Check that show/hide column settings match your needs
+// - Verify font sizes aren't too large for your screen
+// - Adjust transparency if colors are too strong/weak
+// - Try different status indicator styles for better visibility
+//
+// COLORS NOT SHOWING:
+// - Check that corresponding "Show/Enable" toggle is ON
+// - Verify transparency isn't set to 100% (invisible)
+// - Some backgrounds only show under specific conditions
+// - MTF alignment backgrounds only show when timeframes align
+//
+// PERFORMANCE ISSUES:
+// - This indicator is optimized but uses multiple calculations
+// - On very slow connections, limit to 1-2 higher timeframes
+// - Disable features you don't use (trendlines, backgrounds, etc.)
+// - Close other indicators you're not actively using
+//
+// ============================================================================
+// TECHNICAL DETAILS
+// ============================================================================
+//
+// RSI CALCULATION:
+// Standard 14-period RSI using close prices (fully customizable).
+// Uses TradingView's built-in ta.rsi() function for accuracy.
+//
+// MOMENTUM DETECTION METHOD:
+// Tracks consecutive bars above/below 50 using counters.
+// Requires minimum time in opposite zone before signaling cross.
+// Includes optional confirmation delay and cooldown period.
+//
+// TRENDLINE DETECTION METHOD:
+// Uses ta.pivothigh() and ta.pivotlow() to find RSI pivot points.
+// Stores last 10 pivots in arrays for trendline construction.
+// Connects most recent two pivots to form trendline.
+// Calculates trendline slope and current expected value.
+// Signals when RSI breaks through with specified strength.
+//
+// MTF IMPLEMENTATION:
+// Uses request.security() to fetch RSI from higher timeframes.
+// Calculates previous values for % change display.
+// Compares each timeframe's RSI against threshold.
+// Counts aligned timeframes dynamically based on settings.
+// Strong alignment = ALL active timeframes aligned.
+// Moderate alignment = ALL except 1 active timeframe aligned.
+//
+// TABLE IMPLEMENTATION:
+// Dynamic row count based on show/hide settings.
+// Dynamic column count based on enabled columns.
+// Alternating row backgrounds calculated based on current TF setting.
+// Unique variable names for each row to avoid scope issues.
+// All styling applied via Pine Script table functions.
+//
+// PERFORMANCE OPTIMIZATIONS:
+// - Pivot arrays limited to 10 entries (auto-pruned)
+// - Cooldown prevents excessive label/line creation
+// - Trendline objects properly deleted before recreation
+// - Table cleared and rebuilt only on last bar
+// - Background colors use conditional expressions for efficiency
+//
+// ============================================================================
+
+//------------------------------------------------------------------------------
+// Inputs
+//------------------------------------------------------------------------------
+rsiLen = input.int(14, "RSI Length", minval=1)
+rsiSource = input.source(close, "RSI Source")
+
+// === MOMENTUM SHIFT SETTINGS ===
+groupMomentum = "Momentum Shift Detection"
+enableMomentum = input.bool(true, "Enable Momentum Signals", group=groupMomentum)
+minBarsInZone = input.int(5, "Min Bars in Opposite Zone", minval=1, group=groupMomentum)
+confirmationBars = input.int(1, "Confirmation Bars", minval=0, group=groupMomentum)
+cooldownBars = input.int(10, "Signal Cooldown", minval=0, group=groupMomentum)
+
+showMomentumIcons = input.bool(true, "Show Momentum Icons", group=groupMomentum)
+momentumIconSize = input.string("Normal", "Icon Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=groupMomentum)
+bullMomentumColor = input.color(color.new(color.lime, 0), "Bullish Icon Color", group=groupMomentum)
+bearMomentumColor = input.color(color.new(color.red, 0), "Bearish Icon Color", group=groupMomentum)
+
+showMomentumLines = input.bool(true, "Show Momentum Lines", group=groupMomentum)
+momentumLineWidth = input.int(2, "Line Width", minval=1, maxval=5, group=groupMomentum)
+bullMomentumLineColor = input.color(color.new(color.lime, 0), "Bullish Line Color", group=groupMomentum)
+bearMomentumLineColor = input.color(color.new(color.red, 0), "Bearish Line Color", group=groupMomentum)
+
+// === RSI TRENDLINE BREAKS ===
+groupTrendline = "RSI Trendline Breaks"
+enableTrendlines = input.bool(true, "Enable Trendline Breaks", group=groupTrendline)
+trendlinePivots = input.int(5, "Trendline Pivot Points", minval=2, group=groupTrendline)
+trendlineLength = input.int(10, "Min Trendline Length", minval=5, group=groupTrendline)
+breakStrength = input.float(1.0, "Break Strength", minval=0.1, step=0.1, group=groupTrendline)
+
+showTrendlineIcons = input.bool(true, "Show Trendline Break Icons", group=groupTrendline)
+trendlineIconSize = input.string("Normal", "Icon Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=groupTrendline)
+bullTrendlineColor = input.color(color.new(color.aqua, 0), "Bullish Break Icon Color", group=groupTrendline)
+bearTrendlineColor = input.color(color.new(color.orange, 0), "Bearish Break Icon Color", group=groupTrendline)
+
+showTrendlines = input.bool(true, "Draw RSI Trendlines", group=groupTrendline)
+trendlineLineWidth = input.int(1, "Trendline Width", minval=1, maxval=5, group=groupTrendline)
+bullTrendlineLineColor = input.color(color.new(color.aqua, 0), "Bullish Line Color", group=groupTrendline)
+bearTrendlineLineColor = input.color(color.new(color.orange, 0), "Bearish Line Color", group=groupTrendline)
+
+// === MULTI-TIMEFRAME ALIGNMENT ===
+groupMTF = "Multi-Timeframe RSI Alignment"
+enableMTF = input.bool(true, "Enable MTF Alignment", group=groupMTF)
+showCurrentTF = input.bool(false, "Show Current Timeframe in Table", group=groupMTF)
+htf1 = input.timeframe("60", "Higher Timeframe 1", group=groupMTF)
+htf2 = input.timeframe("240", "Higher Timeframe 2", group=groupMTF)
+htf3 = input.timeframe("D", "Higher Timeframe 3", group=groupMTF)
+htf4 = input.timeframe("W", "Higher Timeframe 4", group=groupMTF)
+showHTF4 = input.bool(true, "Show Timeframe 4", group=groupMTF)
+mtfThreshold = input.int(50, "Alignment Threshold", minval=30, maxval=70, group=groupMTF)
+
+// === ENHANCED TABLE CUSTOMIZATION ===
+groupTable = "Table Customization"
+showMTFPanel = input.bool(true, "Show MTF Panel", group=groupTable)
+mtfPanelPosition = input.string("Top Right", "Panel Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right", "Middle Left", "Middle Right", "Middle Center"], group=groupTable)
+
+tableBorderWidth = input.int(2, "Border Width", minval=0, maxval=5, group=groupTable)
+
+headerFontSize = input.string("Normal", "Header Font Size", options=["Auto", "Tiny", "Small", "Normal", "Large", "Huge"], group=groupTable)
+dataFontSize = input.string("Small", "Data Font Size", options=["Auto", "Tiny", "Small", "Normal", "Large", "Huge"], group=groupTable)
+
+tableBgColor = input.color(color.new(#1e2329, 0), "Table Background", group=groupTable)
+tableHeaderBgColor = input.color(color.new(#2b3139, 0), "Header Background", group=groupTable)
+rowAltBgColor = input.color(color.new(#252a30, 0), "Alternate Row Background", group=groupTable)
+tableBorderColor = input.color(color.new(#3a4149, 0), "Border Color", group=groupTable)
+
+headerTextColor = input.color(color.new(#ffffff, 0), "Header Text Color", group=groupTable)
+labelTextColor = input.color(color.new(#b7bdc6, 0), "Label Text Color", group=groupTable)
+dataTextColor = input.color(color.new(#ffffff, 0), "Data Text Color", group=groupTable)
+
+bullStatusColor = input.color(color.new(#0ecb81, 0), "Bullish Status Color", group=groupTable)
+bearStatusColor = input.color(color.new(#f6465d, 0), "Bearish Status Color", group=groupTable)
+neutralStatusColor = input.color(color.new(#848e9c, 0), "Neutral Status Color", group=groupTable)
+
+statusStyle = input.string("Dot", "Status Indicator Style", options=["Dot", "Arrow", "Text", "Color Block"], group=groupTable)
+
+tableBgTransparency = input.int(0, "Background Transparency", minval=0, maxval=100, group=groupTable)
+headerTransparency = input.int(0, "Header Transparency", minval=0, maxval=100, group=groupTable)
+
+showTimeframeColumn = input.bool(true, "Show Timeframe Column", group=groupTable)
+showRSIValueColumn = input.bool(true, "Show RSI Value Column", group=groupTable)
+showStatusColumn = input.bool(true, "Show Status Column", group=groupTable)
+showPercentChange = input.bool(false, "Show % Change Column", group=groupTable)
+
+// === BACKGROUND ALIGNMENT COLORS ===
+groupBgColors = "Alignment Background Colors"
+enableAlignmentBg = input.bool(true, "Show Alignment Background", group=groupBgColors, tooltip="Highlight chart background when MTF is aligned")
+strongBullBgColor = input.color(color.new(#0ecb81, 92), "Strong Bullish Alignment", group=groupBgColors, tooltip="All timeframes bullish")
+strongBearBgColor = input.color(color.new(#f6465d, 92), "Strong Bearish Alignment", group=groupBgColors, tooltip="All timeframes bearish")
+moderateBullBgColor = input.color(color.new(#0ecb81, 96), "Moderate Bullish Alignment", group=groupBgColors, tooltip="All except 1 timeframe bullish")
+moderateBearBgColor = input.color(color.new(#f6465d, 96), "Moderate Bearish Alignment", group=groupBgColors, tooltip="All except 1 timeframe bearish")
+
+// === RSI MOMENTUM ZONE BACKGROUND ===
+groupMomentumBg = "RSI Momentum Zone Background"
+enableMomentumBg = input.bool(true, "Show Momentum Zone Background", group=groupMomentumBg, tooltip="Subtle background color based on RSI above/below 50")
+bullishMomentumBg = input.color(color.new(color.green, 97), "Bullish Zone Color (RSI > 50)", group=groupMomentumBg)
+bearishMomentumBg = input.color(color.new(color.red, 97), "Bearish Zone Color (RSI < 50)", group=groupMomentumBg)
+
+// === OVERBOUGHT/OVERSOLD ZONE FILLS ===
+groupOBOS = "Overbought/Oversold Zone Fills"
+enableOBOSFills = input.bool(true, "Show OB/OS Zone Fills", group=groupOBOS, tooltip="Light background fills in extreme zones")
+overboughtZoneFill = input.color(color.new(color.red, 95), "Overbought Zone (Above 70)", group=groupOBOS)
+oversoldZoneFill = input.color(color.new(color.green, 95), "Oversold Zone (Below 30)", group=groupOBOS)
+
+// === RSI AREA FILLS ===
+groupRSIFills = "RSI Line Area Fills"
+enableRSIAreaFills = input.bool(true, "Show RSI Area Fills", group=groupRSIFills, tooltip="Colored fills between RSI line and OB/OS levels")
+overboughtAreaFill = input.color(color.new(color.red, 70), "Overbought Area (RSI to 70)", group=groupRSIFills, tooltip="Fill when RSI is above 70")
+oversoldAreaFill = input.color(color.new(color.green, 70), "Oversold Area (RSI to 30)", group=groupRSIFills, tooltip="Fill when RSI is below 30")
+
+//------------------------------------------------------------------------------
+// Calculate RSI
+//------------------------------------------------------------------------------
+rsi = ta.rsi(rsiSource, rsiLen)
+
+//------------------------------------------------------------------------------
+// Helper Functions
+//------------------------------------------------------------------------------
+getLabelSize(sizeStr) =>
+    if sizeStr == "Tiny"
+        size.tiny
+    else if sizeStr == "Small"
+        size.small
+    else if sizeStr == "Large"
+        size.large
+    else if sizeStr == "Huge"
+        size.huge
+    else
+        size.normal
+
+getTableSize(sizeStr) =>
+    if sizeStr == "Tiny"
+        size.tiny
+    else if sizeStr == "Small"
+        size.small
+    else if sizeStr == "Normal"
+        size.normal
+    else if sizeStr == "Large"
+        size.large
+    else if sizeStr == "Huge"
+        size.huge
+    else
+        size.auto
+
+momentumSize = getLabelSize(momentumIconSize)
+trendlineSize = getLabelSize(trendlineIconSize)
+headerSize = getTableSize(headerFontSize)
+dataSize = getTableSize(dataFontSize)
+
+//------------------------------------------------------------------------------
+// Multi-Timeframe RSI
+//------------------------------------------------------------------------------
+rsiHTF1 = request.security(syminfo.tickerid, htf1, ta.rsi(rsiSource, rsiLen), gaps=barmerge.gaps_off)
+rsiHTF2 = request.security(syminfo.tickerid, htf2, ta.rsi(rsiSource, rsiLen), gaps=barmerge.gaps_off)
+rsiHTF3 = request.security(syminfo.tickerid, htf3, ta.rsi(rsiSource, rsiLen), gaps=barmerge.gaps_off)
+rsiHTF4 = showHTF4 ? request.security(syminfo.tickerid, htf4, ta.rsi(rsiSource, rsiLen), gaps=barmerge.gaps_off) : na
+
+rsiHTF1Prev = request.security(syminfo.tickerid, htf1, ta.rsi(rsiSource, rsiLen)[1], gaps=barmerge.gaps_off)
+rsiHTF2Prev = request.security(syminfo.tickerid, htf2, ta.rsi(rsiSource, rsiLen)[1], gaps=barmerge.gaps_off)
+rsiHTF3Prev = request.security(syminfo.tickerid, htf3, ta.rsi(rsiSource, rsiLen)[1], gaps=barmerge.gaps_off)
+rsiHTF4Prev = showHTF4 ? request.security(syminfo.tickerid, htf4, ta.rsi(rsiSource, rsiLen)[1], gaps=barmerge.gaps_off) : na
+
+rsiChange = rsi - rsi[1]
+rsiHTF1Change = rsiHTF1 - rsiHTF1Prev
+rsiHTF2Change = rsiHTF2 - rsiHTF2Prev
+rsiHTF3Change = rsiHTF3 - rsiHTF3Prev
+rsiHTF4Change = showHTF4 ? rsiHTF4 - rsiHTF4Prev : na
+
+currentBullish = rsi > mtfThreshold
+currentBearish = rsi < mtfThreshold
+htf1Bullish = rsiHTF1 > mtfThreshold
+htf1Bearish = rsiHTF1 < mtfThreshold
+htf2Bullish = rsiHTF2 > mtfThreshold
+htf2Bearish = rsiHTF2 < mtfThreshold
+htf3Bullish = rsiHTF3 > mtfThreshold
+htf3Bearish = rsiHTF3 < mtfThreshold
+htf4Bullish = showHTF4 ? rsiHTF4 > mtfThreshold : false
+htf4Bearish = showHTF4 ? rsiHTF4 < mtfThreshold : false
+
+totalTimeframes = (showCurrentTF ? 1 : 0) + 1 + 1 + 1 + (showHTF4 ? 1 : 0)
+bullishCount = (showCurrentTF and currentBullish ? 1 : 0) + (htf1Bullish ? 1 : 0) + (htf2Bullish ? 1 : 0) + (htf3Bullish ? 1 : 0) + (showHTF4 and htf4Bullish ? 1 : 0)
+bearishCount = (showCurrentTF and currentBearish ? 1 : 0) + (htf1Bearish ? 1 : 0) + (htf2Bearish ? 1 : 0) + (htf3Bearish ? 1 : 0) + (showHTF4 and htf4Bearish ? 1 : 0)
+
+strongBullAlignment = bullishCount == totalTimeframes
+strongBearAlignment = bearishCount == totalTimeframes
+moderateBullAlignment = bullishCount >= (totalTimeframes - 1) and not strongBullAlignment
+moderateBearAlignment = bearishCount >= (totalTimeframes - 1) and not strongBearAlignment
+
+//------------------------------------------------------------------------------
+// MOMENTUM SHIFT DETECTION
+//------------------------------------------------------------------------------
+var int barsAbove50 = 0
+var int barsBelow50 = 0
+var int lastBullMomentumBar = 0
+var int lastBearMomentumBar = 0
+
+if rsi > 50
+    barsAbove50 += 1
+    barsBelow50 := 0
+else if rsi < 50
+    barsBelow50 += 1
+    barsAbove50 := 0
+
+bullMomentumShift = false
+bearMomentumShift = false
+
+if enableMomentum
+    if ta.crossover(rsi, 50) and barsBelow50[1] >= minBarsInZone
+        if (bar_index - lastBullMomentumBar) >= cooldownBars
+            bullMomentumShift := true
+            lastBullMomentumBar := bar_index
+    
+    if ta.crossunder(rsi, 50) and barsAbove50[1] >= minBarsInZone
+        if (bar_index - lastBearMomentumBar) >= cooldownBars
+            bearMomentumShift := true
+            lastBearMomentumBar := bar_index
+
+bullMomentumConfirmed = confirmationBars == 0 ? bullMomentumShift : bullMomentumShift[confirmationBars]
+bearMomentumConfirmed = confirmationBars == 0 ? bearMomentumShift : bearMomentumShift[confirmationBars]
+
+if showMomentumIcons
+    if bullMomentumConfirmed
+        label.new(bar_index, rsi, "↑", style=label.style_none, color=na, textcolor=bullMomentumColor, size=momentumSize)
+    
+    if bearMomentumConfirmed
+        label.new(bar_index, rsi, "↓", style=label.style_none, color=na, textcolor=bearMomentumColor, size=momentumSize)
+
+if showMomentumLines
+    if bullMomentumConfirmed
+        line.new(bar_index - 10, 50, bar_index, rsi, color=bullMomentumLineColor, width=momentumLineWidth)
+    
+    if bearMomentumConfirmed
+        line.new(bar_index - 10, 50, bar_index, rsi, color=bearMomentumLineColor, width=momentumLineWidth)
+
+//------------------------------------------------------------------------------
+// RSI TRENDLINE BREAK DETECTION
+//------------------------------------------------------------------------------
+var line bullTrendline = na
+var line bearTrendline = na
+var int lastBullTrendlineBar = 0
+var int lastBearTrendlineBar = 0
+
+rsiPivotHigh = ta.pivothigh(rsi, trendlinePivots, trendlinePivots)
+rsiPivotLow = ta.pivotlow(rsi, trendlinePivots, trendlinePivots)
+
+var rsiHighBars = array.new_int(0)
+var rsiHighVals = array.new_float(0)
+var rsiLowBars = array.new_int(0)
+var rsiLowVals = array.new_float(0)
+
+if not na(rsiPivotHigh)
+    pivotBar = bar_index - trendlinePivots
+    array.unshift(rsiHighBars, pivotBar)
+    array.unshift(rsiHighVals, rsiPivotHigh)
+    if array.size(rsiHighBars) > 10
+        array.pop(rsiHighBars)
+        array.pop(rsiHighVals)
+
+if not na(rsiPivotLow)
+    pivotBar = bar_index - trendlinePivots
+    array.unshift(rsiLowBars, pivotBar)
+    array.unshift(rsiLowVals, rsiPivotLow)
+    if array.size(rsiLowBars) > 10
+        array.pop(rsiLowBars)
+        array.pop(rsiLowVals)
+
+bullTrendlineBreak = false
+bearTrendlineBreak = false
+
+if enableTrendlines
+    if array.size(rsiHighBars) >= 2
+        bar1 = array.get(rsiHighBars, 1)
+        val1 = array.get(rsiHighVals, 1)
+        bar2 = array.get(rsiHighBars, 0)
+        val2 = array.get(rsiHighVals, 0)
+        
+        if (bar2 - bar1) >= trendlineLength
+            slope = (val2 - val1) / (bar2 - bar1)
+            trendlineValue = val2 + slope * (bar_index - bar2)
+            
+            if rsi > (trendlineValue + breakStrength) and rsi[1] <= trendlineValue
+                if (bar_index - lastBearTrendlineBar) >= cooldownBars
+                    bearTrendlineBreak := true
+                    lastBearTrendlineBar := bar_index
+                    
+                    if showTrendlines
+                        if not na(bearTrendline)
+                            line.delete(bearTrendline)
+                        bearTrendline := line.new(bar1, val1, bar_index, trendlineValue, color=bearTrendlineLineColor, width=trendlineLineWidth, style=line.style_dashed)
+    
+    if array.size(rsiLowBars) >= 2
+        bar1 = array.get(rsiLowBars, 1)
+        val1 = array.get(rsiLowVals, 1)
+        bar2 = array.get(rsiLowBars, 0)
+        val2 = array.get(rsiLowVals, 0)
+        
+        if (bar2 - bar1) >= trendlineLength
+            slope = (val2 - val1) / (bar2 - bar1)
+            trendlineValue = val2 + slope * (bar_index - bar2)
+            
+            if rsi < (trendlineValue - breakStrength) and rsi[1] >= trendlineValue
+                if (bar_index - lastBullTrendlineBar) >= cooldownBars
+                    bullTrendlineBreak := true
+                    lastBullTrendlineBar := bar_index
+                    
+                    if showTrendlines
+                        if not na(bullTrendline)
+                            line.delete(bullTrendline)
+                        bullTrendline := line.new(bar1, val1, bar_index, trendlineValue, color=bullTrendlineLineColor, width=trendlineLineWidth, style=line.style_dashed)
+
+if showTrendlineIcons
+    if bullTrendlineBreak
+        label.new(bar_index, rsi, "⚡", style=label.style_none, color=na, textcolor=bullTrendlineColor, size=trendlineSize)
+    
+    if bearTrendlineBreak
+        label.new(bar_index, rsi, "⚡", style=label.style_none, color=na, textcolor=bearTrendlineColor, size=trendlineSize)
+
+//------------------------------------------------------------------------------
+// ENHANCED MTF PANEL DISPLAY
+//------------------------------------------------------------------------------
+if enableMTF and showMTFPanel and barstate.islast
+    var table mtfTable = na
+    
+    tablePosition = mtfPanelPosition == "Top Left" ? position.top_left : mtfPanelPosition == "Top Right" ? position.top_right : mtfPanelPosition == "Bottom Left" ? position.bottom_left : mtfPanelPosition == "Bottom Right" ? position.bottom_right : mtfPanelPosition == "Middle Left" ? position.middle_left : mtfPanelPosition == "Middle Right" ? position.middle_right : position.middle_center
+    
+    numCols = (showTimeframeColumn ? 1 : 0) + (showRSIValueColumn ? 1 : 0) + (showStatusColumn ? 1 : 0) + (showPercentChange ? 1 : 0)
+    numRows = 1 + (showCurrentTF ? 1 : 0) + 3 + (showHTF4 ? 1 : 0)
+    
+    bgColorAdjusted = color.new(tableBgColor, tableBgTransparency)
+    headerBgAdjusted = color.new(tableHeaderBgColor, headerTransparency)
+    
+    if na(mtfTable)
+        mtfTable := table.new(tablePosition, numCols, numRows, bgcolor=bgColorAdjusted, frame_width=tableBorderWidth, frame_color=tableBorderColor, border_width=1, border_color=tableBorderColor)
+    
+    table.clear(mtfTable, 0, 0, numCols - 1, numRows - 1)
+    
+    colIndex = 0
+    if showTimeframeColumn
+        table.cell(mtfTable, colIndex, 0, "TIMEFRAME", text_color=headerTextColor, bgcolor=headerBgAdjusted, text_size=headerSize, text_halign=text.align_left)
+        colIndex += 1
+    
+    if showRSIValueColumn
+        table.cell(mtfTable, colIndex, 0, "RSI", text_color=headerTextColor, bgcolor=headerBgAdjusted, text_size=headerSize, text_halign=text.align_right)
+        colIndex += 1
+    
+    if showPercentChange
+        table.cell(mtfTable, colIndex, 0, "CHANGE", text_color=headerTextColor, bgcolor=headerBgAdjusted, text_size=headerSize, text_halign=text.align_right)
+        colIndex += 1
+    
+    if showStatusColumn
+        table.cell(mtfTable, colIndex, 0, "STATUS", text_color=headerTextColor, bgcolor=headerBgAdjusted, text_size=headerSize, text_halign=text.align_center)
+    
+    currentRow = 1
+    
+    if showCurrentTF
+        c = 0
+        rb = bgColorAdjusted
+        sc = currentBullish ? bullStatusColor : currentBearish ? bearStatusColor : neutralStatusColor
+        si = statusStyle == "Dot" ? "●" : statusStyle == "Arrow" ? (currentBullish ? "▲" : currentBearish ? "▼" : "●") : statusStyle == "Text" ? (currentBullish ? "BULL" : currentBearish ? "BEAR" : "NEUT") : "█"
+        
+        if showTimeframeColumn
+            table.cell(mtfTable, c, currentRow, timeframe.period, text_color=labelTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_left)
+            c += 1
+        
+        if showRSIValueColumn
+            table.cell(mtfTable, c, currentRow, str.tostring(rsi, "#.#"), text_color=dataTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+            c += 1
+        
+        if showPercentChange
+            ch = (rsiChange >= 0 ? "+" : "") + str.tostring(rsiChange, "#.#")
+            cc = rsiChange > 0 ? bullStatusColor : rsiChange < 0 ? bearStatusColor : neutralStatusColor
+            table.cell(mtfTable, c, currentRow, ch, text_color=cc, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+            c += 1
+        
+        if showStatusColumn
+            if statusStyle == "Color Block"
+                table.cell(mtfTable, c, currentRow, "", bgcolor=sc, text_size=dataSize)
+            else
+                table.cell(mtfTable, c, currentRow, si, text_color=sc, bgcolor=rb, text_size=dataSize, text_halign=text.align_center)
+        
+        currentRow += 1
+    
+    c = 0
+    rb = showCurrentTF ? rowAltBgColor : bgColorAdjusted
+    sc = htf1Bullish ? bullStatusColor : htf1Bearish ? bearStatusColor : neutralStatusColor
+    si = statusStyle == "Dot" ? "●" : statusStyle == "Arrow" ? (htf1Bullish ? "▲" : htf1Bearish ? "▼" : "●") : statusStyle == "Text" ? (htf1Bullish ? "BULL" : htf1Bearish ? "BEAR" : "NEUT") : "█"
+    
+    if showTimeframeColumn
+        table.cell(mtfTable, c, currentRow, htf1, text_color=labelTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_left)
+        c += 1
+    
+    if showRSIValueColumn
+        table.cell(mtfTable, c, currentRow, str.tostring(rsiHTF1, "#.#"), text_color=dataTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+        c += 1
+    
+    if showPercentChange
+        ch = (rsiHTF1Change >= 0 ? "+" : "") + str.tostring(rsiHTF1Change, "#.#")
+        cc = rsiHTF1Change > 0 ? bullStatusColor : rsiHTF1Change < 0 ? bearStatusColor : neutralStatusColor
+        table.cell(mtfTable, c, currentRow, ch, text_color=cc, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+        c += 1
+    
+    if showStatusColumn
+        if statusStyle == "Color Block"
+            table.cell(mtfTable, c, currentRow, "", bgcolor=sc, text_size=dataSize)
+        else
+            table.cell(mtfTable, c, currentRow, si, text_color=sc, bgcolor=rb, text_size=dataSize, text_halign=text.align_center)
+    
+    currentRow += 1
+    
+    c := 0
+    rb := showCurrentTF ? bgColorAdjusted : rowAltBgColor
+    sc := htf2Bullish ? bullStatusColor : htf2Bearish ? bearStatusColor : neutralStatusColor
+    si := statusStyle == "Dot" ? "●" : statusStyle == "Arrow" ? (htf2Bullish ? "▲" : htf2Bearish ? "▼" : "●") : statusStyle == "Text" ? (htf2Bullish ? "BULL" : htf2Bearish ? "BEAR" : "NEUT") : "█"
+    
+    if showTimeframeColumn
+        table.cell(mtfTable, c, currentRow, htf2, text_color=labelTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_left)
+        c += 1
+    
+    if showRSIValueColumn
+        table.cell(mtfTable, c, currentRow, str.tostring(rsiHTF2, "#.#"), text_color=dataTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+        c += 1
+    
+    if showPercentChange
+        ch2 = (rsiHTF2Change >= 0 ? "+" : "") + str.tostring(rsiHTF2Change, "#.#")
+        cc2 = rsiHTF2Change > 0 ? bullStatusColor : rsiHTF2Change < 0 ? bearStatusColor : neutralStatusColor
+        table.cell(mtfTable, c, currentRow, ch2, text_color=cc2, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+        c += 1
+    
+    if showStatusColumn
+        if statusStyle == "Color Block"
+            table.cell(mtfTable, c, currentRow, "", bgcolor=sc, text_size=dataSize)
+        else
+            table.cell(mtfTable, c, currentRow, si, text_color=sc, bgcolor=rb, text_size=dataSize, text_halign=text.align_center)
+    
+    currentRow += 1
+    
+    c := 0
+    rb := showCurrentTF ? rowAltBgColor : bgColorAdjusted
+    sc := htf3Bullish ? bullStatusColor : htf3Bearish ? bearStatusColor : neutralStatusColor
+    si := statusStyle == "Dot" ? "●" : statusStyle == "Arrow" ? (htf3Bullish ? "▲" : htf3Bearish ? "▼" : "●") : statusStyle == "Text" ? (htf3Bullish ? "BULL" : htf3Bearish ? "BEAR" : "NEUT") : "█"
+    
+    if showTimeframeColumn
+        table.cell(mtfTable, c, currentRow, htf3, text_color=labelTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_left)
+        c += 1
+    
+    if showRSIValueColumn
+        table.cell(mtfTable, c, currentRow, str.tostring(rsiHTF3, "#.#"), text_color=dataTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+        c += 1
+    
+    if showPercentChange
+        ch3 = (rsiHTF3Change >= 0 ? "+" : "") + str.tostring(rsiHTF3Change, "#.#")
+        cc3 = rsiHTF3Change > 0 ? bullStatusColor : rsiHTF3Change < 0 ? bearStatusColor : neutralStatusColor
+        table.cell(mtfTable, c, currentRow, ch3, text_color=cc3, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+        c += 1
+    
+    if showStatusColumn
+        if statusStyle == "Color Block"
+            table.cell(mtfTable, c, currentRow, "", bgcolor=sc, text_size=dataSize)
+        else
+            table.cell(mtfTable, c, currentRow, si, text_color=sc, bgcolor=rb, text_size=dataSize, text_halign=text.align_center)
+    
+    currentRow += 1
+    
+    if showHTF4
+        c := 0
+        rb := showCurrentTF ? bgColorAdjusted : rowAltBgColor
+        sc := htf4Bullish ? bullStatusColor : htf4Bearish ? bearStatusColor : neutralStatusColor
+        si := statusStyle == "Dot" ? "●" : statusStyle == "Arrow" ? (htf4Bullish ? "▲" : htf4Bearish ? "▼" : "●") : statusStyle == "Text" ? (htf4Bullish ? "BULL" : htf4Bearish ? "BEAR" : "NEUT") : "█"
+        
+        if showTimeframeColumn
+            table.cell(mtfTable, c, currentRow, htf4, text_color=labelTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_left)
+            c += 1
+        
+        if showRSIValueColumn
+            table.cell(mtfTable, c, currentRow, str.tostring(rsiHTF4, "#.#"), text_color=dataTextColor, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+            c += 1
+        
+        if showPercentChange
+            ch4 = (rsiHTF4Change >= 0 ? "+" : "") + str.tostring(rsiHTF4Change, "#.#")
+            cc4 = rsiHTF4Change > 0 ? bullStatusColor : rsiHTF4Change < 0 ? bearStatusColor : neutralStatusColor
+            table.cell(mtfTable, c, currentRow, ch4, text_color=cc4, bgcolor=rb, text_size=dataSize, text_halign=text.align_right)
+            c += 1
+        
+        if showStatusColumn
+            if statusStyle == "Color Block"
+                table.cell(mtfTable, c, currentRow, "", bgcolor=sc, text_size=dataSize)
+            else
+                table.cell(mtfTable, c, currentRow, si, text_color=sc, bgcolor=rb, text_size=dataSize, text_halign=text.align_center)
+
+alignmentBgColor = enableMTF and enableAlignmentBg ? (strongBullAlignment ? strongBullBgColor : strongBearAlignment ? strongBearBgColor : moderateBullAlignment ? moderateBullBgColor : moderateBearAlignment ? moderateBearBgColor : na) : na
+
+bgcolor(alignmentBgColor, title="MTF Alignment")
+
+//------------------------------------------------------------------------------
+// Plot RSI
+//------------------------------------------------------------------------------
+rsiColor = rsi > 70 ? color.red : rsi < 30 ? color.green : color.new(#7E57C2, 0)
+rsiPlot = plot(rsi, "RSI", color=rsiColor, linewidth=2)
+
+hline(70, "Overbought", color=color.red, linewidth=1, linestyle=hline.style_dotted)
+hline(30, "Oversold", color=color.green, linewidth=1, linestyle=hline.style_dotted)
+hline(50, "Midline", color=color.new(color.gray, 70), linewidth=1, linestyle=hline.style_dotted)
+
+upperBand = plot(70, display=display.none)
+lowerBand = plot(30, display=display.none)
+obZone = plot(100, display=display.none)
+osZone = plot(0, display=display.none)
+
+fill(rsiPlot, upperBand, color=enableRSIAreaFills and rsi > 70 ? overboughtAreaFill : na, title="Overbought Area Fill")
+fill(rsiPlot, lowerBand, color=enableRSIAreaFills and rsi < 30 ? oversoldAreaFill : na, title="Oversold Area Fill")
+fill(upperBand, obZone, color=enableOBOSFills ? overboughtZoneFill : na)
+fill(lowerBand, osZone, color=enableOBOSFills ? oversoldZoneFill : na)
+
+momentumZoneBg = enableMomentumBg ? (rsi > 50 ? bullishMomentumBg : bearishMomentumBg) : na
+bgcolor(momentumZoneBg, title="Momentum Zone")
+
+//------------------------------------------------------------------------------
+// RSI Value Label
+//------------------------------------------------------------------------------
+if barstate.islast
+    labelColor = rsi >= 50 ? color.new(color.green, 0) : color.new(color.red, 0)
+    labelText = "RSI: " + str.tostring(rsi, "#.##")
+    label.new(bar_index, rsi, labelText, style=label.style_label_left, color=labelColor, textcolor=color.white, size=size.normal)
+
+//------------------------------------------------------------------------------
+// Alerts
+//------------------------------------------------------------------------------
+alertcondition(bullMomentumConfirmed, "Bullish Momentum Shift", "{{ticker}} - Bullish Momentum")
+alertcondition(bearMomentumConfirmed, "Bearish Momentum Shift", "{{ticker}} - Bearish Momentum")
+alertcondition(bullTrendlineBreak, "Bearish RSI Trendline Break", "{{ticker}} - RSI broke support")
+alertcondition(bearTrendlineBreak, "Bullish RSI Trendline Break", "{{ticker}} - RSI broke resistance")
+alertcondition(strongBullAlignment, "Strong Bullish MTF Alignment", "{{ticker}} - ALL TIMEFRAMES BULLISH")
+alertcondition(strongBearAlignment, "Strong Bearish MTF Alignment", "{{ticker}} - ALL TIMEFRAMES BEARISH")
+alertcondition(strongBullAlignment and bullMomentumConfirmed, "Perfect Bullish Setup", "{{ticker}} - STRONG BULLISH")
+alertcondition(strongBearAlignment and bearMomentumConfirmed, "Perfect Bearish Setup", "{{ticker}} - STRONG BEARISH")

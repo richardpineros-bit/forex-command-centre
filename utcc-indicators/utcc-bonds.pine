@@ -1,0 +1,2025 @@
+//@version=6
+indicator("UTCC Bonds v2.5.1 - Institutional", 
+     shorttitle="Bonds", 
+     overlay=true, 
+     max_labels_count=100,
+     max_lines_count=100)
+
+// ============================================================================
+// UTCC BONDS v2.5.1 - INSTITUTIONAL
+// ============================================================================
+// Version: 2.5.1 - Institutional alert compliance (Audit v1.4.0)
+//
+// v2.5.0 CHANGES:
+// Phase 1 — Alert System:
+// - 4-Emoji alert standard (ARMED/CANDIDATE/BLOCKED/INFO)
+// - Priority Resolver: Regime > Risk > UTCC authority stack
+// - Risk Governor input (NORMAL/REDUCED/LOCKED)
+// - Reason-code JSON payload (R-/K-/U- series)
+// - Scan line + audit body alert format
+// - Em-dash separator for Discord safety
+// - Severity prefix [A]/[C]/[B]/[I] in all alerts
+// - asset_class: BONDS in JSON payload
+// - Bond-specific ARMED threshold: 70, CANDIDATE threshold: 75
+// - Removed old buildJsonPayload() and buildDetailMsg()
+//
+// Phase 2 — Display Panel:
+// - Institutional status: ARMED/CANDIDATE/BLOCKED/INFO replaces TRADE/CAUTION/NO TRADE
+// - Regime + Risk State row in Tier 1
+// - Execution constraint row in Tier 1
+// - 4-emoji colour mapping (green/yellow/red/blue backgrounds)
+// - Diagnostics: Governance section with regime/risk/permission visibility
+//
+// Phase 4 — Governance Hardening:
+// - isArmedRaw/isArmed split: governance veto is absolute (no leakage)
+// - Regime-aware execution constraints (R-TRANSITION=0.5R/2, K-REDUCED=0.5R/1)
+// - Disarm reason codes: D-REGIME-VETO/D-RISK-LOCKED/D-CRITERIA-LOST/D-SESSION-CONFLICT/D-DIRECTION-LOST
+// - Gov Override + Last Disarm rows in diagnostics panel
+//
+// UNCHANGED:
+// - All 4-criteria evaluation logic
+// - All scoring system weights
+// - Session lock arm/disarm mechanics
+// - ATR hierarchy detection
+// - Multi-timeframe calculations
+// 
+// v2.4.0 FEATURES:
+// - Full 4-tier dashboard display ported from Forex (Rolls-Royce standard)
+// - Tier 1: Trade Status + Score + Playbook (always visible)
+// - Tier 2: Criteria Checklist + ATR Guidance + Verdict + Context Row (Compact+)
+// - Tier 3: Score Breakdown, Volatility Analysis, Risk Management,
+//           Trend Details, S/R Proximity, Entry Zone Analysis (Standard+)
+// - Tier 4: Full RSI Momentum (4 TFs), Price Action detail (Full mode)
+// - Critical timer banner for bar close warnings
+// - Enhanced Alert Diagnostics with arm/disarm conditions + alert status
+// - All Bond-specific calibrations, sessions, risk settings preserved
+//
+// v2.1.1 FIXES:
+// - Wired bucket thresholds to engine (entry zones, S/R danger, ADX)
+// - Fixed ATR length (was hardcoded to 14, now uses atrLength input)
+// - Updated auction window comment to match code
+//
+// v2.1.0 FEATURES:
+// - Auto-calibration using Daily ATR% (symbol-agnostic)
+// - 4 volatility buckets: LOW/NORMAL/HIGH/EXTREME
+// - US Treasury/UK Gilt/German Bund detection
+// - Session-aware: Asian/EU/US Prime with auction windows
+// - DST shift support
+// - Risk events: Treasury auctions, Fed days, NFP toggle
+// - ARMED/BLOCKED/CANDIDATE/INFO alerts (4-emoji standard)
+// - Session Lock with playbook system
+// - Legacy mode for original Bond rules
+//
+// WATCHLIST:
+// USB10YUSD (10Y), USB30YUSD (30Y), DE10YBEUR (Bund)
+// Also supports: USB02Y, USB05Y, UK10Y, ZN, ZB, FGBL, etc.
+// ============================================================================
+
+// ============================================================================
+// INSTRUMENT DETECTION
+// ============================================================================
+tkr = str.upper(syminfo.ticker)
+base = str.upper(syminfo.basecurrency)
+
+// US Treasury detection - includes spot and futures
+isUS02Y = str.contains(tkr, "USB02Y") or str.contains(tkr, "US02Y") or str.startswith(tkr, "ZT")
+isUS05Y = str.contains(tkr, "USB05Y") or str.contains(tkr, "US05Y") or str.startswith(tkr, "ZF")
+isUS10Y = str.contains(tkr, "USB10Y") or str.contains(tkr, "US10Y") or str.startswith(tkr, "ZN") or str.contains(tkr, "TNX")
+isUS30Y = str.contains(tkr, "USB30Y") or str.contains(tkr, "US30Y") or str.startswith(tkr, "ZB") or str.contains(tkr, "TYX")
+isUSTreasury = isUS02Y or isUS05Y or isUS10Y or isUS30Y
+
+// UK Gilt detection
+isUK10Y = str.contains(tkr, "UK10Y") or str.contains(tkr, "GILT") or str.contains(tkr, "GB10Y")
+isUKGilt = isUK10Y
+
+// German Bund detection
+isDE10Y = str.contains(tkr, "DE10Y") or str.contains(tkr, "BUND") or str.startswith(tkr, "FGBL")
+isGermanBund = isDE10Y
+
+isKnownBond = isUSTreasury or isUKGilt or isGermanBund
+
+// Bond name for display
+var string bondName = "BOND"
+if isUS02Y
+    bondName := "US 2Y"
+else if isUS05Y
+    bondName := "US 5Y"
+else if isUS10Y
+    bondName := "US 10Y"
+else if isUS30Y
+    bondName := "US 30Y"
+else if isUK10Y
+    bondName := "UK 10Y"
+else if isDE10Y
+    bondName := "DE 10Y"
+else
+    bondName := syminfo.basecurrency
+
+bondShort = isUS02Y ? "2Y" : isUS05Y ? "5Y" : isUS10Y ? "10Y" : isUS30Y ? "30Y" : isUK10Y ? "UKG" : isDE10Y ? "BUND" : base
+bondRegion = isUSTreasury ? "US Treasury" : isUKGilt ? "UK Gilt" : isGermanBund ? "German Bund" : "Unknown"
+bondCentralBank = isUSTreasury ? "Fed" : isUKGilt ? "BoE" : isGermanBund ? "ECB" : ""
+
+// ============================================================================
+// INPUTS - DISPLAY SETTINGS
+// ============================================================================
+GRP_DISPLAY = "Display Settings"
+displayMode = input.string("Compact", "Display Mode", 
+     options=["Minimal", "Compact", "Standard", "Full"], 
+     group=GRP_DISPLAY,
+     tooltip="Minimal=Status only | Compact=Status+Checklist | Standard=+Key details | Full=Everything")
+panelPosition = input.string("Top Right", "Panel Position", 
+     options=["Top Left", "Top Right", "Bottom Left", "Bottom Right"], 
+     group=GRP_DISPLAY)
+panelSize = input.string("Medium", "Panel Size", 
+     options=["Small", "Medium", "Large"], 
+     group=GRP_DISPLAY)
+
+// ============================================================================
+// INPUTS - VISUAL CUSTOMISATION
+// ============================================================================
+GRP_VISUAL = "Visual Customisation"
+
+headerFontSize = input.string("Normal", "Header Font Size", 
+     options=["Tiny", "Small", "Normal", "Large", "Huge"], 
+     group=GRP_VISUAL)
+statusFontSize = input.string("Large", "Status Font Size", 
+     options=["Tiny", "Small", "Normal", "Large", "Huge"], 
+     group=GRP_VISUAL)
+dataFontSize = input.string("Small", "Data Font Size", 
+     options=["Tiny", "Small", "Normal", "Large", "Huge"], 
+     group=GRP_VISUAL)
+scoreFontSize = input.string("Normal", "Score Font Size", 
+     options=["Tiny", "Small", "Normal", "Large", "Huge"], 
+     group=GRP_VISUAL)
+
+borderWidth = input.int(1, "Border Width", minval=0, maxval=10, group=GRP_VISUAL)
+frameWidth = input.int(2, "Frame Width", minval=0, maxval=10, group=GRP_VISUAL)
+panelTransparency = input.int(0, "Background Transparency", minval=0, maxval=100, group=GRP_VISUAL)
+borderTransparency = input.int(0, "Border Transparency", minval=0, maxval=100, group=GRP_VISUAL)
+
+debugMode = input.bool(false, "Force Test Alerts", group=GRP_VISUAL)
+showAlertDiagnostics = input.bool(false, "Alert Diagnostics Panel", group=GRP_VISUAL)
+
+// ============================================================================
+// INPUTS - CRITERIA THRESHOLDS (4 CRITERIA)
+// ============================================================================
+GRP_CRITERIA = "4-Criteria Thresholds"
+
+minTrendScore = input.int(80, "1️⃣ Min Trend Score", minval=60, maxval=100, 
+     group=GRP_CRITERIA,
+     tooltip="Bonds require 80 minimum for quality setups")
+
+acceptTrend = input.bool(true, "Accept: TREND", group=GRP_CRITERIA, inline="vol1")
+acceptExplode = input.bool(true, "EXPLODE (with rules)", group=GRP_CRITERIA, inline="vol1")
+explodeMinPercentile = input.int(20, "EXPLODE Min %ile", minval=0, maxval=100, group=GRP_CRITERIA, inline="vol2")
+explodeMaxPercentile = input.int(80, "EXPLODE Max %ile", minval=0, maxval=100, group=GRP_CRITERIA, inline="vol2")
+acceptQuiet = input.bool(false, "Accept: QUIET (with rules)", group=GRP_CRITERIA, inline="vol3",
+     tooltip="QUIET disabled by default - bond breakouts can be sharp")
+quietMinPercentile = input.int(30, "QUIET Min %ile", minval=0, maxval=100, group=GRP_CRITERIA, inline="vol4")
+quietMaxPercentile = input.int(70, "QUIET Max %ile", minval=0, maxval=100, group=GRP_CRITERIA, inline="vol4")
+
+useAutoATR = input.bool(true, "Use Auto-Calibrated ATR Filter", group=GRP_CRITERIA)
+manualATRFilter = input.int(60, "Manual ATR Filter %", minval=0, maxval=150, step=5, group=GRP_CRITERIA)
+var float atrFilterPercent = na  // assigned after calibration block
+
+// ============================================================================
+// INPUTS - BOND RISK SETTINGS
+// ============================================================================
+GRP_RISK = "⚠️ Bond Risk Settings"
+
+enableAuctionCaution = input.bool(true, "Enable Treasury Auction Caution", 
+     group=GRP_RISK,
+     tooltip="Flags US Treasury auction windows (12:30-14:00 UTC buffer)")
+
+enableUSOpenCaution = input.bool(true, "Enable US Open Caution", 
+     group=GRP_RISK,
+     tooltip="First 30 minutes after US bond market open = spike risk")
+
+isFedDay = input.bool(false, "⚠️ Fed Day (FOMC)", 
+     group=GRP_RISK,
+     tooltip="Enable on FOMC days - blocks trading")
+
+isNFPDay = input.bool(false, "⚠️ NFP Friday", 
+     group=GRP_RISK,
+     tooltip="Enable on NFP days - bonds extremely sensitive")
+
+isHighImpactDay = input.bool(false, "⚠️ High Impact Day", 
+     group=GRP_RISK,
+     tooltip="Enable on major risk days - blocks trading")
+
+// ============================================================================
+// INPUTS - EXECUTION CONTEXT
+// ============================================================================
+GRP_CONTEXT = "⏰ Execution Context"
+
+showSessionInfo = input.bool(true, "Show Session Indicator", group=GRP_CONTEXT)
+useDstShift = input.bool(false, "Apply DST Shift", group=GRP_CONTEXT,
+     tooltip="Enable when market clocks shift for daylight saving. Adjusts session windows.")
+dstShiftMins = input.int(60, "DST Shift (mins)", minval=-120, maxval=120, step=30, group=GRP_CONTEXT,
+     tooltip="Minutes to shift session windows. Use +60 for US summer (shifts windows later), -60 for US winter.")
+showBarTimer = input.bool(true, "Show Time to Bar Close", group=GRP_CONTEXT)
+barTimerCritical = input.int(5, "🔴 Critical Warning (min)", minval=1, maxval=30, group=GRP_CONTEXT)
+barTimerWarning = input.int(15, "🟡 Warning (min)", minval=1, maxval=60, group=GRP_CONTEXT)
+barTimerCaution = input.int(30, "🟠 Caution (min)", minval=1, maxval=120, group=GRP_CONTEXT)
+showSpreadMonitor = input.bool(true, "Show Spread Monitor", group=GRP_CONTEXT)
+spreadWarningMultiplier = input.float(1.5, "Spread Warning Multiplier", minval=1.0, maxval=3.0, step=0.1, group=GRP_CONTEXT)
+
+// ============================================================================
+// INPUTS - SCORING SYSTEM
+// ============================================================================
+GRP_SCORE = "Scoring System"
+minTradeScore = input.int(80, "Min Score for TRADE", minval=60, maxval=95, group=GRP_SCORE)
+minCautionScore = input.int(70, "Min Score for CAUTION", minval=50, maxval=80, group=GRP_SCORE)
+
+// ============================================================================
+// INPUTS - EMA TREND SETTINGS
+// ============================================================================
+GRP_TREND = "📈 EMA Trend Settings"
+fastLength = input.int(9, "Fast EMA", minval=1, group=GRP_TREND)
+midLength = input.int(21, "Mid EMA", minval=1, group=GRP_TREND)
+slowLength = input.int(50, "Slow EMA", minval=1, group=GRP_TREND)
+trendLength = input.int(200, "HTF Trend EMA", minval=1, group=GRP_TREND)
+adxLength = input.int(14, "ADX Length", minval=1, group=GRP_TREND)
+
+effectiveADXThreshold = input.int(14, "ADX Threshold", minval=10, maxval=30, group=GRP_TREND,
+     tooltip="Bonds trend at lower ADX readings. 14 is typical for 10Y/30Y.")
+
+// ============================================================================
+// INPUTS - MTF SETTINGS
+// ============================================================================
+GRP_MTF = "🔀 Multi-Timeframe Settings"
+mtf1 = input.timeframe("60", "MTF 1 (1H)", group=GRP_MTF)
+mtf2 = input.timeframe("240", "MTF 2 (4H)", group=GRP_MTF)
+mtf3 = input.timeframe("D", "MTF 3 (Daily)", group=GRP_MTF)
+
+mtfDegradationScoreThreshold = input.int(75, "4H Score Warning Level", minval=60, maxval=85, group=GRP_MTF)
+
+// ============================================================================
+// INPUTS - ATR VOLATILITY SETTINGS
+// ============================================================================
+GRP_ATR = "ATR Volatility Settings"
+atrLength = input.int(14, "ATR Length", minval=1, group=GRP_ATR)
+atrBaseline = input.int(50, "ATR Baseline Length", minval=10, maxval=200, group=GRP_ATR)
+atrPercentileLookback = input.int(252, "ATR Percentile Lookback", minval=50, maxval=500, group=GRP_ATR)
+
+sepTolerance = input.float(0.20, "Volatility Separation Tolerance", minval=0.05, maxval=0.50, step=0.05, group=GRP_ATR)
+eqTolerance = input.float(0.40, "Volatility Equality Tolerance", minval=0.10, maxval=0.60, step=0.05, group=GRP_ATR)
+
+// ============================================================================
+// INPUTS - SESSION LOCK SETTINGS
+// ============================================================================
+GRP_SESSION = "🔒 Session Lock"
+enableSessionLock = input.bool(true, "Enable Session Lock", group=GRP_SESSION,
+     tooltip="When enabled, first valid signal of session locks direction. Prevents flip-flopping.")
+lockResetOnSessionChange = input.bool(true, "Reset Lock on Session Change", group=GRP_SESSION)
+
+// ============================================================================
+// INPUTS - S/R PROXIMITY SETTINGS
+// ============================================================================
+GRP_SR = "📍 S/R Proximity"
+autoSRDanger = input.float(0.30, "S/R Danger Zone (ATR)", minval=0.1, maxval=1.0, step=0.05, group=GRP_SR,
+     tooltip="Warn when price within X ATR of swing high/low. Bonds respect levels tightly.")
+
+// ============================================================================
+// INPUTS - ENTRY ZONE SETTINGS (Bonds need tighter zones)
+// ============================================================================
+GRP_ENTRY = "Entry Zone Settings"
+autoEntryHot = input.float(0.3, "HOT Zone (ATR)", minval=0.1, maxval=1.0, step=0.1, group=GRP_ENTRY)
+autoEntryOptimal = input.float(0.6, "OPTIMAL Zone (ATR)", minval=0.2, maxval=1.5, step=0.1, group=GRP_ENTRY)
+autoEntryAcceptable = input.float(1.0, "ACCEPTABLE Zone (ATR)", minval=0.4, maxval=2.0, step=0.1, group=GRP_ENTRY)
+
+// ============================================================================
+// INPUTS - ALERT SETTINGS
+// ============================================================================
+GRP_ALERTS = "Alert Settings"
+
+alertMode = input.string("alert() bar close", "Alert Mode",
+     options=["alertcondition", "alert() per bar", "alert() bar close"],
+     group=GRP_ALERTS,
+     tooltip="alertcondition = Standard TradingView\nalert() per bar = Any alert() call\nalert() bar close = Fires on bar close only")
+
+enableContextCandidate = input.bool(true, "CONTEXT CANDIDATE Alert",
+     group=GRP_ALERTS,
+     tooltip="Fires when setup first qualifies (intra-bar). Use for early awareness.")
+enableContextArmed = input.bool(true, "CONTEXT ARMED Alert",
+     group=GRP_ALERTS,
+     tooltip="Fires on bar close when all criteria met. Use for execution readiness.")
+enableContextDisarmed = input.bool(true, "CONTEXT BLOCKED Alert",
+     group=GRP_ALERTS,
+     tooltip="Fires when previously armed setup loses qualification (BLOCKED alert).")
+enableSessionReset = input.bool(true, "SESSION RESET Alert",
+     group=GRP_ALERTS,
+     tooltip="Fires when session changes and lock resets.")
+
+alertStrongThreshold = input.int(70, "ARMED Alert Threshold", minval=60, maxval=95, group=GRP_ALERTS,
+     tooltip="Score threshold for ARMED alerts. Bonds default: 70")
+alertPerfectThreshold = input.int(75, "CANDIDATE Alert Threshold", minval=65, maxval=100, group=GRP_ALERTS,
+     tooltip="Score threshold for CANDIDATE alerts. Bonds default: 75")
+riskSpreadMultiplier = input.float(2.0, "Risk Spread Multiplier", minval=1.5, maxval=4.0, step=0.5, group=GRP_ALERTS)
+
+// ============================================================================
+// INPUTS - ALERT MESSAGE CONTENT
+// ============================================================================
+GRP_MSG = "📝 Alert Message Content"
+msgShowScore = input.bool(true, "Show Score", group=GRP_MSG, inline="msg1")
+msgShowEntry = input.bool(true, "Show Entry Zone", group=GRP_MSG, inline="msg1")
+msgShowMTF = input.bool(true, "Show MTF Count", group=GRP_MSG, inline="msg2")
+msgShowRSI = input.bool(true, "Show RSI Count", group=GRP_MSG, inline="msg2")
+msgShowATR = input.bool(false, "Show ATR State", group=GRP_MSG, inline="msg3")
+msgShowSession = input.bool(false, "Show Session", group=GRP_MSG, inline="msg3")
+msgShowTimeframe = input.bool(false, "Show Timeframe", group=GRP_MSG, inline="msg3")
+
+// ============================================================================
+// INPUTS - ALERT QUALITY FILTERS
+// ============================================================================
+GRP_FILTERS = "Alert Quality Filters"
+
+srProximityFilter = input.float(0.0, "Min S/R Distance (ATR)", minval=0.0, maxval=3.0, step=0.1, group=GRP_FILTERS)
+scoreGapRequired = input.int(0, "Score Gap Above Threshold", minval=0, maxval=20, step=1, group=GRP_FILTERS)
+atrPercentileFloor = input.int(0, "Min ATR Percentile", minval=0, maxval=50, step=5, group=GRP_FILTERS)
+
+// ============================================================================
+// INPUTS - RISK GOVERNOR
+// ============================================================================
+GRP_RISK_GOV = "Risk Governor"
+riskGovernorState = input.string("NORMAL", "Risk State",
+     options=["NORMAL", "REDUCED", "LOCKED"],
+     group=GRP_RISK_GOV,
+     tooltip="Set from Command Centre.\nNORMAL: Full trading\nREDUCED: -3% drawdown or 2+ consecutive losses\nLOCKED: -5% drawdown or circuit breaker")
+
+// ============================================================================
+// INPUTS - RSI MOMENTUM SETTINGS
+// ============================================================================
+GRP_RSI = "💨 Momentum Settings"
+rsiLength = input.int(14, "RSI Length", minval=1, group=GRP_RSI)
+rsiOverbought = input.int(70, "RSI Overbought", minval=50, maxval=90, group=GRP_RSI)
+rsiOversold = input.int(30, "RSI Oversold", minval=10, maxval=50, group=GRP_RSI)
+
+// ============================================================================
+// INPUTS - STYLE CUSTOMISATION
+// ============================================================================
+GRP_STYLE = "🎨 Colours &amp; Style"
+
+// v2.5.0: Status colours now derived from 4-emoji standard (see statusBgColor/statusTextColor)
+// ARMED: bg rgb(0,60,0) text rgb(34,197,94)
+// CANDIDATE: bg rgb(60,50,0) text rgb(234,179,8)
+// BLOCKED: bg rgb(60,0,0) text rgb(239,68,68)
+// INFO: bg rgb(30,30,50) text rgb(100,149,237)
+colorPass = input.color(color.rgb(34, 171, 148), "Pass", group=GRP_STYLE)
+colorFail = input.color(color.rgb(239, 83, 80), "Fail", group=GRP_STYLE)
+colorHeader = input.color(color.rgb(64, 115, 122), "Header BG", group=GRP_STYLE)
+colorBody = input.color(color.rgb(45, 52, 58), "Body BG", group=GRP_STYLE)
+colorText = input.color(color.white, "Text", group=GRP_STYLE)
+
+// ============================================================================
+// ALERT TYPE CONSTANTS (4-Emoji Standard)
+// ============================================================================
+ALERT_INFO      = "INFO"
+ALERT_CANDIDATE = "CANDIDATE"
+ALERT_ARMED     = "ARMED"
+ALERT_BLOCKED   = "BLOCKED"
+
+// ============================================================================
+// EXECUTION STRINGS (Pre-Built)
+// ============================================================================
+EXECUTION_NONE =
+    "NONE"
+
+EXECUTION_FULL =
+    "- MAX_RISK: 1.0R\n" +
+    "- MAX_TRADES: 3\n" +
+    "- ADDS: ENABLED"
+
+EXECUTION_CONDITIONAL =
+    "- MAX_RISK: 0.25R\n" +
+    "- MAX_TRADES: 1\n" +
+    "- ADDS: DISABLED"
+
+// ============================================================================
+// ALERT BUILDER FUNCTIONS
+// ============================================================================
+
+// Emoji Resolver (strict, fixed — 4 emojis only)
+f_alertEmoji(alertType) =>
+    string emoji = "\u26AA"
+    if alertType == ALERT_ARMED
+        emoji := "\U0001F7E2"
+    else if alertType == ALERT_CANDIDATE
+        emoji := "\U0001F7E1"
+    else if alertType == ALERT_BLOCKED
+        emoji := "\U0001F534"
+    else
+        emoji := "\u26AA"
+    emoji
+
+// Severity Prefix ([A]/[C]/[B]/[I])
+f_alertPrefix(alertType) =>
+    string prefix = "[I]"
+    if alertType == ALERT_ARMED
+        prefix := "[A]"
+    else if alertType == ALERT_CANDIDATE
+        prefix := "[C]"
+    else if alertType == ALERT_BLOCKED
+        prefix := "[B]"
+    else
+        prefix := "[I]"
+    prefix
+
+// Header Builder (scan line for triage)
+f_alertHeader(alertType, symbolStr, primaryReason, riskState, scoreStr) =>
+    emoji = f_alertEmoji(alertType)
+    prefix = f_alertPrefix(alertType)
+    emoji + " " + prefix + " " + alertType + " | " + symbolStr + " | " + primaryReason + " | " + riskState + " | " + scoreStr
+
+// Body Builder (audit detail)
+f_alertBody(primaryReason, contributingReasons, permission, execution) =>
+    "Primary: " + primaryReason + "\n" +
+    "Contributing: [" + contributingReasons + "]\n\n" +
+    "PERMISSION: " + permission + "\n" +
+    "EXECUTION:\n" + execution
+
+// Full Alert Builder (header + em-dash + body)
+f_buildAlert(
+    alertType,
+    symbolStr,
+    primaryReason,
+    contributingReasons,
+    permission,
+    execution,
+    riskState,
+    scoreValue
+) =>
+    scoreStr = "U-SCORE-" + str.tostring(scoreValue)
+    header = f_alertHeader(alertType, symbolStr, primaryReason, riskState, scoreStr)
+    body   = f_alertBody(primaryReason, contributingReasons, permission, execution)
+    header + "\n" + "\u2014\n" + body
+
+// ============================================================================
+// 🧩 BOND CALIBRATION PROFILE (AUTO via Daily ATR%)
+// ============================================================================
+GRP_CAL = "🧩 Bond Calibration"
+
+calibMode = input.string("Auto (ATR% of Price)", "Calibration Mode",
+     options=["Auto (ATR% of Price)", "Legacy (Bond rules)"],
+     group=GRP_CAL,
+     tooltip="Auto mode uses Daily ATR% to determine volatility bucket. Legacy mode uses original fixed thresholds.")
+
+// Daily ATR% using PREVIOUS completed daily bar (locks bucket for day)
+dATR = request.security(syminfo.tickerid, "D", ta.atr(atrLength)[1], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+dClose = request.security(syminfo.tickerid, "D", close[1], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+atrPctD = dClose > 0 ? (dATR / dClose) * 100.0 : na
+
+// Bond ATR% Buckets (much tighter than other assets):
+// LOW: <0.3% (dead market)
+// NORMAL: 0.3-0.6% (typical conditions)
+// HIGH: 0.6-1.0% (Fed/auction driven)
+// EXTREME: >1.0% (crisis)
+var string calibBucket = "DEFAULT"
+if not na(atrPctD)
+    if atrPctD < 0.3
+        calibBucket := "LOW"
+    else if atrPctD < 0.6
+        calibBucket := "NORMAL"
+    else if atrPctD < 1.0
+        calibBucket := "HIGH"
+    else
+        calibBucket := "EXTREME"
+
+// Bucket-specific calibration
+var float bucketATRFilter = 60.0
+var float bucketEntryHot = 0.3
+var float bucketEntryOptimal = 0.6
+var float bucketEntryAcceptable = 1.0
+var float bucketSRDanger = 0.30
+var int bucketADXThreshold = 14
+
+if calibBucket == "LOW"
+    bucketATRFilter := 70.0
+    bucketEntryHot := 0.2
+    bucketEntryOptimal := 0.4
+    bucketEntryAcceptable := 0.7
+    bucketSRDanger := 0.2
+    bucketADXThreshold := 15
+else if calibBucket == "NORMAL"
+    bucketATRFilter := 60.0
+    bucketEntryHot := 0.3
+    bucketEntryOptimal := 0.6
+    bucketEntryAcceptable := 1.0
+    bucketSRDanger := 0.3
+    bucketADXThreshold := 14
+else if calibBucket == "HIGH"
+    bucketATRFilter := 50.0
+    bucketEntryHot := 0.4
+    bucketEntryOptimal := 0.8
+    bucketEntryAcceptable := 1.2
+    bucketSRDanger := 0.35
+    bucketADXThreshold := 13
+else if calibBucket == "EXTREME"
+    bucketATRFilter := 45.0
+    bucketEntryHot := 0.5
+    bucketEntryOptimal := 1.0
+    bucketEntryAcceptable := 1.5
+    bucketSRDanger := 0.4
+    bucketADXThreshold := 12
+
+// Apply calibration (Auto or Legacy)
+if calibMode == "Auto (ATR% of Price)"
+    atrFilterPercent := useAutoATR ? bucketATRFilter : manualATRFilter
+else
+    // Legacy mode - use fixed values based on duration
+    if isUS02Y
+        atrFilterPercent := useAutoATR ? 70.0 : manualATRFilter
+    else if isUS30Y
+        atrFilterPercent := useAutoATR ? 55.0 : manualATRFilter
+    else
+        atrFilterPercent := useAutoATR ? 60.0 : manualATRFilter
+
+// Display string
+var string calibDisplay = ""
+if calibMode == "Legacy (Bond rules)"
+    calibDisplay := "Legacy: " + bondShort
+else
+    if na(atrPctD)
+        calibDisplay := "Auto: DEFAULT (no D data)"
+    else
+        calibDisplay := "Auto: " + calibBucket + " (" + str.tostring(atrPctD, "#.##") + "%)"
+
+// ============================================================================
+// EFFECTIVE THRESHOLDS (what the engine actually uses)
+// ============================================================================
+var float entryHotEff = na
+var float entryOptimalEff = na
+var float entryAcceptableEff = na
+var float srDangerEff = na
+var int adxThresholdEff = na
+
+if calibMode == "Auto (ATR% of Price)"
+    entryHotEff := bucketEntryHot
+    entryOptimalEff := bucketEntryOptimal
+    entryAcceptableEff := bucketEntryAcceptable
+    srDangerEff := bucketSRDanger
+    adxThresholdEff := bucketADXThreshold
+else
+    // Legacy mode: use user inputs (or could hardcode per duration later)
+    entryHotEff := autoEntryHot
+    entryOptimalEff := autoEntryOptimal
+    entryAcceptableEff := autoEntryAcceptable
+    srDangerEff := autoSRDanger
+    adxThresholdEff := effectiveADXThreshold
+
+// ============================================================================
+// CALCULATIONS: EMA TREND SYSTEM
+// ============================================================================
+
+fastEMA = ta.ema(close, fastLength)
+midEMA = ta.ema(close, midLength)
+slowEMA = ta.ema(close, slowLength)
+trendEMA = ta.ema(close, trendLength)
+
+trendSlope = trendEMA - trendEMA[5]
+trendSlopeUp = trendSlope > 0
+trendSlopeDown = trendSlope < 0
+
+dirmov(len) =>
+    up = ta.change(high)
+    down = -ta.change(low)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(ta.tr, len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
+
+[diPlus, diMinus] = dirmov(adxLength)
+adxValue = 100 * ta.rma(math.abs(diPlus - diMinus) / (diPlus + diMinus == 0 ? 1 : diPlus + diMinus), adxLength)
+
+mtf1Bullish = request.security(syminfo.tickerid, mtf1, ta.ema(close, fastLength) > ta.ema(close, slowLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+mtf2Bullish = request.security(syminfo.tickerid, mtf2, ta.ema(close, fastLength) > ta.ema(close, slowLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+mtf3Bullish = request.security(syminfo.tickerid, mtf3, ta.ema(close, fastLength) > ta.ema(close, slowLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+mtfBullCount = (mtf1Bullish ? 1 : 0) + (mtf2Bullish ? 1 : 0) + (mtf3Bullish ? 1 : 0)
+mtfBearCount = (not mtf1Bullish ? 1 : 0) + (not mtf2Bullish ? 1 : 0) + (not mtf3Bullish ? 1 : 0)
+mtfFullAlignment = mtfBullCount == 3 or mtfBearCount == 3
+mtfAlignmentBullish = mtfBullCount == 3
+
+mtfAlignCount = mtfAlignmentBullish ? 3 : mtfBearCount == 3 ? 3 : math.max(mtfBullCount, mtfBearCount)
+
+bullishEMAStack = fastEMA > midEMA and midEMA > slowEMA
+bearishEMAStack = fastEMA < midEMA and midEMA < slowEMA
+priceAboveTrend = close > trendEMA
+priceBelowTrend = close < trendEMA
+
+// Trend Score (0-100)
+trendScore = 0.0
+
+if bullishEMAStack
+    trendScore += 20
+    if priceAboveTrend
+        trendScore += 10
+    if trendSlopeUp
+        trendScore += 10
+else if bearishEMAStack
+    trendScore += 20
+    if priceBelowTrend
+        trendScore += 10
+    if trendSlopeDown
+        trendScore += 10
+
+// ADX component
+if adxValue >= 25
+    trendScore += 20
+else if adxValue >= adxThresholdEff
+    trendScore += 15
+else if adxValue >= 10
+    trendScore += 8
+
+// MTF alignment
+if mtfFullAlignment
+    trendScore += 20
+else if mtfBullCount >= 2 or mtfBearCount >= 2
+    trendScore += 10
+
+// Slope + HTF confirmation
+if (mtfAlignmentBullish and trendSlopeUp and priceAboveTrend) or (mtfBearCount == 3 and trendSlopeDown and priceBelowTrend)
+    trendScore += 20
+else if trendSlopeUp or trendSlopeDown
+    trendScore += 10
+
+trendScore := math.min(100, trendScore)
+
+// ============================================================================
+// CALCULATIONS: ATR VOLATILITY SYSTEM
+// ============================================================================
+
+atrCurrent = ta.atr(atrLength)
+atrH1 = request.security(syminfo.tickerid, "60", ta.atr(atrLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+atrH4 = request.security(syminfo.tickerid, "240", ta.atr(atrLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+atrD1 = request.security(syminfo.tickerid, "D", ta.atr(atrLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+atrBaseMa = ta.ema(atrCurrent, atrBaseline)
+atrFilterCurrentPercent = atrBaseMa > 0 ? (atrCurrent / atrBaseMa) * 100 : 100
+atrFilterActive = atrFilterPercent == 0 ? true : atrFilterCurrentPercent >= atrFilterPercent
+
+atrPercentile = ta.percentrank(atrD1, atrPercentileLookback)
+
+baseCurr = ta.ema(atrCurrent, atrBaseline)
+baseH1 = request.security(syminfo.tickerid, "60", ta.ema(ta.atr(atrLength), atrBaseline), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+baseH4 = request.security(syminfo.tickerid, "240", ta.ema(ta.atr(atrLength), atrBaseline), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+baseD1 = request.security(syminfo.tickerid, "D", ta.ema(ta.atr(atrLength), atrBaseline), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+rCur = baseCurr != 0 ? atrCurrent / baseCurr : atrCurrent
+rH1 = baseH1 != 0 ? atrH1 / baseH1 : atrH1
+rH4 = baseH4 != 0 ? atrH4 / baseH4 : atrH4
+rD1 = baseD1 != 0 ? atrD1 / baseD1 : atrD1
+
+sep = 1.0 + sepTolerance
+q1s = rH1 > rCur * sep ? 1 : 0
+q2s = rH4 > rH1 * sep ? 1 : 0
+q3s = rD1 > rH4 * sep ? 1 : 0
+e1s = rCur > rH1 * sep ? 1 : 0
+e2s = rH1 > rH4 * sep ? 1 : 0
+e3s = rH4 > rD1 * sep ? 1 : 0
+
+quietStrong = q1s + q2s + q3s
+explodeStrong = e1s + e2s + e3s
+
+m1 = math.max(math.abs(rCur), math.abs(rH4))
+m2 = math.max(math.abs(rH4), math.abs(rD1))
+approx1 = m1 == 0 ? true : math.abs(rCur - rH4) / m1 <= eqTolerance
+approx2 = m2 == 0 ? true : math.abs(rH4 - rD1) / m2 <= eqTolerance
+isTrend = approx1 and approx2 and not (quietStrong >= 2 or explodeStrong >= 2)
+
+var string atrState = "MIXED"
+if quietStrong == 3
+    atrState := "QUIET"
+else if explodeStrong == 3
+    atrState := "EXPLODE"
+else if isTrend
+    atrState := "TREND"
+else
+    atrState := "MIXED"
+
+// ============================================================================
+// 💨 CALCULATIONS: RSI MOMENTUM SYSTEM
+// ============================================================================
+
+rsiCurrent = ta.rsi(close, rsiLength)
+rsiH1 = request.security(syminfo.tickerid, "60", ta.rsi(close, rsiLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+rsiH4 = request.security(syminfo.tickerid, "240", ta.rsi(close, rsiLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+rsiD1 = request.security(syminfo.tickerid, "D", ta.rsi(close, rsiLength), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+rsiBullCount = (rsiCurrent > 50 ? 1 : 0) + (rsiH1 > 50 ? 1 : 0) + (rsiH4 > 50 ? 1 : 0) + (rsiD1 > 50 ? 1 : 0)
+rsiBearCount = (rsiCurrent < 50 ? 1 : 0) + (rsiH1 < 50 ? 1 : 0) + (rsiH4 < 50 ? 1 : 0) + (rsiD1 < 50 ? 1 : 0)
+rsiAllBull = rsiBullCount == 4
+rsiAllBear = rsiBearCount == 4
+
+// ============================================================================
+// 📰 CALCULATIONS: BOND RISK DETECTION
+// ============================================================================
+
+// Use bar time for historical correctness
+srcTime = barstate.isrealtime ? timenow : time
+utcHour = hour(srcTime, "UTC")
+utcMinute = minute(srcTime, "UTC")
+currentMonth = month(srcTime, "UTC")
+currentDayOfWeek = dayofweek(srcTime, "UTC")
+
+// Treasury Auction Window (12:30-14:00 UTC buffer around typical 13:00-13:30 auctions)
+utcMinOfDayRaw = utcHour * 60 + utcMinute
+utcMinOfDayAdj = utcMinOfDayRaw + (useDstShift ? dstShiftMins : 0)
+
+// Auction window: 12:30-14:00 UTC = 750-840 mins (wider buffer)
+inAuctionWindow = utcMinOfDayAdj >= 750 and utcMinOfDayAdj <= 840
+auctionRiskActive = enableAuctionCaution and inAuctionWindow and isUSTreasury
+
+// Fed/NFP day risks (manual toggles)
+fedRiskActive = isFedDay
+nfpRiskActive = isNFPDay
+highImpactRiskActive = isHighImpactDay
+
+// ============================================================================
+// ⏰ CALCULATIONS: SESSION DETECTION (BONDS)
+// ============================================================================
+
+var string currentSession = "Off-Hours"
+var string sessionQuality = "Low"
+var bool inCashSession = false
+var bool inOpenCaution = false
+
+// Use minutes since midnight for precise boundaries (with DST adjustment)
+utcMinOfDay = utcHour * 60 + utcMinute
+// Note: utcMinOfDayAdj already calculated above with + sign
+
+// Bond Sessions (UTC times) - different by region
+// Asian: 00:00-06:00 = 0-360 (quiet for US bonds)
+// EU Pre: 06:00-07:00 = 360-420 (Bund activity starts)
+// EU/London: 07:00-12:00 = 420-720
+// US Pre-Open: 12:00-12:30 = 720-750
+// US Open CAUTION: 12:30-13:00 = 750-780
+// US Prime: 13:00-20:00 = 780-1200
+// US Close: 20:00-22:00 = 1200-1320
+
+isAsianSession = utcMinOfDayAdj >= 0 and utcMinOfDayAdj < 360
+
+if isAsianSession
+    currentSession := "Asian"
+    sessionQuality := "Low"
+    inCashSession := false
+    inOpenCaution := false
+else if utcMinOfDayAdj >= 360 and utcMinOfDayAdj < 420
+    currentSession := "EU Pre"
+    sessionQuality := "Low"
+    inCashSession := true
+    inOpenCaution := false
+else if utcMinOfDayAdj >= 420 and utcMinOfDayAdj < 720
+    currentSession := "EU/London"
+    sessionQuality := isGermanBund or isUKGilt ? "High" : "Medium"
+    inCashSession := true
+    inOpenCaution := false
+else if utcMinOfDayAdj >= 720 and utcMinOfDayAdj < 750
+    currentSession := "US Pre-Open"
+    sessionQuality := "Medium"
+    inCashSession := true
+    inOpenCaution := false
+else if utcMinOfDayAdj >= 750 and utcMinOfDayAdj < 780
+    currentSession := "US Open"
+    sessionQuality := "Caution"
+    inCashSession := true
+    inOpenCaution := enableUSOpenCaution
+else if utcMinOfDayAdj >= 780 and utcMinOfDayAdj < 1200
+    currentSession := "US Prime"
+    sessionQuality := isUSTreasury ? "High" : "Medium"
+    inCashSession := true
+    inOpenCaution := false
+else if utcMinOfDayAdj >= 1200 and utcMinOfDayAdj < 1320
+    currentSession := "US Close"
+    sessionQuality := "Medium"
+    inCashSession := false
+    inOpenCaution := false
+else
+    currentSession := "Off-Hours"
+    sessionQuality := "Low"
+    inCashSession := false
+    inOpenCaution := false
+
+// Combined risk
+var bool bondRiskHigh = false
+var string bondRiskReason = ""
+
+bondRiskHigh := highImpactRiskActive or fedRiskActive or nfpRiskActive or auctionRiskActive or inOpenCaution
+
+if highImpactRiskActive
+    bondRiskReason := "HIGH IMPACT"
+else if fedRiskActive
+    bondRiskReason := "FED DAY"
+else if nfpRiskActive
+    bondRiskReason := "NFP DAY"
+else if auctionRiskActive
+    bondRiskReason := "AUCTION"
+else if inOpenCaution
+    bondRiskReason := "US OPEN"
+else
+    bondRiskReason := "Clear"
+
+// ============================================================================
+// 📍 CALCULATIONS: S/R PROXIMITY
+// ============================================================================
+
+srLookback = 100
+
+swingHigh = ta.highest(high, srLookback)
+swingLow = ta.lowest(low, srLookback)
+
+atrValue = ta.atr(atrLength)
+distToResistance = atrValue > 0 ? (swingHigh - close) / atrValue : 10.0
+distToSupport = atrValue > 0 ? (close - swingLow) / atrValue : 10.0
+
+distToNearestSR = math.min(distToResistance, distToSupport)
+
+tooCloseToSR = distToNearestSR < srDangerEff
+moderateProximity = distToNearestSR >= srDangerEff and distToNearestSR < 1.5
+
+var string srStatus = ""
+var color srStatusColor = color.green
+
+if tooCloseToSR
+    srStatus := "TOO CLOSE"
+    srStatusColor := color.red
+else if moderateProximity
+    srStatus := "MODERATE"
+    srStatusColor := color.orange
+else
+    srStatus := "CLEAR"
+    srStatusColor := color.green
+
+var float srProximityScore = 0.0
+if distToNearestSR >= 2.0
+    srProximityScore := 5.0
+else if distToNearestSR >= 1.5
+    srProximityScore := 4.0
+else if distToNearestSR >= 1.0
+    srProximityScore := 3.0
+else if distToNearestSR >= srDangerEff
+    srProximityScore := 2.0
+else
+    srProximityScore := 0.0
+
+// ============================================================================
+// CALCULATIONS: ENTRY ZONE ANALYSIS
+// ============================================================================
+
+distFromFastEMA = atrValue > 0 ? math.abs(close - fastEMA) / atrValue : 10.0
+distFromMidEMA = atrValue > 0 ? math.abs(close - midEMA) / atrValue : 10.0
+
+var string entryZoneQuality = ""
+var float entryZoneScore = 0.0
+var color entryZoneColor = color.gray
+
+if distFromFastEMA < entryHotEff
+    entryZoneQuality := "HOT ZONE"
+    entryZoneScore := 5.0
+    entryZoneColor := color.lime
+else if distFromFastEMA < entryOptimalEff
+    entryZoneQuality := "OPTIMAL"
+    entryZoneScore := 4.0
+    entryZoneColor := color.green
+else if distFromFastEMA < entryAcceptableEff
+    entryZoneQuality := "ACCEPTABLE"
+    entryZoneScore := 3.0
+    entryZoneColor := color.yellow
+else if distFromMidEMA < entryOptimalEff
+    entryZoneQuality := "PULLBACK"
+    entryZoneScore := 2.0
+    entryZoneColor := color.orange
+else
+    entryZoneQuality := "EXTENDED"
+    entryZoneScore := 0.0
+    entryZoneColor := color.red
+
+entryIsHotOrOptimal = entryZoneQuality == "HOT ZONE" or entryZoneQuality == "OPTIMAL"
+
+// ============================================================================
+// CALCULATIONS: 4-CRITERIA EVALUATION
+// ============================================================================
+
+// CRITERION 1: Trend Score >= Threshold
+criterion1Pass = trendScore >= minTrendScore
+
+// CRITERION 2: MTF Alignment 3/3
+criterion2Pass = mtfFullAlignment
+
+// CRITERION 3: Volatility State
+var bool criterion3Pass = false
+if atrState == "TREND" and acceptTrend
+    criterion3Pass := true
+else if atrState == "EXPLODE" and acceptExplode
+    percentileOK = atrPercentile >= explodeMinPercentile and atrPercentile <= explodeMaxPercentile
+    criterion3Pass := percentileOK
+else if atrState == "QUIET" and acceptQuiet
+    percentileOK = atrPercentile >= quietMinPercentile and atrPercentile <= quietMaxPercentile
+    criterion3Pass := percentileOK
+else
+    criterion3Pass := false
+
+// CRITERION 4: Risk/News Status
+criterion4Pass = not bondRiskHigh and not tooCloseToSR
+
+// Overall criteria
+criteriaMet = (criterion1Pass ? 1 : 0) + (criterion2Pass ? 1 : 0) + (criterion3Pass ? 1 : 0) + (criterion4Pass ? 1 : 0)
+allCriteriaMet = criteriaMet == 4
+
+// Direction
+trendDirection = bullishEMAStack ? 1 : bearishEMAStack ? -1 : 0
+
+// ============================================================================
+// CALCULATIONS: OVERALL SCORE
+// ============================================================================
+
+trendScoreComponent = trendScore * 0.35
+entryScoreComponent = entryZoneScore * 8.0
+srScoreComponent = srProximityScore * 6.0
+mtfScoreComponent = mtfAlignCount == 3 ? 20.0 : mtfAlignCount == 2 ? 10.0 : 0.0
+atrStateComponent = atrState == "TREND" ? 10.0 : atrState == "EXPLODE" ? 5.0 : atrState == "QUIET" ? 3.0 : 0.0
+
+overallScore = trendScoreComponent + entryScoreComponent + srScoreComponent + mtfScoreComponent + atrStateComponent
+overallScore := math.min(100, overallScore)
+
+// ============================================================================
+// 🔒 SESSION LOCK SYSTEM
+// ============================================================================
+
+var int lockedDirection = 0
+var string lockedPlaybook = ""
+var string lastSession = ""
+
+sessionChanged = currentSession != lastSession and lastSession != ""
+
+sessionResetEvent = enableSessionLock and lockResetOnSessionChange and sessionChanged and lockedDirection != 0
+
+if sessionChanged and lockResetOnSessionChange
+    lockedDirection := 0
+    lockedPlaybook := ""
+
+if enableSessionLock and lockedDirection == 0 and allCriteriaMet and trendDirection != 0
+    lockedDirection := trendDirection
+    if entryZoneQuality == "HOT ZONE" or entryZoneQuality == "OPTIMAL" or entryZoneQuality == "ACCEPTABLE"
+        lockedPlaybook := "CONTINUATION"
+    else if entryZoneQuality == "PULLBACK"
+        lockedPlaybook := "DEEP PULLBACK"
+    else
+        lockedPlaybook := "OBSERVATION"
+
+isArmedRaw = allCriteriaMet and trendDirection != 0 and (not enableSessionLock or trendDirection == lockedDirection or lockedDirection == 0)
+
+// ============================================================================
+// INSTITUTIONAL PRIORITY RESOLVER (Regime > Risk > UTCC)
+// ============================================================================
+// Reads existing variables only. Adds governance layer on top.
+// Higher layers veto lower layers. No exceptions.
+
+// --- Derived risk code ---
+riskCode = riskGovernorState == "LOCKED" ? "K-LOCKED" : riskGovernorState == "REDUCED" ? "K-REDUCED" : "K-NORMAL"
+
+// LAYER 1: REGIME CHECK (Highest Authority)
+var string regimeCode = "R-EXPANSION"
+var string regimePermission = "FULL"
+
+if atrState == "MIXED"
+    regimeCode := "R-CHAOS"
+    regimePermission := "STAND_DOWN"
+else if atrState == "QUIET" and atrPercentile < 15
+    regimeCode := "R-COMPRESSION"
+    regimePermission := "STAND_DOWN"
+else if currentSession == "Off-Hours"
+    regimeCode := "R-OFFSESSION"
+    regimePermission := "STAND_DOWN"
+else if atrState == "QUIET"
+    regimeCode := "R-COMPRESSION"
+    regimePermission := "CONDITIONAL"
+else if atrState == "EXPLODE"
+    regimeCode := "R-TRANSITION"
+    regimePermission := "CONDITIONAL"
+else if atrState == "TREND"
+    regimeCode := "R-EXPANSION"
+    regimePermission := "FULL"
+
+// LAYER 2: RISK GOVERNOR CHECK (Overrides UTCC)
+var string riskPermission = "FULL"
+if riskGovernorState == "LOCKED"
+    riskPermission := "STAND_DOWN"
+else if riskGovernorState == "REDUCED"
+    riskPermission := "CONDITIONAL"
+else
+    riskPermission := "FULL"
+
+// LAYER 3: RESOLVE FINAL PERMISSION (Most Restrictive Wins)
+var string finalPermission = "FULL"
+if regimePermission == "STAND_DOWN" or riskPermission == "STAND_DOWN"
+    finalPermission := "STAND_DOWN"
+else if regimePermission == "CONDITIONAL" or riskPermission == "CONDITIONAL"
+    finalPermission := "CONDITIONAL"
+else
+    finalPermission := "FULL"
+
+// LAYER 4: DETERMINE PRIMARY REASON (Highest Authority That Restricted)
+var string primaryReason = "R-EXPANSION"
+if regimePermission == "STAND_DOWN"
+    primaryReason := regimeCode
+else if riskPermission == "STAND_DOWN"
+    primaryReason := riskCode
+else if regimePermission == "CONDITIONAL"
+    primaryReason := regimeCode
+else if riskPermission == "CONDITIONAL"
+    primaryReason := riskCode
+else
+    // Both regime and risk allow full — regime is ALWAYS primary
+    // UTCC codes are NEVER primary. Ever.
+    primaryReason := regimeCode
+
+// LAYER 5: AUTO-SELECT ALERT TYPE
+var string resolvedAlertType = ALERT_INFO
+if finalPermission == "STAND_DOWN"
+    resolvedAlertType := ALERT_BLOCKED
+else if finalPermission == "FULL" and isArmedRaw and allCriteriaMet
+    resolvedAlertType := ALERT_ARMED
+else if finalPermission == "CONDITIONAL" or (allCriteriaMet and not isArmedRaw)
+    resolvedAlertType := ALERT_CANDIDATE
+else
+    resolvedAlertType := ALERT_INFO
+
+// LAYER 6: RESOLVE EXECUTION CONSTRAINT (Regime-Aware)
+var string resolvedExecution = EXECUTION_NONE
+if finalPermission == "STAND_DOWN"
+    resolvedExecution := EXECUTION_NONE
+else if finalPermission == "CONDITIONAL"
+    // Differentiate CONDITIONAL caps by source
+    if regimeCode == "R-TRANSITION"
+        // EXPLODE regime: slightly more room than compression
+        resolvedExecution := "- MAX_RISK: 0.5R\n- MAX_TRADES: 2\n- ADDS: DISABLED"
+    else if riskCode == "K-REDUCED"
+        // Risk governor reduced: tighter than regime CONDITIONAL
+        resolvedExecution := "- MAX_RISK: 0.5R\n- MAX_TRADES: 1\n- ADDS: DISABLED"
+    else
+        // Default CONDITIONAL (compression, other)
+        resolvedExecution := EXECUTION_CONDITIONAL
+else
+    resolvedExecution := EXECUTION_FULL
+
+// BUILD CONTRIBUTING REASONS (Supporting Evidence)
+contributingStr = "U-MTF-" + str.tostring(mtfAlignCount) + "OF3"
+contributingStr := contributingStr + ", U-SCORE-" + str.tostring(math.round(overallScore))
+contributingStr := contributingStr + ", U-ATR-" + atrState
+if not criterion1Pass
+    contributingStr := contributingStr + ", U-TREND-WEAK"
+if atrPercentile < 20
+    contributingStr := contributingStr + ", U-ATR-BELOW-P" + str.tostring(math.round(atrPercentile))
+if str.contains(entryZoneQuality, "EXTENDED")
+    contributingStr := contributingStr + ", U-ENTRY-EXTENDED"
+if tooCloseToSR
+    contributingStr := contributingStr + ", U-SR-CLOSE"
+if bondRiskHigh
+    contributingStr := contributingStr + ", U-NEWS-RISK"
+
+// ============================================================================
+// GOVERNANCE OVERRIDE: isArmed must respect regime veto (Phase 4)
+// ============================================================================
+// isArmedRaw reflects UTCC criteria only. isArmed reflects governance.
+// No ARMED state during R-COMPRESSION, R-CHAOS, R-OFFSESSION, or K-LOCKED.
+// This is an invariant. If this leaks, the entire authority model is broken.
+isArmed = isArmedRaw and finalPermission != "STAND_DOWN"
+armedDirection = isArmed ? trendDirection : 0
+
+// ============================================================================
+// QUALITY FILTERS FOR ALERTS
+// ============================================================================
+
+srProximityPasses = srProximityFilter == 0.0 or distToNearestSR >= srProximityFilter
+scoreGapPassesStrong = scoreGapRequired == 0 or overallScore >= (alertStrongThreshold + scoreGapRequired)
+scoreGapPassesPerfect = scoreGapRequired == 0 or overallScore >= (alertPerfectThreshold + scoreGapRequired)
+atrPercentilePasses = atrPercentileFloor == 0 or atrPercentile >= atrPercentileFloor
+
+qualityFiltersPassed = srProximityPasses and atrPercentilePasses
+
+// ============================================================================
+// SPREAD MONITORING
+// ============================================================================
+
+currentBarRange = high - low
+expectedRange = ta.ema(ta.tr, 20)
+spreadRatio = expectedRange > 0 ? currentBarRange / expectedRange : 1.0
+spreadWarning = spreadRatio >= spreadWarningMultiplier
+
+// ============================================================================
+// ⏱️ BAR TIMER
+// ============================================================================
+
+barTimeRemaining = (time_close - timenow) / 60000
+barTimerColor = barTimeRemaining <= barTimerCritical ? color.red : barTimeRemaining <= barTimerWarning ? color.yellow : barTimeRemaining <= barTimerCaution ? color.orange : color.green
+barTimerText = str.tostring(math.floor(barTimeRemaining)) + "m"
+
+// ============================================================================
+// 🎨 FONT SIZE CONVERSION
+// ============================================================================
+
+getSize(sizeStr) =>
+    sizeStr == "Tiny" ? size.tiny : sizeStr == "Small" ? size.small : sizeStr == "Normal" ? size.normal : sizeStr == "Large" ? size.large : size.huge
+
+headerSize = getSize(headerFontSize)
+statusSize = getSize(statusFontSize)
+dataSize = getSize(dataFontSize)
+scoreSize = getSize(scoreFontSize)
+
+// ============================================================================
+// 📝 DISPLAY PREP VARIABLES (v2.4.0)
+// ============================================================================
+
+// Volatility explanation
+var string volExplanation = ""
+if atrState == "TREND"
+    volExplanation := "Steady consistent movement across timeframes. Ideal conditions."
+else if atrState == "EXPLODE"
+    volExplanation := "Sharp spike in activity. News/auction driven. High risk/reward."
+else if atrState == "QUIET"
+    volExplanation := "Compressed range, consolidation. Potential breakout forming."
+else
+    volExplanation := "Conflicting volatility signals. Mixed structure, avoid."
+
+// Trend explanation
+var string trendExplanation = ""
+if fastEMA > midEMA and midEMA > slowEMA
+    trendExplanation := "Fast > Mid > Slow - Clean bullish alignment"
+else if fastEMA < midEMA and midEMA < slowEMA
+    trendExplanation := "Fast < Mid < Slow - Clean bearish alignment"
+else
+    trendExplanation := "Mixed EMA structure - No clear trend"
+
+// ADX interpretation
+var string adxInterpretation = ""
+if adxValue > 25
+    adxInterpretation := "Strong"
+else if adxValue > adxThresholdEff
+    adxInterpretation := "Moderate"
+else
+    adxInterpretation := "Weak"
+
+// Spread status
+var string spreadStatus = "NORMAL"
+if not na(spreadRatio)
+    if spreadRatio >= 2.0
+        spreadStatus := "WIDE"
+    else if spreadRatio >= 1.5
+        spreadStatus := "ELEVATED"
+    else
+        spreadStatus := "NORMAL"
+else
+    spreadStatus := "---"
+
+// Daily range position
+dailyHigh = request.security(syminfo.tickerid, "D", high, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+dailyLow = request.security(syminfo.tickerid, "D", low, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+dailyRange = dailyHigh - dailyLow
+dailyPosition = dailyRange > 0 ? ((close - dailyLow) / dailyRange * 100) : 50
+
+// Risk management (Bond-adapted: ATR-based price levels)
+invalidationBuffer = atrValue * 0.5
+
+var float invalidationLevel = na
+var float stopLevel = na
+var float targetLevel = na
+var float riskReward = 2.0
+var string invalidationReason = ""
+
+if mtfAlignmentBullish
+    invalidationLevel := fastEMA - invalidationBuffer
+    stopLevel := invalidationLevel - (atrValue * 0.1)
+    targetLevel := close + (math.abs(close - stopLevel) * 2.0)
+    invalidationReason := "Below EMA"
+else if mtfBearCount == 3
+    invalidationLevel := fastEMA + invalidationBuffer
+    stopLevel := invalidationLevel + (atrValue * 0.1)
+    targetLevel := close - (math.abs(stopLevel - close) * 2.0)
+    invalidationReason := "Above EMA"
+else
+    invalidationLevel := close - atrValue
+    stopLevel := close - (atrValue * 1.1)
+    targetLevel := close + atrValue
+    invalidationReason := "No Direction"
+
+riskDistance = math.abs(close - stopLevel)
+rewardDistance = math.abs(targetLevel - close)
+riskReward := riskDistance > 0 ? rewardDistance / riskDistance : 0.0
+
+// RSI momentum bonus for entry scoring
+rsiMomentumBonus = rsiAllBull or rsiAllBear ? 2.0 : (rsiBullCount >= 3 or rsiBearCount >= 3) ? 1.0 : 0.0
+rsiMomentumStatus = rsiAllBull ? "STRONG BULL" : rsiAllBear ? "STRONG BEAR" : (rsiBullCount >= 3 or rsiBearCount >= 3) ? "LEANING" : "MIXED"
+entryTotalScore = entryZoneScore + rsiMomentumBonus
+
+var string entryRating = ""
+if entryTotalScore >= 6.5
+    entryRating := "EXCELLENT"
+else if entryTotalScore >= 5.0
+    entryRating := "GOOD"
+else if entryTotalScore >= 3.5
+    entryRating := "FAIR"
+else if entryTotalScore >= 2.0
+    entryRating := "POOR"
+else
+    entryRating := "AVOID"
+
+// Status determination (v2.5.0 — Institutional alert type mapping)
+// Colour mapping from 4-emoji standard
+var color statusBgColor = color.rgb(30, 30, 50)
+var color statusTextColor = color.rgb(100, 149, 237)
+var string positionSizeRec = ""
+
+if resolvedAlertType == ALERT_ARMED
+    statusBgColor := color.rgb(0, 60, 0)
+    statusTextColor := color.rgb(34, 197, 94)
+    positionSizeRec := "Full"
+else if resolvedAlertType == ALERT_CANDIDATE
+    statusBgColor := color.rgb(60, 50, 0)
+    statusTextColor := color.rgb(234, 179, 8)
+    positionSizeRec := "Reduced"
+else if resolvedAlertType == ALERT_BLOCKED
+    statusBgColor := color.rgb(60, 0, 0)
+    statusTextColor := color.rgb(239, 68, 68)
+    positionSizeRec := "Avoid"
+else
+    statusBgColor := color.rgb(30, 30, 50)
+    statusTextColor := color.rgb(100, 149, 237)
+    positionSizeRec := "Avoid"
+
+// Execution display string (regime-aware)
+var string execDisplayStr = "NONE"
+if finalPermission == "FULL"
+    execDisplayStr := "MAX_RISK: 1.0R | TRADES: 3"
+else if finalPermission == "CONDITIONAL"
+    if regimeCode == "R-TRANSITION"
+        execDisplayStr := "MAX_RISK: 0.5R | TRADES: 2"
+    else if riskCode == "K-REDUCED"
+        execDisplayStr := "MAX_RISK: 0.5R | TRADES: 1"
+    else
+        execDisplayStr := "MAX_RISK: 0.25R | TRADES: 1"
+else
+    execDisplayStr := "NONE"
+
+// Criteria format variables
+criterion1Value = str.tostring(math.round(trendScore)) + "/100"
+criterion1Status = criterion1Pass ? "✅" : "❌"
+
+criterion2Value = mtfAlignmentBullish ? "BULL 3/3" : mtfBearCount == 3 ? "BEAR 3/3" : str.tostring(mtfBullCount) + "/3"
+criterion2Status = criterion2Pass ? "✅" : "❌"
+
+var string criterion3Detail = ""
+if atrState == "TREND"
+    criterion3Detail := atrState + " (OK)"
+else if atrState == "EXPLODE"
+    criterion3Detail := atrState + " " + str.tostring(math.round(atrPercentile)) + "%ile"
+else if atrState == "QUIET"
+    criterion3Detail := atrState + " " + str.tostring(math.round(atrPercentile)) + "%ile"
+else
+    criterion3Detail := atrState
+
+criterion3Value = criterion3Detail
+criterion3Status = criterion3Pass ? "✅" : "❌"
+
+criterion4Value = bondRiskHigh ? bondRiskReason : "CLEAR"
+criterion4Status = criterion4Pass ? "✅" : "❌"
+
+// ATR guidance (institutional)
+atrPercentileValue = math.round(atrPercentile)
+atrGuidance = atrPercentileValue < 30 ? "IDEAL" : atrPercentileValue < 60 ? "NORMAL" : atrPercentileValue < 80 ? "ELEVATED" : "EXHAUSTED"
+atrGuidanceColor = atrPercentileValue < 30 ? color.lime : atrPercentileValue < 60 ? color.green : atrPercentileValue < 80 ? color.yellow : color.red
+
+// Playbook determination (dynamic, for display)
+var string currentPlaybook = ""
+if not isArmed
+    currentPlaybook := "NO TRADE"
+else
+    if atrState == "TREND"
+        currentPlaybook := armedDirection == 1 ? "CONTINUATION LONG" : "CONTINUATION SHORT"
+    else if atrState == "EXPLODE"
+        currentPlaybook := armedDirection == 1 ? "DEEP PULLBACK LONG" : "DEEP PULLBACK SHORT"
+    else if atrState == "QUIET"
+        currentPlaybook := "OBSERVATION ONLY"
+    else
+        currentPlaybook := "STAND DOWN"
+
+armedStatusText = isArmed ? (armedDirection == 1 ? "ARMED LONG" : "ARMED SHORT") : "BLOCKED"
+armedStatusColor = isArmed ? (armedDirection == 1 ? color.rgb(34, 171, 148) : color.rgb(239, 83, 80)) : color.rgb(239, 68, 68)
+
+// Bar close text for display
+barCloseText = "Bar: " + barTimerText
+
+// ============================================================================
+// CANDIDATE STATE TRACKING (moved before display for diagnostics)
+// ============================================================================
+
+var bool wasCandidate_rt = false
+var int wasCandidateDir_rt = 0
+var bool wasCandidate_close = false
+var int wasCandidateDir_close = 0
+
+candidateMeetsLong = allCriteriaMet and trendDirection == 1 and (not enableSessionLock or lockedDirection == 0 or lockedDirection == 1)
+candidateMeetsShort = allCriteriaMet and trendDirection == -1 and (not enableSessionLock or lockedDirection == 0 or lockedDirection == -1)
+candidateMeets = candidateMeetsLong or candidateMeetsShort
+candidateDirection = candidateMeetsLong ? 1 : candidateMeetsShort ? -1 : 0
+
+contextJustCandidateLong = candidateMeetsLong and (not wasCandidate_rt or wasCandidateDir_rt != 1)
+contextJustCandidateShort = candidateMeetsShort and (not wasCandidate_rt or wasCandidateDir_rt != -1)
+contextJustCandidate = contextJustCandidateLong or contextJustCandidateShort
+
+wasCandidate_rt := candidateMeets
+wasCandidateDir_rt := candidateDirection
+
+if barstate.isconfirmed
+    wasCandidate_close := candidateMeets
+    wasCandidateDir_close := candidateDirection
+
+// ============================================================================
+// STATE CHANGE DETECTION (moved before display for diagnostics)
+// ============================================================================
+
+var bool wasArmed = false
+var int wasArmedDirection = 0
+
+contextJustArmedLong = isArmed and armedDirection == 1 and (not wasArmed or wasArmedDirection != 1)
+contextJustArmedShort = isArmed and armedDirection == -1 and (not wasArmed or wasArmedDirection != -1)
+contextJustDisarmed = wasArmed and not isArmed
+
+// ============================================================================
+// DISARM REASON CODES (Phase 4 — Governance Hardening)
+// ============================================================================
+// Tracks WHY a setup disarmed. Appended to BLOCKED alert contributing reasons.
+// Priority: Governance veto > Criteria loss > Session conflict > Direction loss
+
+var string disarmReasonCode = ""
+if contextJustDisarmed
+    if finalPermission == "STAND_DOWN" and regimePermission == "STAND_DOWN"
+        disarmReasonCode := "D-REGIME-VETO"
+    else if finalPermission == "STAND_DOWN" and riskPermission == "STAND_DOWN"
+        disarmReasonCode := "D-RISK-LOCKED"
+    else if not allCriteriaMet
+        disarmReasonCode := "D-CRITERIA-LOST"
+    else if enableSessionLock and trendDirection != lockedDirection and lockedDirection != 0
+        disarmReasonCode := "D-SESSION-CONFLICT"
+    else if trendDirection == 0
+        disarmReasonCode := "D-DIRECTION-LOST"
+    else
+        disarmReasonCode := "D-UNKNOWN"
+    // Append disarm reason to contributing string for BLOCKED alerts
+    contributingStr := contributingStr + ", " + disarmReasonCode
+
+if barstate.isconfirmed
+    wasArmed := isArmed
+    wasArmedDirection := armedDirection
+    lastSession := currentSession
+
+// ============================================================================
+// MAIN DASHBOARD (v2.5.1 - Full 4-Tier Display)
+// ============================================================================
+
+var table dashTable = na
+
+tablePos = panelPosition == "Top Left" ? position.top_left : panelPosition == "Top Right" ? position.top_right : panelPosition == "Bottom Left" ? position.bottom_left : position.bottom_right
+
+if barstate.isfirst
+    maxRows = displayMode == "Minimal" ? 7 : displayMode == "Compact" ? 17 : displayMode == "Standard" ? 42 : 52
+    dashTable := table.new(tablePos, 2, maxRows, bgcolor=color.new(colorBody, panelTransparency), frame_color=color.new(colorHeader, borderTransparency), frame_width=frameWidth, border_width=borderWidth, border_color=color.new(colorHeader, borderTransparency))
+
+if barstate.islast
+    maxClearRows = displayMode == "Minimal" ? 6 : displayMode == "Compact" ? 16 : displayMode == "Standard" ? 41 : 51
+    table.clear(dashTable, 0, 0, 1, maxClearRows)
+
+    row = 0
+
+    // ========================================
+    // TIER 1: INSTITUTIONAL STATUS (Always show)
+    // ========================================
+
+    // Header: Bond Name + TF | Calibration
+    headerBG = isUSTreasury ? color.rgb(30, 45, 70) : isUKGilt ? color.rgb(50, 35, 50) : isGermanBund ? color.rgb(60, 55, 30) : color.new(colorHeader, panelTransparency)
+    table.cell(dashTable, 0, row, bondName + " " + timeframe.period, text_color=colorText, text_size=headerSize, bgcolor=headerBG, text_halign=text.align_left)
+    table.cell(dashTable, 1, row, calibDisplay, text_color=colorText, text_size=dataSize, bgcolor=headerBG, text_halign=text.align_right)
+    row += 1
+
+    // Row 1: Alert Type | Primary Reason + Permission
+    table.cell(dashTable, 0, row, resolvedAlertType, text_color=statusTextColor, text_size=statusSize, bgcolor=color.new(statusBgColor, panelTransparency), text_halign=text.align_left)
+    table.cell(dashTable, 1, row, primaryReason + " | " + finalPermission, text_color=statusTextColor, text_size=scoreSize, bgcolor=color.new(statusBgColor, panelTransparency), text_halign=text.align_right)
+    row += 1
+
+    // Row 2: Regime + Risk State
+    table.cell(dashTable, 0, row, "REGIME", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+    table.cell(dashTable, 1, row, regimeCode + " | RISK: " + riskCode, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+    row += 1
+
+    // Row 3: Execution Constraint
+    table.cell(dashTable, 0, row, "EXECUTION", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+    table.cell(dashTable, 1, row, execDisplayStr, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+    row += 1
+
+    // Playbook row
+    if enableSessionLock
+        var color playbookColor = color.gray
+        if currentPlaybook == "NO TRADE"
+            playbookColor := color.gray
+        else if str.contains(currentPlaybook, "OBSERVATION")
+            playbookColor := color.rgb(255, 200, 0)
+        else if str.contains(currentPlaybook, "STAND DOWN")
+            playbookColor := color.rgb(255, 165, 0)
+        else if armedDirection == 1
+            playbookColor := color.rgb(34, 171, 148)
+        else
+            playbookColor := color.rgb(239, 83, 80)
+        table.cell(dashTable, 0, row, "PLAYBOOK", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_left)
+        table.cell(dashTable, 1, row, currentPlaybook, text_color=playbookColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+        row += 1
+
+    // ========================================
+    // TIER 2: CRITERIA CHECKLIST (Compact+)
+    // ========================================
+
+    if displayMode != "Minimal"
+        // Header
+        table.cell(dashTable, 0, row, "CRITERIA CHECKLIST", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+        table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+        row += 1
+
+        // Criterion 1: Trend Score
+        table.cell(dashTable, 0, row, criterion1Status + " 1. Trend Score", text_color=criterion1Pass ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+        table.cell(dashTable, 1, row, criterion1Value, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+        row += 1
+
+        // Criterion 2: MTF Alignment
+        table.cell(dashTable, 0, row, criterion2Status + " 2. MTF Alignment", text_color=criterion2Pass ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+        table.cell(dashTable, 1, row, criterion2Value, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+        row += 1
+
+        // Criterion 3: Volatility
+        table.cell(dashTable, 0, row, criterion3Status + " 3. Volatility", text_color=criterion3Pass ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+        table.cell(dashTable, 1, row, criterion3Value, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+        row += 1
+
+        // Criterion 4: Risk Status
+        table.cell(dashTable, 0, row, criterion4Status + " 4. Risk Status", text_color=criterion4Pass ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+        table.cell(dashTable, 1, row, criterion4Value, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+        row += 1
+
+        // ATR Percentile guidance
+        table.cell(dashTable, 0, row, "ATR: " + str.tostring(atrPercentileValue) + "%", text_color=atrGuidanceColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+        table.cell(dashTable, 1, row, atrGuidance, text_color=atrGuidanceColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+        row += 1
+
+        // Verdict
+        verdictText = str.tostring(criteriaMet) + "/4 | " + positionSizeRec
+        table.cell(dashTable, 0, row, verdictText, text_color=statusTextColor, text_size=dataSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+        table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+        row += 1
+
+        // ========================================
+        // EXECUTION CONTEXT ROW (with timer warnings)
+        // ========================================
+
+        // Critical timer banner
+        if showBarTimer and (barTimeRemaining <= barTimerCritical)
+            table.cell(dashTable, 0, row, barCloseText, text_color=barTimerColor, text_size=statusSize, bgcolor=color.new(color.rgb(50, 0, 0), panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "CLOSE SOON!", text_color=barTimerColor, text_size=statusSize, bgcolor=color.new(color.rgb(50, 0, 0), panelTransparency), text_halign=text.align_center)
+            row += 1
+
+        // Build context string
+        contextParts = array.new_string()
+        if showSessionInfo
+            array.push(contextParts, currentSession + " (" + sessionQuality + ")")
+        if showBarTimer and barTimeRemaining > barTimerCritical
+            array.push(contextParts, barCloseText)
+        if showSpreadMonitor
+            array.push(contextParts, spreadStatus + (spreadWarning ? " !" : ""))
+
+        string contextText = ""
+        color contextColor = colorText
+        if array.size(contextParts) > 0
+            contextText := array.get(contextParts, 0)
+            for i = 1 to array.size(contextParts) - 1
+                contextText += " │ " + array.get(contextParts, i)
+            if showBarTimer and barTimeRemaining <= barTimerWarning and barTimeRemaining > barTimerCritical
+                contextColor := barTimerColor
+
+        if contextText != ""
+            table.cell(dashTable, 0, row, contextText, text_color=contextColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorBody, panelTransparency))
+            row += 1
+
+        // ========================================
+        // TIER 3: STANDARD MODE
+        // ========================================
+
+        if displayMode == "Standard" or displayMode == "Full"
+            // Score Breakdown
+            table.cell(dashTable, 0, row, "SCORE BREAKDOWN", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "Trend Quality", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(trendScoreComponent)) + "/35", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "Entry Zone", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(entryScoreComponent)) + "/40", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "S/R Proximity", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(srScoreComponent)) + "/30", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "MTF Alignment", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(mtfScoreComponent)) + "/20", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "ATR State", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(atrStateComponent)) + "/10", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            // Volatility Analysis
+            table.cell(dashTable, 0, row, "VOLATILITY ANALYSIS", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "State: " + atrState, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(atrPercentile)) + "%ile", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, volExplanation, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorBody, panelTransparency))
+            row += 1
+
+            // Risk Management
+            table.cell(dashTable, 0, row, "RISK MANAGEMENT", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "Stop", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(stopLevel, "#.####") + " (" + str.tostring(riskDistance / atrValue, "#.#") + " ATR)", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "Target", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(targetLevel, "#.####") + " (" + str.tostring(rewardDistance / atrValue, "#.#") + " ATR)", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "R:R Ratio", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(riskReward, "#.#") + ":1", text_color=riskReward >= 2.0 ? colorPass : riskReward >= 1.5 ? colorText : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            // Central Bank (Bond-specific)
+            table.cell(dashTable, 0, row, "Central Bank", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, bondCentralBank + " Sensitive", text_color=color.yellow, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            // Trend Details
+            table.cell(dashTable, 0, row, "TREND DETAILS", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, trendExplanation, text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorBody, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "ADX", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(adxValue)) + " (" + adxInterpretation + ")", text_color=adxValue > adxThresholdEff ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            htfText = mtfAlignmentBullish ? "BULLISH ✓" : mtfBearCount == 3 ? "BEARISH ✓" : "MIXED"
+            table.cell(dashTable, 0, row, "HTF Bias", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, htfText, text_color=mtfFullAlignment ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            // S/R Proximity
+            table.cell(dashTable, 0, row, "S/R PROXIMITY", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "To Resistance", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(distToResistance, "#.##") + " ATR", text_color=distToResistance < 0.5 ? colorFail : distToResistance < 1.5 ? colorText : colorPass, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "To Support", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(distToSupport, "#.##") + " ATR", text_color=distToSupport < 0.5 ? colorFail : distToSupport < 1.5 ? colorText : colorPass, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "S/R Status", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, srStatus, text_color=srStatusColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            // Entry Zone Analysis
+            table.cell(dashTable, 0, row, "ENTRY ZONE ANALYSIS", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "EMA Distance", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(distFromFastEMA, "#.##") + " ATR", text_color=entryZoneColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "Entry Zone", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, entryZoneQuality, text_color=entryZoneColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "RSI Momentum", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, rsiMomentumStatus, text_color=rsiMomentumBonus >= 2.0 ? colorPass : rsiMomentumBonus >= 1.0 ? colorText : color.gray, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "Entry Score", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(entryTotalScore, "#.#") + "/7 (" + entryRating + ")", text_color=entryTotalScore >= 6 ? colorPass : entryTotalScore >= 4 ? colorText : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+        // ========================================
+        // TIER 4: FULL MODE
+        // ========================================
+
+        if displayMode == "Full"
+            // Momentum RSI
+            table.cell(dashTable, 0, row, "MOMENTUM (RSI)", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            table.cell(dashTable, 0, row, "Current TF", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(rsiCurrent)), text_color=rsiCurrent > 50 ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "1H", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(rsiH1)), text_color=rsiH1 > 50 ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "4H", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(rsiH4)), text_color=rsiH4 > 50 ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "Daily", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, str.tostring(math.round(rsiD1)), text_color=rsiD1 > 50 ? colorPass : colorFail, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            rsiSummary = rsiAllBull ? "All BULL ✓" : rsiAllBear ? "All BEAR ✓" : str.tostring(rsiBullCount) + "/4 Bull"
+            table.cell(dashTable, 0, row, "Alignment", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, rsiSummary, text_color=(rsiAllBull or rsiAllBear) ? colorPass : colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            // Price Action
+            table.cell(dashTable, 0, row, "PRICE ACTION", text_color=colorText, text_size=headerSize, bgcolor=color.new(colorHeader, panelTransparency), text_halign=text.align_center)
+            table.cell(dashTable, 1, row, "", bgcolor=color.new(colorHeader, panelTransparency))
+            row += 1
+
+            rangeText = str.tostring(math.round(dailyPosition)) + "%"
+            rangeColor = dailyPosition >= 40 and dailyPosition <= 60 ? colorPass : colorText
+            table.cell(dashTable, 0, row, "Daily Range", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, rangeText, text_color=rangeColor, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+            table.cell(dashTable, 0, row, "Spread Status", text_color=colorText, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_left)
+            table.cell(dashTable, 1, row, spreadStatus + (spreadWarning ? " !" : ""), text_color=spreadWarning ? colorFail : colorPass, text_size=dataSize, bgcolor=color.new(colorBody, panelTransparency), text_halign=text.align_right)
+            row += 1
+
+// ============================================================================
+// ALERT DIAGNOSTICS PANEL (v2.5.1 - Institutional Governance)
+// ============================================================================
+
+var table diagTable = na
+
+if barstate.isfirst and showAlertDiagnostics
+    diagTable := table.new(position.bottom_left, 2, 24, bgcolor=color.new(color.rgb(30, 30, 40), 10), frame_color=color.rgb(100, 100, 120), frame_width=1, border_width=1, border_color=color.rgb(60, 60, 80))
+
+if barstate.islast and showAlertDiagnostics
+    table.clear(diagTable, 0, 0, 1, 23)
+
+    dRow = 0
+    diagSize = size.small
+    diagBG = color.rgb(30, 35, 45)
+
+    // Header
+    diagHeaderBG = isUSTreasury ? color.rgb(30, 45, 70) : isUKGilt ? color.rgb(50, 35, 50) : isGermanBund ? color.rgb(60, 55, 30) : color.rgb(80, 80, 100)
+    table.cell(diagTable, 0, dRow, "v2.5 DIAGNOSTICS", text_color=color.white, text_size=size.normal, bgcolor=diagHeaderBG, text_halign=text.align_center)
+    table.cell(diagTable, 1, dRow, currentSession, text_color=color.yellow, text_size=size.normal, bgcolor=diagHeaderBG, text_halign=text.align_right)
+    dRow += 1
+
+    // === GOVERNANCE ===
+    table.cell(diagTable, 0, dRow, "--- GOVERNANCE ---", text_color=color.gray, text_size=diagSize, bgcolor=color.rgb(40, 40, 50), text_halign=text.align_center)
+    table.cell(diagTable, 1, dRow, "", bgcolor=color.rgb(40, 40, 50))
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "Alert Type", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, resolvedAlertType, text_color=statusTextColor, text_size=size.normal, bgcolor=color.new(statusBgColor, 50), text_halign=text.align_right)
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "Regime", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    regimeDispColor = regimePermission == "FULL" ? color.rgb(34, 197, 94) : regimePermission == "CONDITIONAL" ? color.rgb(234, 179, 8) : color.rgb(239, 68, 68)
+    table.cell(diagTable, 1, dRow, regimeCode + " | " + regimePermission, text_color=regimeDispColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "Risk Governor", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    riskDispColor = riskGovernorState == "NORMAL" ? color.rgb(34, 197, 94) : riskGovernorState == "REDUCED" ? color.rgb(234, 179, 8) : color.rgb(239, 68, 68)
+    table.cell(diagTable, 1, dRow, riskCode + " | " + riskPermission, text_color=riskDispColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "Final Permission", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    permDispColor = finalPermission == "FULL" ? color.rgb(34, 197, 94) : finalPermission == "CONDITIONAL" ? color.rgb(234, 179, 8) : color.rgb(239, 68, 68)
+    table.cell(diagTable, 1, dRow, finalPermission, text_color=permDispColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    // Gov override: shows if isArmedRaw was overridden by governance
+    govOverrideActive = isArmedRaw and not isArmed
+    table.cell(diagTable, 0, dRow, "Gov Override", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, govOverrideActive ? "ACTIVE — RAW ARMED VETOED" : "NONE", text_color=govOverrideActive ? color.rgb(239, 68, 68) : color.gray, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    // Disarm reason (shows last disarm code)
+    table.cell(diagTable, 0, dRow, "Last Disarm", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, disarmReasonCode != "" ? disarmReasonCode : "NONE", text_color=disarmReasonCode != "" ? color.rgb(239, 68, 68) : color.gray, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    // === CURRENT STATE ===
+    table.cell(diagTable, 0, dRow, "--- CURRENT STATE ---", text_color=color.gray, text_size=diagSize, bgcolor=color.rgb(40, 40, 50), text_halign=text.align_center)
+    table.cell(diagTable, 1, dRow, "", bgcolor=color.rgb(40, 40, 50))
+    dRow += 1
+
+    armedDisplayText = isArmed ? (armedDirection == 1 ? "ARMED LONG" : "ARMED SHORT") : "BLOCKED"
+    armedDisplayColor = isArmed ? color.rgb(34, 197, 94) : color.rgb(239, 68, 68)
+    table.cell(diagTable, 0, dRow, "Context State", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, armedDisplayText, text_color=armedDisplayColor, text_size=size.normal, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "Playbook", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, currentPlaybook, text_color=color.rgb(100, 181, 246), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    lockStatusText = enableSessionLock ? (lockedDirection != 0 ? "LOCKED" : "SEEKING") : "DISABLED"
+    lockStatusColor = enableSessionLock ? (lockedDirection != 0 ? color.rgb(34, 197, 94) : color.rgb(234, 179, 8)) : color.gray
+    table.cell(diagTable, 0, dRow, "Session Lock", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, lockStatusText, text_color=lockStatusColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    // === ARM CONDITIONS ===
+    table.cell(diagTable, 0, dRow, "--- ARM CONDITIONS ---", text_color=color.gray, text_size=diagSize, bgcolor=color.rgb(40, 40, 50), text_halign=text.align_center)
+    table.cell(diagTable, 1, dRow, "", bgcolor=color.rgb(40, 40, 50))
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "All 4 Criteria", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, allCriteriaMet ? "PASS" : str.tostring(criteriaMet) + "/4 FAIL", text_color=allCriteriaMet ? color.rgb(34, 171, 148) : color.rgb(239, 83, 80), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    scoreOK = overallScore >= alertStrongThreshold
+    table.cell(diagTable, 0, dRow, "Score >=" + str.tostring(alertStrongThreshold), text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, str.tostring(math.round(overallScore)) + " " + (scoreOK ? "PASS" : "FAIL"), text_color=scoreOK ? color.rgb(34, 171, 148) : color.rgb(239, 83, 80), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    diagMTFOK = mtfAlignCount == 3
+    table.cell(diagTable, 0, dRow, "MTF 3/3", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, str.tostring(mtfAlignCount) + "/3 " + (diagMTFOK ? "PASS" : "FAIL"), text_color=diagMTFOK ? color.rgb(34, 171, 148) : color.rgb(239, 83, 80), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    diagIsBull = trendDirection == 1
+    diagIsBear = trendDirection == -1
+    dirText = diagIsBull ? "BULL" : diagIsBear ? "BEAR" : "MIXED"
+    dirOK = diagIsBull or diagIsBear
+    table.cell(diagTable, 0, dRow, "Direction", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, dirText + " " + (dirOK ? "PASS" : "FAIL"), text_color=dirOK ? color.rgb(34, 171, 148) : color.rgb(239, 83, 80), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    entryShortDiag = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPT" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACC" : str.contains(entryZoneQuality, "DEEP") ? "DEEP" : "EXT"
+    table.cell(diagTable, 0, dRow, "Entry Zone", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, entryShortDiag, text_color=entryZoneColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    table.cell(diagTable, 0, dRow, "Bond Risk", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, bondRiskReason, text_color=bondRiskHigh ? color.orange : color.rgb(34, 171, 148), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    // === ALERT STATUS ===
+    table.cell(diagTable, 0, dRow, "--- ALERT STATUS ---", text_color=color.gray, text_size=diagSize, bgcolor=color.rgb(40, 40, 50), text_halign=text.align_center)
+    table.cell(diagTable, 1, dRow, "", bgcolor=color.rgb(40, 40, 50))
+    dRow += 1
+
+    diagConfirmed = barstate.isconfirmed
+    table.cell(diagTable, 0, dRow, "Bar Confirmed", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, diagConfirmed ? "YES" : "PENDING", text_color=diagConfirmed ? color.rgb(34, 197, 94) : color.rgb(234, 179, 8), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    wouldArmLong = not wasArmed and isArmed and armedDirection == 1
+    wouldArmShort = not wasArmed and isArmed and armedDirection == -1
+    wouldDisarm = wasArmed and not isArmed
+    alertWouldFire = wouldArmLong or wouldArmShort or wouldDisarm
+
+    string alertTypeText = na
+    if alertWouldFire and not diagConfirmed
+        alertTypeText := wouldArmLong ? "ARMED LONG (at close)" : wouldArmShort ? "ARMED SHORT (at close)" : "BLOCKED (at close)"
+    else if alertWouldFire and diagConfirmed
+        alertTypeText := wouldArmLong ? "ARMED LONG CONFIRMED" : wouldArmShort ? "ARMED SHORT CONFIRMED" : "BLOCKED CONFIRMED"
+    else
+        alertTypeText := "NO CHANGE"
+    alertTypeColor = wouldArmLong or wouldArmShort ? color.rgb(34, 197, 94) : wouldDisarm ? color.rgb(239, 83, 80) : color.gray
+
+    table.cell(diagTable, 0, dRow, "Would Fire", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, alertTypeText, text_color=alertTypeColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    candidateText = contextJustCandidateLong ? "CANDIDATE LONG" : contextJustCandidateShort ? "CANDIDATE SHORT" : candidateMeets ? "ACTIVE" : "NO"
+    candidateColor = contextJustCandidate ? color.rgb(234, 179, 8) : candidateMeets ? color.rgb(100, 149, 237) : color.gray
+    table.cell(diagTable, 0, dRow, "Candidate Fire", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, candidateText, text_color=candidateColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+
+
+// ============================================================================
+// ALERT CONDITIONS
+// ============================================================================
+
+lockPassesLong = enableSessionLock ? (isArmed and armedDirection == 1) : true
+lockPassesShort = enableSessionLock ? (isArmed and armedDirection == -1) : true
+
+strongBullishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesStrong and qualityFiltersPassed and mtfAlignCount == 3 and trendDirection == 1 and lockPassesLong)
+strongBearishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesStrong and qualityFiltersPassed and mtfAlignCount == 3 and trendDirection == -1 and lockPassesShort)
+
+perfectBullishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesPerfect and entryIsHotOrOptimal and srProximityPasses and mtfAlignCount == 3 and trendDirection == 1 and rsiAllBull and lockPassesLong)
+perfectBearishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesPerfect and entryIsHotOrOptimal and srProximityPasses and mtfAlignCount == 3 and trendDirection == -1 and rsiAllBear and lockPassesShort)
+
+// ============================================================================
+// 📉 MTF DEGRADATION
+// ============================================================================
+
+var int prev1HDirection = 0
+var int prev4HDirection = 0
+var int prevMTFAlignCount = 0
+var float prevTrendScore = 0.0
+
+h1Direction = mtf1Bullish ? 1 : -1
+h4Direction = mtf2Bullish ? 1 : -1
+
+h1DirectionFlip = prev1HDirection != 0 and h1Direction != prev1HDirection and barstate.isconfirmed
+h4DirectionFlip = prev4HDirection != 0 and h4Direction != prev4HDirection and barstate.isconfirmed
+h4ScoreDrop = prevTrendScore >= mtfDegradationScoreThreshold and trendScore < mtfDegradationScoreThreshold and barstate.isconfirmed
+mtfAlignmentBreak = prevMTFAlignCount == 3 and mtfAlignCount < 3 and barstate.isconfirmed
+
+mtfDegradationCondition = h1DirectionFlip or h4DirectionFlip or h4ScoreDrop or mtfAlignmentBreak
+
+degradationType = h4DirectionFlip ? "4H FLIP" : h4ScoreDrop ? "4H SCORE" : mtfAlignmentBreak ? "MTF BREAK" : h1DirectionFlip ? "1H FLIP" : ""
+
+if barstate.isconfirmed
+    prev1HDirection := h1Direction
+    prev4HDirection := h4Direction
+    prevMTFAlignCount := mtfAlignCount
+    prevTrendScore := trendScore
+
+// ============================================================================
+// ⚠️ RISK WARNING
+// ============================================================================
+
+currentSpread = currentBarRange
+avgSpread = expectedRange
+
+bondEventRiskDetected = (fedRiskActive or nfpRiskActive or auctionRiskActive) and barstate.isconfirmed
+spreadSpikeDetected = spreadWarning and (currentSpread >= avgSpread * riskSpreadMultiplier) and barstate.isconfirmed
+
+riskWarningCondition = bondEventRiskDetected or spreadSpikeDetected
+
+riskType = bondEventRiskDetected ? "EVENT RISK" : spreadSpikeDetected ? "SPREAD SPIKE" : ""
+riskContext = bondEventRiskDetected ? bondRiskReason : spreadSpikeDetected ? str.tostring(math.round(currentSpread / avgSpread * 10) / 10) + "x avg" : ""
+
+// v2.3.0: Short playbook for alerts
+playbookShort = str.contains(lockedPlaybook, "CONTINUATION") ? "CONTINUATION" : str.contains(lockedPlaybook, "DEEP PULLBACK") ? "DEEP PULLBACK" : str.contains(lockedPlaybook, "OBSERVATION") ? "OBSERVATION" : "NO TRADE"
+
+// v2.3.0: TradingView chart link
+chartLink = "https://tradingview.com/chart/?symbol=OANDA:" + syminfo.ticker
+
+// v2.5.0: JSON payload builder replaced by f_buildAlert() — see alert builder functions
+
+
+// ============================================================================
+// REGISTER ALERT CONDITIONS (4-Emoji Standard v2.5.1)
+// ============================================================================
+// alertcondition() messages are static — use closest fixed equivalent
+
+alertcondition(enableContextCandidate and contextJustCandidateLong, 
+     title="CANDIDATE LONG",
+     message='\U0001F7E1 [C] CANDIDATE | {{ticker}} | R-TRANSITION | CONDITIONAL')
+
+alertcondition(enableContextCandidate and contextJustCandidateShort, 
+     title="CANDIDATE SHORT",
+     message='\U0001F7E1 [C] CANDIDATE | {{ticker}} | R-TRANSITION | CONDITIONAL')
+
+alertcondition(enableContextArmed and contextJustArmedLong and barstate.isconfirmed, 
+     title="ARMED LONG",
+     message='\U0001F7E2 [A] ARMED | {{ticker}} | R-EXPANSION | FULL')
+
+alertcondition(enableContextArmed and contextJustArmedShort and barstate.isconfirmed, 
+     title="ARMED SHORT",
+     message='\U0001F7E2 [A] ARMED | {{ticker}} | R-EXPANSION | FULL')
+
+alertcondition(enableContextDisarmed and contextJustDisarmed and barstate.isconfirmed, 
+     title="BLOCKED",
+     message='\U0001F534 [B] BLOCKED | {{ticker}} | R-COMPRESSION | STAND_DOWN')
+
+alertcondition(enableSessionReset and sessionResetEvent, 
+     title="INFO SESSION RESET",
+     message='\u26AA [I] INFO | {{ticker}} | SESSION_RESET')
+
+// ============================================================================
+// DETAILED ALERTS (v2.5.1 — Institutional f_buildAlert)
+// ============================================================================
+
+useAlertPerBar = alertMode == "alert() per bar"
+useAlertBarClose = alertMode == "alert() bar close"
+alertFreq = useAlertBarClose ? alert.freq_once_per_bar_close : alert.freq_once_per_bar
+
+if useAlertPerBar or useAlertBarClose
+    // CANDIDATE alerts (intra-bar awareness)
+    if enableContextCandidate and contextJustCandidateLong
+        alert(
+            f_buildAlert(
+                resolvedAlertType == ALERT_BLOCKED ? ALERT_BLOCKED : ALERT_CANDIDATE,
+                syminfo.ticker,
+                primaryReason,
+                contributingStr,
+                finalPermission,
+                finalPermission == "STAND_DOWN" ? EXECUTION_NONE : EXECUTION_CONDITIONAL,
+                riskCode,
+                math.round(overallScore)
+            ),
+            alert.freq_once_per_bar
+        )
+    
+    if enableContextCandidate and contextJustCandidateShort
+        alert(
+            f_buildAlert(
+                resolvedAlertType == ALERT_BLOCKED ? ALERT_BLOCKED : ALERT_CANDIDATE,
+                syminfo.ticker,
+                primaryReason,
+                contributingStr,
+                finalPermission,
+                finalPermission == "STAND_DOWN" ? EXECUTION_NONE : EXECUTION_CONDITIONAL,
+                riskCode,
+                math.round(overallScore)
+            ),
+            alert.freq_once_per_bar
+        )
+    
+    // ARMED alerts (bar close confirmed)
+    if enableContextArmed and contextJustArmedLong and barstate.isconfirmed
+        alert(
+            f_buildAlert(
+                resolvedAlertType,
+                syminfo.ticker,
+                primaryReason,
+                contributingStr,
+                finalPermission,
+                resolvedExecution,
+                riskCode,
+                math.round(overallScore)
+            ),
+            alertFreq
+        )
+    
+    if enableContextArmed and contextJustArmedShort and barstate.isconfirmed
+        alert(
+            f_buildAlert(
+                resolvedAlertType,
+                syminfo.ticker,
+                primaryReason,
+                contributingStr,
+                finalPermission,
+                resolvedExecution,
+                riskCode,
+                math.round(overallScore)
+            ),
+            alertFreq
+        )
+    
+    // BLOCKED alerts (disarm event)
+    if enableContextDisarmed and contextJustDisarmed and barstate.isconfirmed
+        alert(
+            f_buildAlert(
+                ALERT_BLOCKED,
+                syminfo.ticker,
+                primaryReason,
+                contributingStr,
+                "STAND_DOWN",
+                EXECUTION_NONE,
+                riskCode,
+                math.round(overallScore)
+            ),
+            alertFreq
+        )
+    
+    // INFO alerts (session reset)
+    if enableSessionReset and sessionResetEvent
+        alert(
+            f_buildAlert(
+                ALERT_INFO,
+                syminfo.ticker,
+                "SESSION_RESET",
+                currentSession,
+                "STAND_DOWN",
+                EXECUTION_NONE,
+                riskCode,
+                0
+            ),
+            alert.freq_once_per_bar
+        )
+
+// ============================================================================
+// END OF UTCC BONDS v2.5.1
+// ============================================================================

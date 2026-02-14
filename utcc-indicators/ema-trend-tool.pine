@@ -1,0 +1,665 @@
+//@version=6
+indicator("Advanced Forex EMA Trend Tool - MTF & Price Action", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                   ADVANCED FOREX EMA TREND TOOL v1.0                         ║
+// ║              Multi-Timeframe Analysis & Price Action System                  ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// 📊 OVERVIEW:
+// This professional-grade indicator combines EMA trend analysis with multi-timeframe
+// confirmation, advanced filters, and price action detection for high-probability
+// forex trading setups.
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 🎯 KEY FEATURES:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// 1. EMA SYSTEM (4 Moving Averages)
+//    • Fast EMA (9) - Short-term momentum
+//    • Medium EMA (21) - Primary signal line
+//    • Slow EMA (50) - Trend confirmation
+//    • HTF Trend EMA (200) - Major trend filter
+//    • Ribbon visualization between Fast and Slow EMAs
+//
+// 2. MULTI-TIMEFRAME ANALYSIS
+//    • Track trend alignment across 3 timeframes simultaneously
+//    • Separate MTF table shows each timeframe's direction
+//    • Full alignment alerts when all timeframes agree
+//    • Contributes to overall trend strength score
+//
+// 3. ADVANCED FILTERS
+//    • HTF Trend Filter - Only trade with higher timeframe direction
+//    • ADX Filter - Avoid choppy, ranging markets (default: 20)
+//    • ATR Volatility Filter - Only trade during active market conditions
+//    • Session Filter - Optional trading window restrictions
+//
+// 4. PRICE ACTION FEATURES
+//    • Swing High/Low Detection - Automatic support/resistance levels
+//    • EMA Touch Detection - Identifies pullbacks to key EMAs
+//    • Pin Bar Detection - Spots reversal patterns at EMA levels
+//
+// 5. SIGNAL TYPES
+//    • Crossover Signals - Fast/Medium EMA crosses (filtered)
+//    • Pullback Signals - Price retest of EMAs in trending markets
+//    • Pin Bar Signals - Reversal candles at key levels
+//
+// 6. TREND STRENGTH SCORE (0-100)
+//    Composite scoring system based on:
+//    • EMA alignment (40 points)
+//    • HTF trend direction (20 points)
+//    • ADX momentum (20 points)
+//    • MTF alignment (20 points)
+//    ► Trade only when score ≥ 80 for highest probability setups
+//
+// 7. PROFESSIONAL DASHBOARDS
+//    • Main Dashboard - All key metrics in one place
+//    • MTF Table - Separate timeframe alignment display
+//    • Fully customizable colors, sizes, and positions
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 📖 HOW TO USE:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// RECOMMENDED SETTINGS BY TRADING STYLE:
+//
+// 🔹 SCALPING (M5-M15 charts)
+//    • MTF Timeframes: 15 / 60 / 240
+//    • HTF Trend Filter: H4
+//    • ADX Threshold: 20
+//    • Focus on: Pullback signals + Pin bars
+//
+// 🔹 DAY TRADING (H1-H4 charts)
+//    • MTF Timeframes: 60 / 240 / D
+//    • HTF Trend Filter: Daily
+//    • ADX Threshold: 20
+//    • Focus on: All signal types
+//
+// 🔹 SWING TRADING (H4-Daily charts)
+//    • MTF Timeframes: 240 / D / W
+//    • HTF Trend Filter: Weekly
+//    • ADX Threshold: 25
+//    • Focus on: Crossover signals
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 🎓 TRADING STRATEGY GUIDE:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// HIGH PROBABILITY SETUP CHECKLIST:
+// ✓ Trend Strength Score ≥ 80
+// ✓ All 3 MTF timeframes aligned (Full Bull/Bear)
+// ✓ ADX > threshold (Trending, not Choppy)
+// ✓ ATR Filter active (sufficient volatility)
+// ✓ Price above/below HTF Trend EMA with correct slope
+// ✓ Session filter active (if enabled)
+//
+// ENTRY STRATEGIES:
+//
+// 1. AGGRESSIVE (Crossover Entry)
+//    • Wait for Fast EMA to cross Medium EMA
+//    • All filters must be green
+//    • Enter on crossover signal
+//    • Stop: Below/above recent swing level
+//
+// 2. CONSERVATIVE (Pullback Entry)
+//    • Wait for crossover to establish trend
+//    • Wait for price to pull back to Medium EMA
+//    • Enter on "PB" signal when price touches EMA
+//    • Stop: Below/above the pullback candle
+//
+// 3. CONFIRMATION (Pin Bar Entry)
+//    • Wait for established trend
+//    • Look for pin bar diamond signals at EMAs
+//    • Enter on next candle after pin bar
+//    • Stop: Beyond pin bar wick
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// ⚙️ CUSTOMIZATION GUIDE:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// EMA SETTINGS:
+// • Adjust lengths for different market speeds
+// • Faster = more signals (more noise)
+// • Slower = fewer signals (more reliable)
+//
+// VISUAL CUSTOMIZATION:
+// • Each EMA has individual color and width controls
+// • Ribbon fill shows trend direction visually
+// • Background color provides HTF trend context
+// • All signals have customizable colors
+//
+// FILTER TUNING:
+// • ADX Threshold: Lower = more signals, Higher = stronger trends only
+// • ATR Multiplier: Higher = only high volatility periods
+// • EMA Touch Tolerance: Adjust for different pip values
+//
+// DASHBOARD LAYOUT:
+// • Main Dashboard: Shows all metrics and filters
+// • MTF Table: Independent position control
+// • Choose "Auto" for smart positioning or manual placement
+// • Both tables share color scheme for consistency
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 🚨 ALERT TYPES:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Available alerts (set in TradingView alert panel):
+// • 🟢 Buy Cross Alert - Bullish crossover with all filters aligned
+// • 🔴 Sell Cross Alert - Bearish crossover with all filters aligned
+// • 🔵 Buy Pullback Alert - Bullish pullback to EMA
+// • 🟠 Sell Pullback Alert - Bearish pullback to EMA
+// • 💎 Pin Bar Alerts - Reversal patterns at EMAs
+// • ⭐ Full MTF Alignment - All timeframes agree
+// • 🚀 Strong Trend Alerts - Trend score reaches 80+
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 📊 DASHBOARD INTERPRETATION:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// MAIN DASHBOARD METRICS:
+// • EMA Trend: Current chart timeframe trend direction
+// • HTF Trend: Higher timeframe trend with slope (Up/Down/Flat)
+// • ADX: Momentum reading (Trending vs Choppy)
+// • ATR Filter: Volatility status (Active vs Low)
+// • Trend Score: Overall setup quality (0-100)
+// • Dist to Slow EMA: Current price distance from trend
+// • Session: Trading window status (if filter enabled)
+//
+// MTF TABLE:
+// • Shows trend direction for each selected timeframe
+// • Green = Bullish, Red = Bearish
+// • Look for all three aligned for strongest setups
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// ⚠️ RISK MANAGEMENT TIPS:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// 1. NEVER trade without confirming trend score ≥ 80
+// 2. Use swing levels (horizontal lines) for stop placement
+// 3. Avoid trading during major news events
+// 4. Risk 1-2% of account per trade maximum
+// 5. Take partial profits at key swing levels
+// 6. Trail stop to breakeven after 1:1 risk/reward
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 📝 NOTES:
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// • Best results on major forex pairs (EUR/USD, GBP/USD, USD/JPY)
+// • Works on any timeframe but designed for H1 and above
+// • Combine with proper risk management for consistent results
+// • Backtest settings on your preferred pairs before live trading
+// • This indicator provides signals - YOU make the trading decisions
+//
+// ════════════════════════════════════════════════════════════════════════════════
+// 👨‍💻 DEVELOPER: Custom Forex Trading Tool
+// 📅 VERSION: 1.0
+// 🔄 LAST UPDATED: 2025
+// ════════════════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 1: EMA SETTINGS ===
+// ════════════════════════════════════════════════════════════════════════════════
+fastLength = input.int(9, "Fast EMA Length", minval=1, group="EMA Settings")
+midLength = input.int(21, "Medium EMA Length", minval=1, group="EMA Settings")
+slowLength = input.int(50, "Slow EMA Length", minval=1, group="EMA Settings")
+htfLength = input.int(200, "HTF Trend EMA Length", minval=1, group="EMA Settings")
+
+emaTF = input.timeframe("", "EMA Timeframe (empty = current)", group="EMA Settings")
+htfTF = input.timeframe("240", "HTF Trend Filter Timeframe", group="EMA Settings")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 2: EMA VISUAL CUSTOMIZATION ===
+// ════════════════════════════════════════════════════════════════════════════════
+showFastEMA = input.bool(true, "Show Fast EMA", group="EMA Display", inline="fast")
+fastColor = input.color(color.new(#00bcd4, 0), "", group="EMA Display", inline="fast")
+fastWidth = input.int(2, "", minval=1, maxval=5, group="EMA Display", inline="fast")
+
+showMidEMA = input.bool(true, "Show Medium EMA", group="EMA Display", inline="mid")
+midColor = input.color(color.new(#ff9800, 0), "", group="EMA Display", inline="mid")
+midWidth = input.int(2, "", minval=1, maxval=5, group="EMA Display", inline="mid")
+
+showSlowEMA = input.bool(true, "Show Slow EMA", group="EMA Display", inline="slow")
+slowColor = input.color(color.new(#9c27b0, 0), "", group="EMA Display", inline="slow")
+slowWidth = input.int(2, "", minval=1, maxval=5, group="EMA Display", inline="slow")
+
+showTrendEMA = input.bool(true, "Show HTF Trend EMA", group="EMA Display", inline="trend")
+trendColor = input.color(color.new(#ffeb3b, 0), "", group="EMA Display", inline="trend")
+trendWidth = input.int(3, "", minval=1, maxval=5, group="EMA Display", inline="trend")
+
+// Ribbon Fill Customization
+showRibbon = input.bool(true, "Show EMA Ribbon Fill", group="EMA Display", inline="rib1")
+ribbonBullColor = input.color(color.new(#4caf50, 85), "Bull", group="EMA Display", inline="rib1")
+ribbonBearColor = input.color(color.new(#f44336, 85), "Bear", group="EMA Display", inline="rib1")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 3: FILTERS & CONFIRMATIONS ===
+// ════════════════════════════════════════════════════════════════════════════════
+useHTFFilter = input.bool(true, "Use HTF Trend Filter", group="Filters")
+useADX = input.bool(true, "Use ADX Filter", group="Filters")
+adxLength = input.int(14, "ADX Length", minval=1, group="Filters")
+adxSmoothing = input.int(14, "ADX Smoothing", minval=1, group="Filters")
+adxThreshold = input.float(20.0, "ADX Threshold", minval=1.0, group="Filters")
+
+useATRFilter = input.bool(true, "Use ATR Volatility Filter", group="Filters")
+atrLength = input.int(14, "ATR Length", minval=1, group="Filters")
+atrMultiplier = input.float(1.2, "ATR Multiplier (vs MA)", minval=0.5, step=0.1, group="Filters")
+
+useSessionFilter = input.bool(false, "Trade Only Major Sessions", group="Filters")
+sessionStart = input.string("0300-0000", "Session Time (24h format)", group="Filters", tooltip="Format: HHMM-HHMM:Days (e.g., 0300-1700:23456 for Mon-Fri 3am-5pm ET)")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 4: MULTI-TIMEFRAME ANALYSIS ===
+// ════════════════════════════════════════════════════════════════════════════════
+useMTF = input.bool(true, "Enable MTF Alignment Analysis", group="Multi-Timeframe")
+mtf1 = input.timeframe("15", "MTF 1 (Lower)", group="Multi-Timeframe")
+mtf2 = input.timeframe("60", "MTF 2 (Middle)", group="Multi-Timeframe")
+mtf3 = input.timeframe("240", "MTF 3 (Higher)", group="Multi-Timeframe")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 5: PRICE ACTION FEATURES ===
+// ════════════════════════════════════════════════════════════════════════════════
+showSwingLevels = input.bool(true, "Show Swing High/Low Levels", group="Price Action")
+swingLength = input.int(10, "Swing Detection Length", minval=3, group="Price Action")
+swingLineColor = input.color(color.new(#2196f3, 50), "Swing Level Color", group="Price Action")
+swingLineWidth = input.int(1, "Swing Line Width", minval=1, maxval=3, group="Price Action")
+swingLineStyle = input.string("Dashed", "Swing Line Style", options=["Solid", "Dashed", "Dotted"], group="Price Action")
+
+detectEMATouch = input.bool(true, "Detect EMA Touch/Pullback", group="Price Action")
+emaTouchTolerance = input.float(0.1, "EMA Touch Tolerance %", minval=0.01, step=0.01, group="Price Action")
+
+detectPinBars = input.bool(true, "Detect Pin Bars at EMAs", group="Price Action")
+pinBarRatio = input.float(2.0, "Pin Bar Wick/Body Ratio", minval=1.5, step=0.1, group="Price Action")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 6: SIGNALS & ALERTS ===
+// ════════════════════════════════════════════════════════════════════════════════
+showCrossSignals = input.bool(true, "Show Crossover Signals", group="Signals")
+showPullbackSignals = input.bool(true, "Show Pullback Signals", group="Signals")
+
+signalBuyColor = input.color(color.new(#00e676, 0), "Buy Signal Color", group="Signals", inline="sig1")
+signalSellColor = input.color(color.new(#ff1744, 0), "Sell Signal Color", group="Signals", inline="sig1")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 7: BACKGROUND & VISUAL AIDS ===
+// ════════════════════════════════════════════════════════════════════════════════
+showBG = input.bool(true, "Show Trend Background", group="Visual Aids")
+bgBullColor = input.color(color.new(#4caf50, 92), "Bullish BG", group="Visual Aids", inline="bg1")
+bgBearColor = input.color(color.new(#f44336, 92), "Bearish BG", group="Visual Aids", inline="bg1")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SECTION 8: DASHBOARD CUSTOMIZATION ===
+// ════════════════════════════════════════════════════════════════════════════════
+showDashboard = input.bool(true, "Show Dashboard", group="Dashboard")
+dashPosition = input.string("Top Right", "Position", options=["Top Left", "Top Right", "Bottom Left", "Bottom Right", "Middle Right"], group="Dashboard")
+dashSize = input.string("Normal", "Text Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group="Dashboard")
+dashBGColor = input.color(color.new(#263238, 15), "Background Color", group="Dashboard")
+dashTextColor = input.color(color.new(#ffffff, 0), "Text Color", group="Dashboard")
+dashBorderColor = input.color(color.new(#00bcd4, 0), "Border Color", group="Dashboard")
+
+showMTFTable = input.bool(true, "Show MTF Alignment Table", group="Dashboard")
+mtfTablePosition = input.string("Auto (Opposite Side)", "MTF Table Position", options=["Auto (Opposite Side)", "Top Left", "Top Right", "Bottom Left", "Bottom Right", "Middle Left", "Middle Right"], group="Dashboard")
+showTrendScore = input.bool(true, "Show Trend Strength Score", group="Dashboard")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: EMAs ===
+// ════════════════════════════════════════════════════════════════════════════════
+fastEMA = request.security(syminfo.tickerid, emaTF, ta.ema(close, fastLength), gaps=barmerge.gaps_off)
+midEMA = request.security(syminfo.tickerid, emaTF, ta.ema(close, midLength), gaps=barmerge.gaps_off)
+slowEMA = request.security(syminfo.tickerid, emaTF, ta.ema(close, slowLength), gaps=barmerge.gaps_off)
+trendEMA = request.security(syminfo.tickerid, htfTF, ta.ema(close, htfLength), gaps=barmerge.gaps_off)
+
+trendSlopeUp = trendEMA > trendEMA[1]
+trendSlopeDown = trendEMA < trendEMA[1]
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: ADX ===
+// ════════════════════════════════════════════════════════════════════════════════
+upMove = high - high[1]
+downMove = low[1] - low
+plusDM = (upMove > downMove and upMove > 0) ? upMove : 0.0
+minusDM = (downMove > upMove and downMove > 0) ? downMove : 0.0
+trueRange = math.max(high - low, math.max(math.abs(high - close[1]), math.abs(low - close[1])))
+
+plusDM_rma = ta.rma(plusDM, adxLength)
+minusDM_rma = ta.rma(minusDM, adxLength)
+tr_rma = ta.rma(trueRange, adxLength)
+
+plusDI = tr_rma > 0 ? 100.0 * (plusDM_rma / tr_rma) : 0.0
+minusDI = tr_rma > 0 ? 100.0 * (minusDM_rma / tr_rma) : 0.0
+dx = (plusDI + minusDI > 0) ? 100.0 * (math.abs(plusDI - minusDI) / (plusDI + minusDI)) : 0.0
+adxValue = ta.rma(dx, adxSmoothing)
+adxFilter = not useADX or adxValue > adxThreshold
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: ATR Filter ===
+// ════════════════════════════════════════════════════════════════════════════════
+atrValue = ta.atr(atrLength)
+atrMA = ta.sma(atrValue, 50)
+atrFilter = not useATRFilter or atrValue > (atrMA * atrMultiplier)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: Session Filter ===
+// ════════════════════════════════════════════════════════════════════════════════
+sessionTime = time(timeframe.period, sessionStart)
+inSession = not useSessionFilter or not na(sessionTime)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: Multi-Timeframe Alignment ===
+// ════════════════════════════════════════════════════════════════════════════════
+mtf1Bullish = request.security(syminfo.tickerid, mtf1, ta.ema(close, fastLength) > ta.ema(close, slowLength), gaps=barmerge.gaps_off)
+mtf2Bullish = request.security(syminfo.tickerid, mtf2, ta.ema(close, fastLength) > ta.ema(close, slowLength), gaps=barmerge.gaps_off)
+mtf3Bullish = request.security(syminfo.tickerid, mtf3, ta.ema(close, fastLength) > ta.ema(close, slowLength), gaps=barmerge.gaps_off)
+
+mtfBullCount = (mtf1Bullish ? 1 : 0) + (mtf2Bullish ? 1 : 0) + (mtf3Bullish ? 1 : 0)
+mtfBearCount = (not mtf1Bullish ? 1 : 0) + (not mtf2Bullish ? 1 : 0) + (not mtf3Bullish ? 1 : 0)
+mtfFullAlignment = mtfBullCount == 3 or mtfBearCount == 3
+mtfAlignmentBullish = mtfBullCount == 3
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: Trend Strength Score ===
+// ════════════════════════════════════════════════════════════════════════════════
+trendScore = 0.0
+trendScore += (fastEMA > midEMA ? 20 : 0)
+trendScore += (midEMA > slowEMA ? 20 : 0)
+trendScore += (close > trendEMA and trendSlopeUp ? 20 : 0)
+trendScore += (adxValue > adxThreshold ? 20 : 0)
+trendScore += (mtfFullAlignment and mtfAlignmentBullish ? 20 : 0)
+
+// Bearish score
+trendScoreBear = 0.0
+trendScoreBear += (fastEMA < midEMA ? 20 : 0)
+trendScoreBear += (midEMA < slowEMA ? 20 : 0)
+trendScoreBear += (close < trendEMA and trendSlopeDown ? 20 : 0)
+trendScoreBear += (adxValue > adxThreshold ? 20 : 0)
+trendScoreBear += (mtfFullAlignment and not mtfAlignmentBullish ? 20 : 0)
+
+finalTrendScore = math.max(trendScore, trendScoreBear)
+strongTrend = finalTrendScore >= 80
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: Price Action - Swing Levels ===
+// ════════════════════════════════════════════════════════════════════════════════
+swingHigh = ta.pivothigh(high, swingLength, swingLength)
+swingLow = ta.pivotlow(low, swingLength, swingLength)
+
+var float lastSwingHigh = na
+var float lastSwingLow = na
+var int swingHighBar = na
+var int swingLowBar = na
+
+if not na(swingHigh)
+    lastSwingHigh := swingHigh
+    swingHighBar := bar_index - swingLength
+
+if not na(swingLow)
+    lastSwingLow := swingLow
+    swingLowBar := bar_index - swingLength
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: EMA Touch Detection ===
+// ════════════════════════════════════════════════════════════════════════════════
+touchingMid = math.abs(close - midEMA) / close * 100 < emaTouchTolerance
+touchingSlow = math.abs(close - slowEMA) / close * 100 < emaTouchTolerance
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === CALCULATIONS: Pin Bar Detection ===
+// ════════════════════════════════════════════════════════════════════════════════
+bodySize = math.abs(close - open)
+candleRange = high - low
+upperWick = high - math.max(close, open)
+lowerWick = math.min(close, open) - low
+
+bullPin = lowerWick > bodySize * pinBarRatio and upperWick < bodySize and close > open and bodySize > 0
+bearPin = upperWick > bodySize * pinBarRatio and lowerWick < bodySize and close < open and bodySize > 0
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === SIGNAL LOGIC ===
+// ════════════════════════════════════════════════════════════════════════════════
+// Crossover Signals
+bullCross = ta.crossover(fastEMA, midEMA)
+bearCross = ta.crossunder(fastEMA, midEMA)
+
+htfConditionBull = not useHTFFilter or (close > trendEMA and trendSlopeUp)
+htfConditionBear = not useHTFFilter or (close < trendEMA and trendSlopeDown)
+
+longCrossSignal = bullCross and htfConditionBull and adxFilter and atrFilter and inSession
+shortCrossSignal = bearCross and htfConditionBear and adxFilter and atrFilter and inSession
+
+// Pullback Signals
+pullbackBuySignal = touchingMid and close > midEMA and fastEMA > slowEMA and htfConditionBull and adxFilter and atrFilter and inSession
+pullbackSellSignal = touchingMid and close < midEMA and fastEMA < slowEMA and htfConditionBear and adxFilter and atrFilter and inSession
+
+// Pin Bar Signals at EMAs
+pinBuySignal = bullPin and (touchingMid or touchingSlow) and fastEMA > slowEMA and htfConditionBull and detectPinBars
+pinSellSignal = bearPin and (touchingMid or touchingSlow) and fastEMA < slowEMA and htfConditionBear and detectPinBars
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PLOTTING: EMAs ===
+// ════════════════════════════════════════════════════════════════════════════════
+plot(showFastEMA ? fastEMA : na, color=fastColor, linewidth=fastWidth, title="Fast EMA")
+plot(showMidEMA ? midEMA : na, color=midColor, linewidth=midWidth, title="Medium EMA")
+plot(showSlowEMA ? slowEMA : na, color=slowColor, linewidth=slowWidth, title="Slow EMA")
+plot(showTrendEMA ? trendEMA : na, color=trendColor, linewidth=trendWidth, title="HTF Trend EMA")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PLOTTING: Ribbon Fill ===
+// ════════════════════════════════════════════════════════════════════════════════
+ribbonBull = fastEMA > slowEMA
+ribbonColorFill = ribbonBull ? ribbonBullColor : ribbonBearColor
+p1 = plot(showRibbon ? fastEMA : na, display=display.none, title="Ribbon Top")
+p2 = plot(showRibbon ? slowEMA : na, display=display.none, title="Ribbon Bottom")
+fill(p1, p2, color=ribbonColorFill, title="EMA Ribbon")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PLOTTING: Swing Levels ===
+// ════════════════════════════════════════════════════════════════════════════════
+lineStyleConvert = swingLineStyle == "Solid" ? line.style_solid : swingLineStyle == "Dashed" ? line.style_dashed : line.style_dotted
+
+var line swingHighLine = na
+var line swingLowLine = na
+
+if showSwingLevels and not na(lastSwingHigh)
+    line.delete(swingHighLine)
+    swingHighLine := line.new(bar_index - 50, lastSwingHigh, bar_index + 10, lastSwingHigh, 
+                              color=swingLineColor, width=swingLineWidth, style=lineStyleConvert, extend=extend.right)
+
+if showSwingLevels and not na(lastSwingLow)
+    line.delete(swingLowLine)
+    swingLowLine := line.new(bar_index - 50, lastSwingLow, bar_index + 10, lastSwingLow, 
+                             color=swingLineColor, width=swingLineWidth, style=lineStyleConvert, extend=extend.right)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PLOTTING: Signals ===
+// ════════════════════════════════════════════════════════════════════════════════
+plotshape(showCrossSignals and longCrossSignal, title="Buy Cross Signal", location=location.belowbar,
+          color=signalBuyColor, style=shape.triangleup, size=size.small, text="BUY")
+plotshape(showCrossSignals and shortCrossSignal, title="Sell Cross Signal", location=location.abovebar,
+          color=signalSellColor, style=shape.triangledown, size=size.small, text="SELL")
+
+plotshape(showPullbackSignals and detectEMATouch and pullbackBuySignal, title="Buy Pullback", location=location.belowbar,
+          color=signalBuyColor, style=shape.circle, size=size.tiny, text="PB")
+plotshape(showPullbackSignals and detectEMATouch and pullbackSellSignal, title="Sell Pullback", location=location.abovebar,
+          color=signalSellColor, style=shape.circle, size=size.tiny, text="PB")
+
+plotshape(pinBuySignal, title="Pin Bar Buy", location=location.belowbar,
+          color=color.new(color.lime, 0), style=shape.diamond, size=size.tiny)
+plotshape(pinSellSignal, title="Pin Bar Sell", location=location.abovebar,
+          color=color.new(color.orange, 0), style=shape.diamond, size=size.tiny)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PLOTTING: Background ===
+// ════════════════════════════════════════════════════════════════════════════════
+bgColor = showBG ? (trendSlopeUp ? bgBullColor : trendSlopeDown ? bgBearColor : na) : na
+bgcolor(bgColor, title="Trend Background")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === DASHBOARD ===
+// ════════════════════════════════════════════════════════════════════════════════
+if showDashboard and barstate.islast
+    // Position
+    dashPos = dashPosition == "Top Left" ? position.top_left : 
+              dashPosition == "Top Right" ? position.top_right :
+              dashPosition == "Bottom Left" ? position.bottom_left :
+              dashPosition == "Bottom Right" ? position.bottom_right : position.middle_right
+    
+    // Size
+    actualDashSize = dashSize == "Tiny" ? size.tiny : dashSize == "Small" ? size.small :
+                     dashSize == "Normal" ? size.normal : dashSize == "Large" ? size.large : size.huge
+    
+    // Main Dashboard Table
+    var table mainTable = table.new(dashPos, 2, 8, border_width=2, border_color=dashBorderColor, bgcolor=dashBGColor)
+    
+    // Header
+    table.cell(mainTable, 0, 0, "METRIC", text_color=dashTextColor, bgcolor=color.new(dashBorderColor, 70), text_size=actualDashSize)
+    table.cell(mainTable, 1, 0, "VALUE", text_color=dashTextColor, bgcolor=color.new(dashBorderColor, 70), text_size=actualDashSize)
+    
+    // EMA Trend
+    emaTrend = fastEMA > slowEMA ? "BULLISH ▲" : "BEARISH ▼"
+    emaTrendColor = fastEMA > slowEMA ? color.green : color.red
+    table.cell(mainTable, 0, 1, "EMA Trend", text_color=dashTextColor, text_size=actualDashSize)
+    table.cell(mainTable, 1, 1, emaTrend, text_color=emaTrendColor, text_size=actualDashSize)
+    
+    // HTF Trend
+    htfTrend = close > trendEMA ? (trendSlopeUp ? "BULL UP ⬆" : "BULL FLAT →") : 
+               (trendSlopeDown ? "BEAR DOWN ⬇" : "BEAR FLAT →")
+    htfColor = close > trendEMA and trendSlopeUp ? color.green : 
+               close < trendEMA and trendSlopeDown ? color.red : color.gray
+    table.cell(mainTable, 0, 2, "HTF (" + htfTF + ")", text_color=dashTextColor, text_size=actualDashSize)
+    table.cell(mainTable, 1, 2, htfTrend, text_color=htfColor, text_size=actualDashSize)
+    
+    // ADX
+    adxStatus = adxValue > adxThreshold ? "TRENDING ✓" : "CHOPPY ✗"
+    adxColor = adxValue > adxThreshold ? color.green : color.orange
+    table.cell(mainTable, 0, 3, "ADX", text_color=dashTextColor, text_size=actualDashSize)
+    table.cell(mainTable, 1, 3, str.tostring(adxValue, "#.#") + " " + adxStatus, text_color=adxColor, text_size=actualDashSize)
+    
+    // ATR Filter
+    if useATRFilter
+        atrStatus = atrValue > (atrMA * atrMultiplier) ? "ACTIVE ✓" : "LOW ✗"
+        atrColor = atrValue > (atrMA * atrMultiplier) ? color.green : color.orange
+        table.cell(mainTable, 0, 4, "ATR Filter", text_color=dashTextColor, text_size=actualDashSize)
+        table.cell(mainTable, 1, 4, atrStatus, text_color=atrColor, text_size=actualDashSize)
+    
+    // Trend Strength Score
+    if showTrendScore
+        scoreText = str.tostring(finalTrendScore, "#") + "/100"
+        scoreColor = finalTrendScore >= 80 ? color.green : finalTrendScore >= 60 ? color.yellow : 
+                     finalTrendScore >= 40 ? color.orange : color.red
+        table.cell(mainTable, 0, 5, "Trend Score", text_color=dashTextColor, text_size=actualDashSize)
+        table.cell(mainTable, 1, 5, scoreText, text_color=scoreColor, text_size=actualDashSize)
+    
+    // Distance to Slow EMA
+    distToSlow = (close - slowEMA) / slowEMA * 100
+    distText = str.tostring(distToSlow, "#.##") + "%"
+    distColor = distToSlow > 0 ? color.green : color.red
+    table.cell(mainTable, 0, 6, "Dist to Slow EMA", text_color=dashTextColor, text_size=actualDashSize)
+    table.cell(mainTable, 1, 6, distText, text_color=distColor, text_size=actualDashSize)
+    
+    // Session Status
+    if useSessionFilter
+        sessionStatus = inSession ? "ACTIVE ✓" : "CLOSED ✗"
+        sessionColor = inSession ? color.green : color.red
+        table.cell(mainTable, 0, 7, "Session", text_color=dashTextColor, text_size=actualDashSize)
+        table.cell(mainTable, 1, 7, sessionStatus, text_color=sessionColor, text_size=actualDashSize)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === MTF ALIGNMENT TABLE ===
+// ════════════════════════════════════════════════════════════════════════════════
+if showMTFTable and useMTF and barstate.islast
+    // Determine MTF table position
+    mtfPos = position.top_left  // default
+    
+    if mtfTablePosition == "Auto (Opposite Side)"
+        // Place on opposite side of main dashboard
+        mtfPos := (dashPosition == "Top Left" or dashPosition == "Bottom Left") ? position.top_right : position.top_left
+    else if mtfTablePosition == "Top Left"
+        mtfPos := position.top_left
+    else if mtfTablePosition == "Top Right"
+        mtfPos := position.top_right
+    else if mtfTablePosition == "Bottom Left"
+        mtfPos := position.bottom_left
+    else if mtfTablePosition == "Bottom Right"
+        mtfPos := position.bottom_right
+    else if mtfTablePosition == "Middle Left"
+        mtfPos := position.middle_left
+    else if mtfTablePosition == "Middle Right"
+        mtfPos := position.middle_right
+    
+    actualDashSize2 = dashSize == "Tiny" ? size.tiny : dashSize == "Small" ? size.small :
+                      dashSize == "Normal" ? size.normal : dashSize == "Large" ? size.large : size.huge
+    
+    var table mtfTable = table.new(mtfPos, 2, 4, border_width=2, border_color=dashBorderColor, bgcolor=dashBGColor)
+    
+    // Header
+    table.cell(mtfTable, 0, 0, "TIMEFRAME", text_color=dashTextColor, bgcolor=color.new(dashBorderColor, 70), text_size=actualDashSize2)
+    table.cell(mtfTable, 1, 0, "TREND", text_color=dashTextColor, bgcolor=color.new(dashBorderColor, 70), text_size=actualDashSize2)
+    
+    // MTF 1
+    mtf1Status = mtf1Bullish ? "BULL ▲" : "BEAR ▼"
+    mtf1ColorCell = mtf1Bullish ? color.green : color.red
+    table.cell(mtfTable, 0, 1, mtf1, text_color=dashTextColor, text_size=actualDashSize2)
+    table.cell(mtfTable, 1, 1, mtf1Status, text_color=mtf1ColorCell, text_size=actualDashSize2)
+    
+    // MTF 2
+    mtf2Status = mtf2Bullish ? "BULL ▲" : "BEAR ▼"
+    mtf2ColorCell = mtf2Bullish ? color.green : color.red
+    table.cell(mtfTable, 0, 2, mtf2, text_color=dashTextColor, text_size=actualDashSize2)
+    table.cell(mtfTable, 1, 2, mtf2Status, text_color=mtf2ColorCell, text_size=actualDashSize2)
+    
+    // MTF 3
+    mtf3Status = mtf3Bullish ? "BULL ▲" : "BEAR ▼"
+    mtf3ColorCell = mtf3Bullish ? color.green : color.red
+    table.cell(mtfTable, 0, 3, mtf3, text_color=dashTextColor, text_size=actualDashSize2)
+    table.cell(mtfTable, 1, 3, mtf3Status, text_color=mtf3ColorCell, text_size=actualDashSize2)
+    
+    // Alignment Summary (optional 4th row)
+    // mtfAlignmentText = mtfFullAlignment ? (mtfAlignmentBullish ? "🟢 FULL BULL" : "🔴 FULL BEAR") : "⚠️ MIXED"
+    // table.cell(mtfTable, 0, 4, "ALIGNMENT", text_color=dashTextColor, text_size=dashSizeConvert)
+    // table.cell(mtfTable, 1, 4, mtfAlignmentText, text_color=color.white, text_size=dashSizeConvert)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === ALERTS ===
+// ════════════════════════════════════════════════════════════════════════════════
+alertcondition(longCrossSignal, title="🟢 Buy Cross Alert", message="{{ticker}} - EMA Bullish Crossover | Price: {{close}} | HTF: Aligned | ADX: {{plot_0}}")
+alertcondition(shortCrossSignal, title="🔴 Sell Cross Alert", message="{{ticker}} - EMA Bearish Crossover | Price: {{close}} | HTF: Aligned | ADX: {{plot_0}}")
+alertcondition(pullbackBuySignal and detectEMATouch, title="🔵 Buy Pullback Alert", message="{{ticker}} - Bullish Pullback to EMA | Price: {{close}}")
+alertcondition(pullbackSellSignal and detectEMATouch, title="🟠 Sell Pullback Alert", message="{{ticker}} - Bearish Pullback to EMA | Price: {{close}}")
+alertcondition(pinBuySignal, title="💎 Pin Bar Buy Alert", message="{{ticker}} - Bullish Pin Bar at EMA | Price: {{close}}")
+alertcondition(pinSellSignal, title="💎 Pin Bar Sell Alert", message="{{ticker}} - Bearish Pin Bar at EMA | Price: {{close}}")
+alertcondition(mtfFullAlignment and mtfAlignmentBullish, title="⭐ Full MTF Bull Alignment", message="{{ticker}} - All timeframes aligned BULLISH")
+alertcondition(mtfFullAlignment and not mtfAlignmentBullish, title="⭐ Full MTF Bear Alignment", message="{{ticker}} - All timeframes aligned BEARISH")
+alertcondition(strongTrend and trendScore >= 80, title="🚀 Strong Bullish Trend", message="{{ticker}} - Strong Bullish Trend Detected | Score: 80+")
+alertcondition(strongTrend and trendScoreBear >= 80, title="🚀 Strong Bearish Trend", message="{{ticker}} - Strong Bearish Trend Detected | Score: 80+")
+
+// ════════════════════════════════════════════════════════════════════════════════
+// === PERFECT SETUP COMBINED ALERT (ALL CONDITIONS) ===
+// ════════════════════════════════════════════════════════════════════════════════
+
+// 1. Get RSI values from H1, H4, Daily (non-repainting)
+rsiH1 = request.security(syminfo.tickerid, "60", ta.rsi(close, 14), lookahead=barmerge.lookahead_off)
+rsiH4 = request.security(syminfo.tickerid, "240", ta.rsi(close, 14), lookahead=barmerge.lookahead_off)
+rsiDaily = request.security(syminfo.tickerid, "D", ta.rsi(close, 14), lookahead=barmerge.lookahead_off)
+
+// Check if all RSI timeframes aligned
+rsiAllBullish = (rsiH1 > 50) and (rsiH4 > 50) and (rsiDaily > 50)
+rsiAllBearish = (rsiH1 < 50) and (rsiH4 < 50) and (rsiDaily < 50)
+
+// 2. Get ATR values to determine state (RELAXED VERSION)
+atrCurrent = ta.atr(14)
+atrH4_check = request.security(syminfo.tickerid, "240", ta.atr(14), lookahead=barmerge.lookahead_off)
+
+// SIMPLIFIED: ATR ratio between 50%-150% = TREND
+atrRatio = atrCurrent / atrH4_check
+isTrendState = atrRatio > 0.5 and atrRatio < 1.5
+
+// 3. PERFECT SETUP = All 3 conditions met
+perfectBullSetup = trendScore >= 80 and rsiAllBullish and isTrendState
+perfectBearSetup = trendScoreBear >= 80 and rsiAllBearish and isTrendState
+
+// 4. Create alerts with simple messages
+alertcondition(perfectBullSetup, title="⭐ PERFECT BULLISH SETUP - ALL CONDITIONS MET", message="{{ticker}} PERFECT BULL: Score 80+ | RSI MTF BULL | ATR TREND | Price: {{close}}")
+
+alertcondition(perfectBearSetup, title="⭐ PERFECT BEARISH SETUP - ALL CONDITIONS MET", message="{{ticker}} PERFECT BEAR: Score 80+ | RSI MTF BEAR | ATR TREND | Price: {{close}}")
