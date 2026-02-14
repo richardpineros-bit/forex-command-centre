@@ -1,0 +1,24 @@
+# Credentials - NEVER commit these
+config/broker-config.json
+data/broker-config.json
+
+# Runtime data - changes constantly, not code
+data/trades.json
+data/session-board.json
+data/regime.json
+data/playbook.json
+data/circuit-breaker.json
+data/settings.json
+
+# Backups folder
+backups/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*.backup
+
+# Node
+node_modules/

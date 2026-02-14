@@ -1,0 +1,30 @@
+# Track ONLY these two folders
+/*
+!forex-command-centre/
+!forex-alert-server/
+!.gitignore
+
+# Credentials - NEVER commit
+forex-command-centre/config/broker-config.json
+forex-command-centre/data/broker-config.json
+
+# Runtime data files
+forex-command-centre/data/trades.json
+forex-command-centre/data/session-board.json
+forex-command-centre/data/regime.json
+forex-command-centre/data/playbook.json
+forex-command-centre/data/circuit-breaker.json
+forex-command-centre/data/settings.json
+forex-command-centre/backups/
+
+# Alert server runtime
+forex-alert-server/data/armed.json
+forex-alert-server/data/utcc-alerts.json
+forex-alert-server/data/candidates.json
+
+# Node & OS
+node_modules/
+.DS_Store
+*.swp
+*.bak
+*.backup

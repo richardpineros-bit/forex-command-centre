@@ -1,0 +1,89 @@
+/* ============================================================================
+   TRADE CAPTURE UI STYLES v1.0.0
+   ============================================================================ */
+
+/* Pending Trades Panel */
+#pending-trades-panel {
+    border: 2px solid var(--color-warning);
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(234, 179, 8, 0.03) 100%);
+    margin-bottom: var(--spacing-lg);
+}
+
+#pending-count {
+    background: var(--color-warning);
+    color: #000;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* Trade Cards */
+.pending-trade-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+.pending-trade-card[data-status="pending"] { border-left: 4px solid var(--color-warning); }
+.pending-trade-card[data-status="open"] { border-left: 4px solid var(--color-info); }
+.pending-trade-card[data-status="closed_pending"] { border-left: 4px solid var(--color-perfect); }
+
+.pending-trade-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.pending-pair { font-weight: 700; font-size: 1.1rem; }
+.pending-direction { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+.pending-direction.long { background: rgba(34, 197, 94, 0.2); color: var(--color-pass); }
+.pending-direction.short { background: rgba(239, 68, 68, 0.2); color: var(--color-fail); }
+.pending-status { margin-left: auto; font-size: 0.75rem; padding: 3px 10px; border-radius: var(--radius-sm); }
+
+.pending-trade-data {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+}
+
+.pending-trade-data .data-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+.pending-pnl.positive { color: var(--color-pass); }
+.pending-pnl.negative { color: var(--color-fail); }
+
+.pending-trade-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--border-secondary);
+}
+
+.pending-trade-actions .btn { flex: 1; font-size: 0.8rem; }
+
+/* Auto-filled fields */
+.form-input.auto-filled { border-color: var(--color-info); background: rgba(59, 130, 246, 0.05); }
+
+/* Quick Journal */
+#quick-journal-form { border: 2px solid var(--color-perfect); }
+.auto-filled-summary { padding: var(--spacing-md); background: var(--bg-tertiary); border-radius: var(--radius-md); margin: var(--spacing-md); }
+.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-sm); }
+.summary-item { display: flex; flex-direction: column; align-items: center; padding: var(--spacing-sm); background: var(--bg-primary); border-radius: var(--radius-sm); }
+.summary-item .label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; }
+.summary-item .value { font-size: 1rem; font-weight: 600; }
+.summary-item .value.positive { color: var(--color-pass); }
+.summary-item .value.negative { color: var(--color-fail); }
+
+/* Execute button states */
+#execute-trade-btn.capturing { pointer-events: none; opacity: 0.8; }

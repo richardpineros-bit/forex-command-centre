@@ -1,0 +1,7 @@
+# Runtime state - not code
+data/armed.json
+data/utcc-alerts.json
+data/candidates.json
+
+# Node
+node_modules/
