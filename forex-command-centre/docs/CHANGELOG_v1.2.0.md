@@ -5,6 +5,13 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## Known Infrastructure Notes
+
+- **Alert Server Docker container** (`trading-state`) still mounts from `/mnt/user/appdata/trading-state/` — NOT from `forex-alert-server/`. The `forex-alert-server/` folder in the repo is an unused copy. Do not delete `trading-state/` — it is the live data source.
+- Migration to `forex-alert-server/` path requires recreating the Docker container with new mount paths. Low priority — leave until next major infrastructure change.
+
+---
+
 ## [v2.12.2] - 2026-02-15
 
 ### Added (index.html)
