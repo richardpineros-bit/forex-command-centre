@@ -5107,6 +5107,225 @@
             font-style: italic;
         }
         
+        /* v2.12.1: Pre-Trade Gate styles */
+        .pretrade-gated {
+            display: none;
+        }
+        .pretrade-gated.gate-open {
+            display: block;
+            animation: gateSlideIn 0.3s ease-out;
+        }
+        @keyframes gateSlideIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .pretrade-gate-divider {
+            text-align: center;
+            padding: var(--spacing-lg) 0;
+            position: relative;
+        }
+        .pretrade-gate-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--border-color);
+        }
+        .gate-status-pill {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            background: var(--bg-elevated);
+            border: 2px solid var(--border-color);
+            transition: all 0.3s;
+        }
+        .gate-status-pill.gate-locked {
+            color: var(--text-muted);
+            border-color: var(--border-color);
+        }
+        .gate-status-pill.gate-unlocked {
+            color: var(--color-pass);
+            border-color: var(--color-pass);
+            box-shadow: 0 0 12px rgba(34,197,94,0.15);
+        }
+        .gate-status-pill.gate-blocked {
+            color: var(--color-fail);
+            border-color: var(--color-fail);
+        }
+        
+        /* v2.12.0: No-Trade Journal styles */
+        .no-trade-card {
+            background: rgba(34,197,94,0.06);
+            border: 1px solid rgba(34,197,94,0.2);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-sm) var(--spacing-md);
+            margin-bottom: var(--spacing-xs);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .no-trade-card .no-trade-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .no-trade-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(34,197,94,0.15);
+            color: var(--color-pass);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .no-trade-reason {
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+        .no-trade-detail {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .no-trade-notes {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .no-trade-log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-sm);
+        }
+        .no-trade-log-header .count-badge {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+        
+        /* v2.11.0: Discipline Dashboard styles */
+        .discipline-hero {
+            text-align: center;
+            padding: var(--spacing-lg) 0;
+        }
+        .discipline-score-ring {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 6px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto var(--spacing-sm);
+            position: relative;
+            transition: border-color 0.3s;
+        }
+        .discipline-score-ring.score-excellent { border-color: #a855f7; box-shadow: 0 0 20px rgba(168,85,247,0.3); }
+        .discipline-score-ring.score-good { border-color: #22c55e; box-shadow: 0 0 15px rgba(34,197,94,0.2); }
+        .discipline-score-ring.score-fair { border-color: #eab308; }
+        .discipline-score-ring.score-poor { border-color: #ef4444; }
+        .discipline-score-ring.score-none { border-color: var(--border-color); }
+        .discipline-score-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            font-family: var(--font-heading);
+            line-height: 1;
+        }
+        .discipline-score-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .discipline-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: var(--spacing-xs);
+            font-style: italic;
+        }
+        .pnl-reveal-section {
+            border-top: 1px dashed var(--border-color);
+            margin-top: var(--spacing-md);
+            padding-top: var(--spacing-md);
+        }
+        .pnl-reveal-toggle {
+            cursor: pointer;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 0;
+            user-select: none;
+        }
+        .pnl-reveal-toggle:hover { color: var(--text-secondary); }
+        .pnl-hidden-data { display: none; margin-top: var(--spacing-sm); }
+        .pnl-hidden-data.revealed { display: block; }
+        .pnl-hidden-data .stat-value { font-size: 0.9rem; opacity: 0.7; }
+        .pnl-hidden-data .stat-label { font-size: 0.65rem; }
+        
+        /* v2.10.1: Inline editing styles */
+        .inline-editable {
+            cursor: pointer;
+            position: relative;
+            transition: background 0.15s;
+            border-radius: 4px;
+            padding: 2px 4px;
+        }
+        .inline-editable:hover {
+            background: rgba(59,130,246,0.12);
+        }
+        .inline-editable:hover::after {
+            content: '\270E';
+            font-size: 0.6rem;
+            position: absolute;
+            top: -2px;
+            right: -6px;
+            color: var(--color-info);
+            opacity: 0.7;
+        }
+        .inline-edit-select {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 2px solid var(--color-info);
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            outline: none;
+            min-width: 60px;
+        }
+        .inline-edit-input {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 2px solid var(--color-info);
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            outline: none;
+            width: 55px;
+            text-align: center;
+        }
+        
         .grade-label-text {
             font-size: 0.8rem;
             color: var(--text-muted);
@@ -7278,32 +7497,72 @@
 
         <section id="tab-dashboard" class="tab-content active">
             
-            <!-- Account Overview -->
+            <!-- v2.11.0: Discipline Dashboard (replaces Account Overview) -->
             <div class="card mb-lg">
                 <div class="card-header">
-                    <h2 class="card-title">Account Overview</h2>
-                    <div id="drawdown-status" class="drawdown-indicator normal">
-                        <span class="drawdown-dot"></span>
-                        <span>NORMAL</span>
+                    <h2 class="card-title">&#x1F3AF; Discipline Dashboard</h2>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div id="drawdown-status" class="drawdown-indicator normal">
+                            <span class="drawdown-dot"></span>
+                            <span>NORMAL</span>
+                        </div>
+                        <span class="badge" id="dash-open-positions-badge" style="font-size:0.7rem;">0 Open</span>
                     </div>
+                </div>
+                
+                <!-- Discipline Hero -->
+                <div class="discipline-hero">
+                    <div class="discipline-score-ring score-none" id="discipline-ring">
+                        <div class="discipline-score-value" id="discipline-pct">--</div>
+                    </div>
+                    <div class="discipline-score-label">Rules Adherence</div>
+                    <div class="discipline-subtitle" id="discipline-subtitle">No graded trades yet</div>
                 </div>
                 
                 <div class="grid grid-4">
                     <div class="stat-box">
-                        <div class="stat-value" id="dash-balance">$2,000</div>
-                        <div class="stat-label">Balance (AUD)</div>
+                        <div class="stat-value" id="discipline-process-score">--</div>
+                        <div class="stat-label">Process Score (avg)</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-value" id="dash-peak">$2,000</div>
-                        <div class="stat-label">Peak Balance</div>
+                        <div class="stat-value" id="discipline-perfect-count">0</div>
+                        <div class="stat-label">Perfect Trades (9/9)</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-value" id="dash-drawdown">0.0%</div>
-                        <div class="stat-label">Drawdown</div>
+                        <div class="stat-value" id="discipline-streak">0</div>
+                        <div class="stat-label">Discipline Streak</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-value" id="dash-open-positions">0</div>
-                        <div class="stat-label">Open Positions</div>
+                        <div class="stat-value" id="discipline-total-graded">0</div>
+                        <div class="stat-label">Graded Trades</div>
+                    </div>
+                </div>
+                
+                <!-- Collapsible P&L (hidden by default) -->
+                <div class="pnl-reveal-section">
+                    <div class="pnl-reveal-toggle" onclick="togglePnlReveal()">
+                        <span id="pnl-reveal-arrow">&#x25B6;</span>
+                        <span>Account Data (P&amp;L)</span>
+                    </div>
+                    <div class="pnl-hidden-data" id="pnl-hidden-data">
+                        <div class="grid grid-4">
+                            <div class="stat-box">
+                                <div class="stat-value" id="dash-balance">$2,000</div>
+                                <div class="stat-label">Balance (AUD)</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-value" id="dash-peak">$2,000</div>
+                                <div class="stat-label">Peak Balance</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-value" id="dash-drawdown">0.0%</div>
+                                <div class="stat-label">Drawdown</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-value" id="dash-open-positions">0</div>
+                                <div class="stat-label">Open Positions</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -7379,8 +7638,8 @@
                         <span class="summary-value" id="widget-total-risk">0%</span>
                     </div>
                     <div class="summary-item">
-                        <span class="summary-label">Floating P/L:</span>
-                        <span class="summary-value" id="widget-floating-pnl">--</span>
+                        <span class="summary-label">Active Risk:</span>
+                        <span class="summary-value" id="widget-active-risk">--</span>
                     </div>
                     <div class="summary-item">
                         <span class="summary-label">Oldest Trade:</span>
@@ -7435,7 +7694,7 @@
             <!-- Weekly Performance -->
             <div class="card mb-lg">
                 <div class="card-header">
-                    <h2 class="card-title">Weekly Performance</h2>
+                    <h2 class="card-title">Weekly Discipline</h2>
                     <span class="text-muted" id="week-date-range">This Week</span>
                 </div>
                 
@@ -7453,8 +7712,8 @@
                         <div class="stat-label">Avg R-Multiple</div>
                     </div>
                     <div class="stat-box">
-                        <div class="stat-value" id="week-pnl">$0</div>
-                        <div class="stat-label">P&L (AUD)</div>
+                        <div class="stat-value" id="week-adherence">--</div>
+                        <div class="stat-label">Rules Adherence</div>
                     </div>
                 </div>
                 
@@ -7891,8 +8150,16 @@
                 </div>
 
             
+            <!-- v2.12.1: Gate Divider -->
+            <div class="pretrade-gate-divider" id="pretrade-gate-divider">
+                <span class="gate-status-pill gate-locked" id="gate-status-pill">
+                    <span id="gate-icon">&#x1F512;</span>
+                    <span id="gate-text">Complete checklist to unlock</span>
+                </span>
+            </div>
+            
             <!-- Structure Analysis Section -->
-            <div class="card mb-lg" id="structure-analysis">
+            <div class="card mb-lg pretrade-gated" id="structure-analysis">
                 <div class="card-header">
                     <h2 class="card-title">&#x1F4CB; Structure Analysis</h2>
                     <button class="btn btn-secondary btn-sm" onclick="toggleStructureEducation()">&#x2139; What is Structure?</button>
@@ -8079,7 +8346,7 @@
             </div>
             
             <!-- Entry Strategy Section -->
-            <div class="card mb-lg" id="entry-strategy-card">
+            <div class="card mb-lg pretrade-gated" id="entry-strategy-card">
                 <div class="card-header">
                     <h2 class="card-title">&#x26A1; Entry Strategy</h2>
                 </div>
@@ -8302,7 +8569,7 @@
             </div>
             
             <!-- Stop Loss Strategy Section -->
-            <div class="card mb-lg" id="sl-strategy-card">
+            <div class="card mb-lg pretrade-gated" id="sl-strategy-card">
                 <div class="card-header">
                     <h2 class="card-title">&#x1F6D1; Stop Loss Strategy</h2>
                 </div>
@@ -8366,7 +8633,7 @@
             </div>
             
             <!-- Exit Management Section -->
-            <div class="card mb-lg" id="exit-management-card">
+            <div class="card mb-lg pretrade-gated" id="exit-management-card">
                 <div class="card-header">
                     <h2 class="card-title">&#x1F3AF; Exit Management Plan</h2>
                 </div>
@@ -8483,7 +8750,7 @@
             </div>
             
             <!-- Correlation Check -->
-            <div class="card mb-lg" id="correlation-check-card">
+            <div class="card mb-lg pretrade-gated" id="correlation-check-card">
                 <div class="card-header">
                     <h2 class="card-title">&#x1F517; Correlation Check</h2>
                 </div>
@@ -8535,7 +8802,7 @@
             </div>
             
             <!-- Phase 4: Re-Entry Rules Check -->
-            <div class="card mb-lg" id="reentry-rules-card" style="display: none;">
+            <div class="card mb-lg pretrade-gated" id="reentry-rules-card" style="display: none;">
                 <div class="card-header" style="background: rgba(239, 68, 68, 0.1);">
                     <h2 class="card-title" style="color: var(--color-fail);">RE-ENTRY BLOCK</h2>
                 </div>
@@ -8586,7 +8853,7 @@
             </div>
             
             <!-- Final Confirmation -->
-            <div class="card mb-lg">
+            <div class="card mb-lg pretrade-gated">
                 <div class="card-header">
                     <h2 class="card-title">OK - Final Confirmation</h2>
                 </div>
@@ -8604,7 +8871,7 @@
             </div>
             
             <!-- Validation Verdict -->
-            <div class="card">
+            <div class="card pretrade-gated">
                 <div class="verdict-box" id="validation-verdict">
                     <div class="verdict-label">Trade Status</div>
                     <div class="verdict-status" id="verdict-status">INCOMPLETE</div>
@@ -9224,6 +9491,65 @@
                     <span class="quick-actions-label">Quick Actions:</span>
                     <button class="btn btn-secondary btn-sm" onclick="moveAllToBE()">Move All to BE</button>
                     <button class="btn btn-warning btn-sm" onclick="closeAllAtMarket()">Close All @ Market</button>
+                </div>
+            </div>
+            
+            <!-- v2.12.0: No-Trade Journal (Market Review) -->
+            <div class="card mb-lg" id="no-trade-journal-card">
+                <div class="card-header">
+                    <h2 class="card-title">&#x1F6E1; Market Review (No-Trade Log)</h2>
+                    <span class="badge" id="no-trade-count-badge" style="font-size:0.7rem;">0 reviews</span>
+                </div>
+                
+                <!-- Quick Entry Form -->
+                <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--spacing-md); margin-bottom: var(--spacing-md); background: var(--bg-elevated);">
+                    <div style="font-weight:600; font-size:0.85rem; margin-bottom: var(--spacing-sm); color: var(--color-pass);">&#x2714; Log a Discipline Pass</div>
+                    <div class="grid grid-3">
+                        <div class="form-group">
+                            <label class="form-label">Session</label>
+                            <select class="form-select" id="nt-session">
+                                <option value="tokyo">Tokyo</option>
+                                <option value="london">London</option>
+                                <option value="new_york">New York</option>
+                                <option value="pre_market">Pre-Market Scan</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Reason No Trade</label>
+                            <select class="form-select" id="nt-reason">
+                                <option value="no_setup">No Valid Setup</option>
+                                <option value="failed_utcc">Failed UTCC Criteria</option>
+                                <option value="wrong_session">Wrong Session Window</option>
+                                <option value="atr_exhausted">ATR Exhausted</option>
+                                <option value="correlation_block">Correlation Block</option>
+                                <option value="news_risk">High-Impact News Risk</option>
+                                <option value="drawdown_limit">Drawdown Limit Active</option>
+                                <option value="discipline_pass">Discipline Pass (tempted but passed)</option>
+                                <option value="weekend_close">Weekend/Session Close</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Pairs Reviewed</label>
+                            <input type="text" class="form-input" id="nt-pairs" placeholder="e.g. AUDUSD, USDJPY, EURUSD">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notes (optional)</label>
+                        <input type="text" class="form-input" id="nt-notes" placeholder="What did you observe? Any temptations resisted?">
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="saveNoTrade()">&#x1F6E1; Log Review</button>
+                </div>
+                
+                <!-- Recent No-Trade Log -->
+                <div id="no-trade-log">
+                    <div class="no-trade-log-header">
+                        <span style="font-size:0.8rem; font-weight:600;">Recent Reviews</span>
+                        <span class="count-badge" id="no-trade-week-count">This week: 0</span>
+                    </div>
+                    <div id="no-trade-log-entries">
+                        <div style="text-align:center; padding: var(--spacing-md); color: var(--text-muted); font-size: 0.8rem;">No reviews logged yet. Passing on bad setups is discipline.</div>
+                    </div>
                 </div>
             </div>
             
@@ -10533,7 +10859,8 @@
             settings: 'ftcc_settings',
             theme: 'ftcc_theme',
             goals: 'ftcc_goals',
-            lastBackup: 'ftcc_last_backup'
+            lastBackup: 'ftcc_last_backup',
+            noTrades: 'ftcc_no_trades'
         };
 
         // Default Settings
@@ -11157,6 +11484,9 @@
             // Load trades for journal
             loadTrades();
             
+            // v2.12.0: Load no-trade journal
+            loadNoTrades();
+            
             // Initialize entry strategy (session timing)
             initEntryStrategy();
             
@@ -11200,6 +11530,9 @@
             
             // Update Active Trades Widget
             updateActiveTradesWidget(trades);
+            
+            // v2.11.0: Update Discipline Dashboard
+            updateDisciplineDashboard(trades);
         }
 
         function updateAccountOverview(settings, trades) {
@@ -11221,6 +11554,13 @@
                 drawdownEl.className = 'stat-value ' + getDrawdownColourClass(drawdown);
             }
             if (openEl) openEl.textContent = openPositions;
+            // v2.11.0: Update badge in discipline dashboard header
+            const openBadge = document.getElementById('dash-open-positions-badge');
+            if (openBadge) {
+                openBadge.textContent = openPositions + ' Open';
+                openBadge.style.background = openPositions > 0 ? 'var(--color-info)' : '';
+                openBadge.style.color = openPositions > 0 ? '#fff' : '';
+            }
         }
 
         function calculateDrawdown(currentBalance, peakBalance) {
@@ -11299,8 +11639,8 @@
             const totalR = weekTrades.reduce((sum, t) => sum + (t.rMultiple || 0), 0);
             const avgR = totalTrades > 0 ? totalR / totalTrades : 0;
             
-            // Calculate P&L
-            const totalPnL = weekTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+            // v2.11.0: Calculate weekly adherence instead of P&L
+            const weekAdherence = calculateAdherenceForTrades(weekTrades);
             
             // Calculate expectancy
             const avgWin = winners.length > 0 
@@ -11317,7 +11657,7 @@
             const tradesEl = document.getElementById('week-trades');
             const winrateEl = document.getElementById('week-winrate');
             const avgREl = document.getElementById('week-avg-r');
-            const pnlEl = document.getElementById('week-pnl');
+            const adherenceEl = document.getElementById('week-adherence');
             const expectancyEl = document.getElementById('week-expectancy');
             const targetEl = document.getElementById('week-target');
             const dateRangeEl = document.getElementById('week-date-range');
@@ -11331,9 +11671,14 @@
                 avgREl.textContent = formatNumber(avgR, 2) + 'R';
                 avgREl.className = 'stat-value ' + (avgR >= 0 ? 'text-pass' : 'text-fail');
             }
-            if (pnlEl) {
-                pnlEl.textContent = formatCurrency(totalPnL);
-                pnlEl.className = 'stat-value ' + (totalPnL >= 0 ? 'text-pass' : 'text-fail');
+            if (adherenceEl) {
+                if (weekAdherence.total === 0) {
+                    adherenceEl.textContent = '--';
+                    adherenceEl.className = 'stat-value';
+                } else {
+                    adherenceEl.textContent = formatNumber(weekAdherence.pct, 0) + '%';
+                    adherenceEl.className = 'stat-value ' + (weekAdherence.pct >= 80 ? 'text-pass' : weekAdherence.pct >= 60 ? 'text-warning' : 'text-fail');
+                }
             }
             if (expectancyEl) {
                 expectancyEl.textContent = formatNumber(expectancy, 2) + 'R';
@@ -11367,6 +11712,227 @@
             }
         }
 
+        // ============================================
+        // v2.12.0: NO-TRADE JOURNAL
+        // ============================================
+        
+        const NO_TRADE_REASONS = {
+            'no_setup': 'No Valid Setup',
+            'failed_utcc': 'Failed UTCC Criteria',
+            'wrong_session': 'Wrong Session Window',
+            'atr_exhausted': 'ATR Exhausted',
+            'correlation_block': 'Correlation Block',
+            'news_risk': 'High-Impact News Risk',
+            'drawdown_limit': 'Drawdown Limit Active',
+            'discipline_pass': 'Discipline Pass',
+            'weekend_close': 'Weekend/Session Close',
+            'other': 'Other'
+        };
+        
+        function saveNoTrade() {
+            const session = document.getElementById('nt-session')?.value || 'tokyo';
+            const reason = document.getElementById('nt-reason')?.value || 'no_setup';
+            const pairs = document.getElementById('nt-pairs')?.value || '';
+            const notes = document.getElementById('nt-notes')?.value || '';
+            
+            const entry = {
+                id: generateId(),
+                date: new Date().toISOString(),
+                session: session,
+                reason: reason,
+                pairsReviewed: pairs,
+                notes: notes
+            };
+            
+            const entries = loadFromStorage(STORAGE_KEYS.noTrades, []);
+            entries.unshift(entry);
+            saveToStorage(STORAGE_KEYS.noTrades, entries);
+            
+            // Clear form
+            document.getElementById('nt-pairs').value = '';
+            document.getElementById('nt-notes').value = '';
+            
+            loadNoTrades();
+            updateDashboard();
+            showToast('Market review logged - discipline acknowledged', 'success');
+        }
+        
+        function loadNoTrades() {
+            const entries = loadFromStorage(STORAGE_KEYS.noTrades, []);
+            const container = document.getElementById('no-trade-log-entries');
+            const countBadge = document.getElementById('no-trade-count-badge');
+            const weekCount = document.getElementById('no-trade-week-count');
+            
+            if (countBadge) countBadge.textContent = entries.length + ' reviews';
+            
+            // Count this week
+            const thisWeekEntries = entries.filter(e => isThisWeek(e.date));
+            if (weekCount) weekCount.textContent = 'This week: ' + thisWeekEntries.length;
+            
+            if (!container) return;
+            
+            // Show last 10
+            const recent = entries.slice(0, 10);
+            
+            if (recent.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding: var(--spacing-md); color: var(--text-muted); font-size: 0.8rem;">No reviews logged yet. Passing on bad setups is discipline.</div>';
+                return;
+            }
+            
+            container.innerHTML = recent.map(e => {
+                const reasonLabel = NO_TRADE_REASONS[e.reason] || e.reason;
+                const sessionLabel = e.session ? e.session.charAt(0).toUpperCase() + e.session.slice(1).replace('_', ' ') : '--';
+                const dateStr = formatDate(e.date);
+                const timeStr = new Date(e.date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+                
+                return `
+                    <div class="no-trade-card">
+                        <div class="no-trade-meta">
+                            <div class="no-trade-icon">&#x1F6E1;</div>
+                            <div>
+                                <div class="no-trade-reason">${reasonLabel}</div>
+                                <div class="no-trade-detail">${dateStr} ${timeStr} | ${sessionLabel}${e.pairsReviewed ? ' | ' + e.pairsReviewed : ''}</div>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            ${e.notes ? '<span class="no-trade-notes" title="' + e.notes.replace(/"/g, '&quot;') + '">' + e.notes + '</span>' : ''}
+                            <button class="btn btn-danger btn-sm" onclick="deleteNoTrade('${e.id}')" title="Delete" style="padding:2px 6px; font-size:0.6rem;">&#x2715;</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function deleteNoTrade(id) {
+            const entries = loadFromStorage(STORAGE_KEYS.noTrades, []);
+            const filtered = entries.filter(e => e.id !== id);
+            saveToStorage(STORAGE_KEYS.noTrades, filtered);
+            loadNoTrades();
+            updateDashboard();
+            showToast('Review entry removed', 'info');
+        }
+        
+        // ============================================
+        // v2.11.0: RULES ADHERENCE ENGINE
+        // ============================================
+        
+        /**
+         * Calculate adherence for a set of trades.
+         * Each trade has 9 checkboxes (5 exec + 4 mgmt).
+         * Returns { pct, avgScore, perfectCount, total, streak }
+         */
+        function calculateAdherenceForTrades(trades) {
+            // Only count trades that have at least one checkbox touched
+            const CHECKS = [
+                'execTypeDeclared', 'execSingleTrigger', 'execPlannedPrice',
+                'execStopInvalidation', 'execSpreadOk',
+                'mgmtNoEarlyStop', 'mgmtPartialRules', 'mgmtExitRules', 'mgmtNoRevenge'
+            ];
+            
+            const graded = trades.filter(t => {
+                // A trade is graded if it has at least one check true
+                // OR if it has a grade assigned (meaning user reviewed it)
+                return t.grade && t.grade !== 'DIS' && CHECKS.some(c => t[c] === true);
+            });
+            
+            if (graded.length === 0) {
+                return { pct: 0, avgScore: 0, perfectCount: 0, total: 0, streak: 0 };
+            }
+            
+            let totalChecks = 0;
+            let perfectCount = 0;
+            let streak = 0;
+            let streakBroken = false;
+            
+            // Process in reverse chronological order for streak
+            const sorted = [...graded].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            sorted.forEach(t => {
+                const score = CHECKS.filter(c => t[c] === true).length;
+                totalChecks += score;
+                if (score === 9) {
+                    perfectCount++;
+                    if (!streakBroken) streak++;
+                } else {
+                    streakBroken = true;
+                }
+            });
+            
+            const avgScore = totalChecks / graded.length;
+            const pct = (avgScore / 9) * 100;
+            
+            return { pct: pct, avgScore: avgScore, perfectCount: perfectCount, total: graded.length, streak: streak };
+        }
+        
+        function getAdherenceClass(pct) {
+            if (pct >= 90) return 'score-excellent';
+            if (pct >= 70) return 'score-good';
+            if (pct >= 50) return 'score-fair';
+            if (pct > 0) return 'score-poor';
+            return 'score-none';
+        }
+        
+        function getAdherenceMessage(pct, total) {
+            if (total === 0) return 'No graded trades yet';
+            if (pct >= 90) return 'Elite discipline - process is king';
+            if (pct >= 80) return 'Strong adherence - stay the course';
+            if (pct >= 70) return 'Good foundation - tighten execution';
+            if (pct >= 50) return 'Room to improve - review your checklist';
+            return 'Focus on process, not outcomes';
+        }
+        
+        /**
+         * Update the Discipline Dashboard on the main dashboard tab
+         */
+        function updateDisciplineDashboard(trades) {
+            const closedTrades = trades.filter(t => t.status === 'closed' || t.status === 'complete');
+            const adherence = calculateAdherenceForTrades(closedTrades);
+            
+            // v2.12.0: Include no-trade reviews in discipline count
+            const noTrades = loadFromStorage(STORAGE_KEYS.noTrades, []);
+            const weekNoTrades = noTrades.filter(e => isThisWeek(e.date)).length;
+            
+            // Update hero ring
+            const ring = document.getElementById('discipline-ring');
+            const pctEl = document.getElementById('discipline-pct');
+            const subtitleEl = document.getElementById('discipline-subtitle');
+            
+            if (ring) {
+                ring.className = 'discipline-score-ring ' + getAdherenceClass(adherence.pct);
+            }
+            if (pctEl) {
+                pctEl.textContent = adherence.total > 0 ? formatNumber(adherence.pct, 0) + '%' : '--';
+                pctEl.style.color = adherence.pct >= 80 ? 'var(--color-pass)' : adherence.pct >= 60 ? 'var(--color-warning)' : adherence.pct > 0 ? 'var(--color-fail)' : '';
+            }
+            if (subtitleEl) {
+                const noTradeMsg = weekNoTrades > 0 ? ' | ' + weekNoTrades + ' pass' + (weekNoTrades > 1 ? 'es' : '') + ' this week' : '';
+                subtitleEl.textContent = getAdherenceMessage(adherence.pct, adherence.total) + noTradeMsg;
+            }
+            
+            // Update stat boxes
+            const processEl = document.getElementById('discipline-process-score');
+            const perfectEl = document.getElementById('discipline-perfect-count');
+            const streakEl = document.getElementById('discipline-streak');
+            const totalEl = document.getElementById('discipline-total-graded');
+            
+            if (processEl) processEl.textContent = adherence.total > 0 ? formatNumber(adherence.avgScore, 1) + '/9' : '--';
+            if (perfectEl) perfectEl.textContent = adherence.perfectCount;
+            if (streakEl) streakEl.textContent = adherence.streak;
+            if (totalEl) totalEl.textContent = adherence.total;
+        }
+        
+        /**
+         * Toggle P&L data visibility
+         */
+        function togglePnlReveal() {
+            const data = document.getElementById('pnl-hidden-data');
+            const arrow = document.getElementById('pnl-reveal-arrow');
+            if (data) {
+                const isRevealed = data.classList.toggle('revealed');
+                if (arrow) arrow.innerHTML = isRevealed ? '&#x25BC;' : '&#x25B6;';
+            }
+        }
+        
         // CHUNK 2 COMPLETE - Dashboard & Drawdown
 
         // ============================================
@@ -11508,7 +12074,7 @@
             
             // Update elements
             const riskEl = document.getElementById('widget-total-risk');
-            const pnlEl = document.getElementById('widget-floating-pnl');
+            const activeRiskEl = document.getElementById('widget-active-risk');
             const oldestEl = document.getElementById('widget-oldest-trade');
             
             if (riskEl) {
@@ -11517,10 +12083,10 @@
                                     totalRisk > 4 ? 'var(--color-warning)' : 'var(--color-pass)';
             }
             
-            if (pnlEl) {
-                // Floating P/L requires live price data - show as unavailable
-                pnlEl.textContent = 'N/A';
-                pnlEl.title = 'Live price data not available';
+            if (activeRiskEl) {
+                // v2.11.0: Show active risk amount instead of floating P/L
+                const totalRiskAmt = openTrades.reduce((sum, t) => sum + (t.riskAmount || 0), 0);
+                activeRiskEl.textContent = totalRiskAmt > 0 ? formatCurrency(totalRiskAmt) : '--';
             }
             
             if (oldestEl) {
@@ -14025,8 +14591,39 @@
                 status.textContent = 'COMPLETE CHECKLIST';
                 reason.textContent = 'Fill in the 7 checks above to see entry verdict';
             }
+            
+            // v2.12.1: Toggle gated sections
+            const isApproved = panel.classList.contains('verdict-approved') || panel.classList.contains('verdict-approved-reduced');
+            const isBlocked = panel.classList.contains('verdict-blocked');
+            updatePreTradeGate(isApproved, isBlocked);
         }
 
+        /**
+         * v2.12.1: Toggle gated sections based on checklist verdict
+         */
+        function updatePreTradeGate(isApproved, isBlocked) {
+            const gatedSections = document.querySelectorAll('.pretrade-gated');
+            const pill = document.getElementById('gate-status-pill');
+            const gateIcon = document.getElementById('gate-icon');
+            const gateText = document.getElementById('gate-text');
+            
+            if (isApproved) {
+                gatedSections.forEach(el => el.classList.add('gate-open'));
+                if (pill) {
+                    pill.className = 'gate-status-pill gate-unlocked';
+                    if (gateIcon) gateIcon.innerHTML = '&#x1F513;';
+                    if (gateText) gateText.textContent = 'Checklist passed - proceed to structure';
+                }
+            } else {
+                gatedSections.forEach(el => el.classList.remove('gate-open'));
+                if (pill) {
+                    pill.className = 'gate-status-pill ' + (isBlocked ? 'gate-blocked' : 'gate-locked');
+                    if (gateIcon) gateIcon.innerHTML = isBlocked ? '&#x26D4;' : '&#x1F512;';
+                    if (gateText) gateText.textContent = isBlocked ? 'Entry blocked - fix failing checks above' : 'Complete checklist to unlock';
+                }
+            }
+        }
+        
         function checkCooldown() {
             const pair = document.getElementById('val-pair')?.value || '';
             const statusEl = document.getElementById('check-7-status');
@@ -14162,6 +14759,8 @@
         }
 
         function resetInstitutionalChecklist() {
+            // v2.12.1: Re-lock gate on reset
+            updatePreTradeGate(false, false);
             // Reset all inputs
             const selects = ['val-pair', 'val-direction', 'check-utcc-armed', 'check-ema-reaction'];
             selects.forEach(id => {
@@ -14528,16 +15127,16 @@
                         <td><span class="badge ${trade.direction === 'long' ? 'badge-pass' : 'badge-fail'}">${trade.direction?.toUpperCase()?.charAt(0)}</span></td>
                         <td>${sourceBadge}</td>
                         <td>${getAlertBadge(trade.alertType)}</td>
-                        <td>${getGradeBadge(trade.grade, trade.dismissReason)}</td>
+                        <td><span class="inline-editable" onclick="inlineEditGrade('${trade.id}', this)" title="Click to edit grade">${getGradeBadge(trade.grade, trade.dismissReason)}</span></td>
                         <td>${trade.entry || '-'}</td>
                         <td>${trade.exit || trade.exitPrice || '-'}</td>
                         <td class="${rClass}"><strong>${formatNumber(rVal, 2)}R</strong></td>
-                        <td>${trade.trendScore || '-'}</td>
-                        <td>${getZoneBadge(trade.entryZone)}</td>
-                        <td>
+                        <td><span class="inline-editable" onclick="inlineEditScore('${trade.id}', this, ${trade.trendScore || 0})" title="Click to edit score">${trade.trendScore || '-'}</span></td>
+                        <td><span class="inline-editable" onclick="inlineEditZone('${trade.id}', this, '${trade.entryZone || ''}')" title="Click to edit zone">${getZoneBadge(trade.entryZone)}</span></td>
+                        <td style="white-space:nowrap;">
                             ${!trade.grade ? `<button class="btn btn-sm" style="background:#6b7280;color:#fff;font-size:0.65rem;padding:2px 6px;" onclick="dismissTrade('${trade.id}')" title="Dismiss as test/legacy">DIS</button>` : ''}
-                            <button class="btn btn-secondary btn-sm" onclick="editTrade('${trade.id}')"></button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteTrade('${trade.id}')"></button>
+                            <button class="btn btn-secondary btn-sm" onclick="editTrade('${trade.id}')" title="Edit full trade">&#x270E;</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteTrade('${trade.id}')" title="Delete trade">&#x1F5D1;</button>
                         </td>
                     </tr>
                 `;
@@ -15804,6 +16403,118 @@
         /**
          * Get grade badge HTML for trade display
          */
+        // v2.10.1: Inline editing functions for trade history
+        function inlineEditGrade(tradeId, el) {
+            // Prevent double-click creating multiple dropdowns
+            if (el.querySelector('select')) return;
+            const trades = loadFromStorage(STORAGE_KEYS.trades, []);
+            const trade = trades.find(t => t.id === tradeId);
+            const current = trade ? (trade.grade || '') : '';
+            
+            const options = [
+                { value: '', label: '-- None --' },
+                { value: 'A+', label: 'A+' },
+                { value: 'A', label: 'A' },
+                { value: 'B', label: 'B' },
+                { value: 'C', label: 'C' },
+                { value: 'D', label: 'D' },
+                { value: 'DIS', label: 'DIS' }
+            ];
+            
+            const select = document.createElement('select');
+            select.className = 'inline-edit-select';
+            options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                if (opt.value === current) o.selected = true;
+                select.appendChild(o);
+            });
+            
+            el.innerHTML = '';
+            el.appendChild(select);
+            select.focus();
+            
+            const commit = () => {
+                saveInlineField(tradeId, 'grade', select.value);
+            };
+            select.addEventListener('change', commit);
+            select.addEventListener('blur', commit);
+        }
+        
+        function inlineEditScore(tradeId, el, currentVal) {
+            if (el.querySelector('input')) return;
+            
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'inline-edit-input';
+            input.value = currentVal || '';
+            input.min = '0';
+            input.max = '100';
+            input.placeholder = '0-100';
+            
+            el.innerHTML = '';
+            el.appendChild(input);
+            input.focus();
+            input.select();
+            
+            const commit = () => {
+                const val = parseInt(input.value) || null;
+                saveInlineField(tradeId, 'trendScore', val);
+            };
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') loadTrades();
+            });
+        }
+        
+        function inlineEditZone(tradeId, el, currentVal) {
+            if (el.querySelector('select')) return;
+            
+            const options = [
+                { value: '', label: '-- None --' },
+                { value: 'HOT', label: 'HOT' },
+                { value: 'OPTIMAL', label: 'OPTIMAL' },
+                { value: 'ACCEPTABLE', label: 'ACCEPTABLE' },
+                { value: 'EXTENDED', label: 'EXTENDED' }
+            ];
+            
+            const select = document.createElement('select');
+            select.className = 'inline-edit-select';
+            options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                if (opt.value === currentVal) o.selected = true;
+                select.appendChild(o);
+            });
+            
+            el.innerHTML = '';
+            el.appendChild(select);
+            select.focus();
+            
+            const commit = () => {
+                saveInlineField(tradeId, 'entryZone', select.value);
+            };
+            select.addEventListener('change', commit);
+            select.addEventListener('blur', commit);
+        }
+        
+        function saveInlineField(tradeId, field, value) {
+            const trades = loadFromStorage(STORAGE_KEYS.trades, []);
+            const idx = trades.findIndex(t => t.id === tradeId);
+            if (idx === -1) { showToast('Trade not found', 'error'); return; }
+            
+            trades[idx][field] = value;
+            trades[idx].updatedAt = new Date().toISOString();
+            saveToStorage(STORAGE_KEYS.trades, trades);
+            loadTrades();
+            
+            const labels = { grade: 'Grade', trendScore: 'Score', entryZone: 'Zone' };
+            showToast((labels[field] || field) + ' updated', 'success');
+        }
+        
         function getGradeBadge(grade, dismissReason) {
             if (!grade) return '<span class="grade-mini-badge grade-d">?</span>';
             if (grade === 'DIS') {

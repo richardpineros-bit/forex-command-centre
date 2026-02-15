@@ -1,7 +1,7 @@
 /**
  * UTCC Trading Reference Guide
  * Forex Command Centre v2.6.0
- * Guide v2.0.0
+ * Guide v2.1.0
  * 
  * Comprehensive trading reference combining:
  * - Daily Rules & Gold Nuggets
@@ -63,7 +63,7 @@
             var modalHTML = '<div class="modal-overlay active" id="trading-guide-modal-overlay">' +
                 '<div class="modal trading-guide-modal" id="trading-guide-modal">' +
                     '<div class="modal-header">' +
-                        '<h3 class="modal-title">&#x1F4D6; UTCC Trading Reference (v2.5)</h3>' +
+                        '<h3 class="modal-title">&#x1F4D6; UTCC Trading Reference (v2.6)</h3>' +
                         '<button class="modal-close" onclick="TradingGuide.close()">&times;</button>' +
                     '</div>' +
                     '<div class="guide-layout">' +
@@ -410,6 +410,74 @@
                     '<p>If you cannot confidently fill all five fields, you are automatically BLOCKED. Do not rationalise partial fills. The system is binary: context complete = permission possible; context incomplete = no trade.</p>' +
                 '</div>' +
 
+                '<h3>Regime Definitions</h3>' +
+                '<p>Regime is the HIGHEST authority. It determines what you are allowed to do before anything else.</p>' +
+                '<table class="guide-table">' +
+                    '<thead>' +
+                        '<tr><th>Regime</th><th>Market Behaviour</th><th>Permission</th><th>Allowed Actions</th></tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(34,197,94,0.1)">' +
+                            '<td><strong>EXPANSION</strong></td>' +
+                            '<td>Clear trend, EMAs fanning, directional ATR</td>' +
+                            '<td style="color:var(--color-pass)">FULL</td>' +
+                            '<td>Continuation + Deep Pullback playbooks. Full size (1.0R).</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>BALANCED</strong></td>' +
+                            '<td>Range-bound, S/R holding, no directional bias</td>' +
+                            '<td style="color:var(--color-warning)">CONDITIONAL</td>' +
+                            '<td>Range extremes only. Reduced size (0.5&ndash;0.75R). Tight filters.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>CONTRACTION</strong></td>' +
+                            '<td>Low volatility squeeze, ATR compressing</td>' +
+                            '<td style="color:var(--color-warning)">CONDITIONAL</td>' +
+                            '<td>Breakout plan only after confirmation + retest. Reduced size (0.25&ndash;0.5R).</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                            '<td><strong>TRANSITION</strong></td>' +
+                            '<td>Mixed signals, structure breaking, conflicting timeframes</td>' +
+                            '<td style="color:var(--color-fail)">STAND DOWN</td>' +
+                            '<td>Mark levels only. Zero execution. Observation mode.</td>' +
+                        '</tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<h3>ATR Behaviour States</h3>' +
+                '<p>Read from the ATR Dashboard. Determines volatility regime for position sizing and entry timing.</p>' +
+                '<table class="guide-table">' +
+                    '<thead>' +
+                        '<tr><th>State</th><th>ATR Percentile</th><th>What It Means</th><th>Trading Impact</th></tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr>' +
+                            '<td><strong>QUIET</strong></td>' +
+                            '<td>&lt;30%</td>' +
+                            '<td>Low volatility, compression phase</td>' +
+                            '<td>Ideal for entries &mdash; expansion likely. Full size.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>TREND</strong></td>' +
+                            '<td>30&ndash;70%</td>' +
+                            '<td>Normal directional movement</td>' +
+                            '<td>Good conditions. Proceed normally.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>EXPLODE</strong></td>' +
+                            '<td>&gt;70%</td>' +
+                            '<td>High volatility spike or extension</td>' +
+                            '<td>Move underway &mdash; you are likely late. Reduce size or wait for pullback.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                            '<td><strong>MIXED</strong></td>' +
+                            '<td>Inconsistent</td>' +
+                            '<td>ATR signals conflicting across timeframes</td>' +
+                            '<td>STAND DOWN. No trade until state resolves.</td>' +
+                        '</tr>' +
+                    '</tbody>' +
+                '</table>' +
+
                 '<div class="guide-nugget">' +
                     '&#x1F4A1; <strong>Gold Nugget:</strong> This 60-second drill replaces 30 minutes of staring at charts and "feeling" the market. Context first, always.' +
                 '</div>' +
@@ -623,6 +691,51 @@
                         '</div>' +
                     '</div>' +
                 '</div>' +
+                '<h3>Session Protocols (AEST)</h3>' +
+                '<p>You operate from Australia. These are your trading windows.</p>' +
+                '<table class="guide-table">' +
+                    '<thead>' +
+                        '<tr><th>Session</th><th>AEST Window</th><th>Rating</th><th>Notes</th></tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(34,197,94,0.1)">' +
+                            '<td><strong>Tokyo</strong></td>' +
+                            '<td>10:00 AM &ndash; 5:00 PM</td>' +
+                            '<td style="color:var(--color-pass)">PRIME</td>' +
+                            '<td>Best AUD/JPY pairs. Your primary session. Fresh setups.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(34,197,94,0.1)">' +
+                            '<td><strong>London</strong></td>' +
+                            '<td>5:00 PM &ndash; 1:00 AM</td>' +
+                            '<td style="color:var(--color-pass)">PRIME</td>' +
+                            '<td>Highest liquidity. EUR/GBP pairs shine. Your evening session.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>Tokyo-London Overlap</strong></td>' +
+                            '<td>5:00 PM &ndash; 7:00 PM</td>' +
+                            '<td style="color:var(--color-pass)">IDEAL</td>' +
+                            '<td>Overlap = maximum flow. Priority window for cross pairs.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>New York</strong></td>' +
+                            '<td>11:00 PM &ndash; 7:00 AM</td>' +
+                            '<td style="color:var(--color-warning)">LIMITED</td>' +
+                            '<td>Only early NY (11 PM&ndash;1 AM overlap). Past midnight = fatigue risk.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                            '<td><strong>Off-Hours</strong></td>' +
+                            '<td>1:00 AM &ndash; 10:00 AM</td>' +
+                            '<td style="color:var(--color-fail)">BLOCKED</td>' +
+                            '<td>Sleep. No execution. Review only after 8 AM.</td>' +
+                        '</tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<div class="guide-box guide-box-warn">' +
+                    '<strong>Your Availability: 8 AM &ndash; 10 PM AEST</strong>' +
+                    '<p>This means Tokyo (full) + London (until ~10 PM). Do not push past your window. Fatigue = leakage.</p>' +
+                '</div>' +
+
             '</div>';
         },
         
@@ -828,6 +941,42 @@
                         '<p>Minimum 1.5:1 risk-reward. If it does not work from current price, pass.</p>' +
                     '</div>' +
                 '</div>' +
+
+                '<h3>UTCC Score Tiers</h3>' +
+                '<p>The UTCC score is a composite of trend, MTF alignment, volatility, and entry zone. These thresholds determine setup quality.</p>' +
+                '<table class="guide-table">' +
+                    '<thead>' +
+                        '<tr><th>Score</th><th>Tier</th><th>Meaning</th><th>Action</th></tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(168,85,247,0.1)"><td><strong>&ge;90</strong></td><td>EXCELLENT</td><td>All criteria firing, perfect location</td><td>Full size, high conviction</td></tr>' +
+                        '<tr style="background:rgba(34,197,94,0.1)"><td><strong>&ge;85</strong></td><td>PERFECT</td><td>Strong alignment, good location</td><td>Full size</td></tr>' +
+                        '<tr style="background:rgba(59,130,246,0.1)"><td><strong>&ge;80</strong></td><td>STRONG</td><td>Primary threshold &mdash; this is your bread and butter</td><td>Normal size</td></tr>' +
+                        '<tr><td><strong>&ge;75</strong></td><td>TRADE READY</td><td>Minimum for entry &mdash; needs good location</td><td>Reduced size</td></tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)"><td><strong>&lt;75</strong></td><td>NOT READY</td><td>Criteria not met &mdash; do not force</td><td>No trade</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<div class="guide-box guide-box-warn">' +
+                    '<strong>Score Validates Setup, Never Overrides Location</strong>' +
+                    '<p>A 92 score INTO resistance is worse than an 80 score AT support. The score confirms quality; price structure determines permission.</p>' +
+                '</div>' +
+
+                '<h3>Asset-Specific Thresholds</h3>' +
+                '<table class="guide-table">' +
+                    '<thead>' +
+                        '<tr><th>Asset Class</th><th>ARMED</th><th>CANDIDATE</th><th>Notes</th></tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr><td>Forex</td><td>80</td><td>85</td><td>Default &mdash; moderate noise</td></tr>' +
+                        '<tr><td>Crypto</td><td>85</td><td>90</td><td>Higher bar due to noise</td></tr>' +
+                        '<tr><td>Indices</td><td>75</td><td>80</td><td>Cleaner structure, lower bar</td></tr>' +
+                        '<tr><td>Bonds</td><td>70</td><td>75</td><td>Low volatility</td></tr>' +
+                        '<tr><td>Energy</td><td>78</td><td>83</td><td>Volatile, moderate filter</td></tr>' +
+                        '<tr><td>Metals</td><td>76</td><td>82</td><td>Gold clean, silver needs buffer</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+
             '</div>';
         },
         
@@ -1098,6 +1247,59 @@
                     '</ul>' +
                     '<p class="guide-small">That is an institutional rhythm: fewer decisions, higher quality, repeatable process.</p>' +
                 '</div>' +
+
+                '<h3>Drawdown Protocol (Capital Governors)</h3>' +
+                '<p>Risk reductions COMPOUND, not replace. Once triggered, risk only recovers at day reset.</p>' +
+                '<table class="guide-table">' +
+                    '<thead>' +
+                        '<tr><th>Drawdown</th><th>Status</th><th>Max Risk</th><th>Action Required</th></tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(34,197,94,0.1)">' +
+                            '<td><strong>&lt;5%</strong></td>' +
+                            '<td style="color:var(--color-pass)">NORMAL</td>' +
+                            '<td>1.5&ndash;2%</td>' +
+                            '<td>Trade normally. Follow process.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>5&ndash;10%</strong></td>' +
+                            '<td style="color:var(--color-warning)">CAUTION</td>' +
+                            '<td>1%</td>' +
+                            '<td>Risk cap enforced. Review recent trades for leakage patterns.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                            '<td><strong>10&ndash;15%</strong></td>' +
+                            '<td style="color:var(--color-fail)">STOP</td>' +
+                            '<td>0.5%</td>' +
+                            '<td>Mandatory stand-down. Full review before resuming. Observation only.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.15)">' +
+                            '<td><strong>&gt;15%</strong></td>' +
+                            '<td style="color:var(--color-fail)">EMERGENCY</td>' +
+                            '<td>0%</td>' +
+                            '<td>No trading. Mandatory multi-day review. System audit required.</td>' +
+                        '</tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<div class="guide-box guide-box-info">' +
+                    '<strong>Risk Is Monotonic Intraday</strong>' +
+                    '<p>If you start at 1.5% risk and get reduced to 1%, you stay at 1% for the rest of the day. A breakeven trade does not reset loss streaks or playbook failure counters. Only a new day resets risk allocation.</p>' +
+                '</div>' +
+
+                '<h3>Behavioural Kill-Switches</h3>' +
+                '<ul>' +
+                    '<li><strong>Revenge Detection:</strong> 2 losses on same pair within 4 hours = blocked + risk reduction + mandatory review</li>' +
+                    '<li><strong>Pair Cooling:</strong> Loss on a pair = 48h cooldown on that pair</li>' +
+                    '<li><strong>Session Max:</strong> 3 trades per session maximum. Hit the limit = done for that session.</li>' +
+                    '<li><strong>Post-Session Review:</strong> Flagged behaviour blocks next day until review complete.</li>' +
+                    '<li><strong>No Override Mechanism:</strong> Kill-switches cannot be overridden. Overrides become escape hatches.</li>' +
+                '</ul>' +
+
+                '<div class="guide-nugget">' +
+                    '&#x1F4A1; <strong>Gold Nugget:</strong> The system assumes the trader will eventually act irrationally. The system stops them. This is not a flaw &mdash; it is the entire point.' +
+                '</div>' +
+
             '</div>';
         },
 
