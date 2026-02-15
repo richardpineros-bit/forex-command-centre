@@ -338,6 +338,54 @@
                 '<div class="guide-nugget">' +
                     '&#x1F4A1; <strong>Gold Nugget:</strong> These definitions do not change day to day. If you find yourself re-interpreting them mid-session, that is your emotions talking &mdash; not the system.' +
                 '</div>' +
+
+                '<h3>Reason Code Reference (R / K / U Series)</h3>' +
+                '<p>Every UTCC alert carries reason codes that explain WHY it fired. Three series, strict authority hierarchy: Regime &gt; Risk &gt; UTCC.</p>' +
+
+                '<h4>R-Series (Regime &mdash; Highest Authority)</h4>' +
+                '<p>Regime is always the primary reason. It determines what is permitted before anything else.</p>' +
+                '<table class="guide-table">' +
+                    '<thead><tr><th>Code</th><th>Meaning</th><th>Permission</th></tr></thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(34,197,94,0.1)"><td><strong>R-EXPANSION</strong></td><td>Clear trend, directional ATR, EMAs fanning</td><td>FULL</td></tr>' +
+                        '<tr><td><strong>R-COMPRESSION</strong></td><td>Low volatility squeeze, ATR below 15th percentile</td><td>CONDITIONAL (or STAND DOWN if extreme)</td></tr>' +
+                        '<tr><td><strong>R-TRANSITION</strong></td><td>ATR spiking (EXPLODE state), structure shifting</td><td>CONDITIONAL</td></tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)"><td><strong>R-CHAOS</strong></td><td>ATR MIXED state &mdash; conflicting signals across timeframes</td><td>STAND DOWN</td></tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)"><td><strong>R-OFFSESSION</strong></td><td>Outside your trading session window</td><td>STAND DOWN</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<h4>K-Series (Risk Governor &mdash; Second Authority)</h4>' +
+                '<p>Risk state can downgrade permission but never upgrade it. Set from Command Centre drawdown tracking.</p>' +
+                '<table class="guide-table">' +
+                    '<thead><tr><th>Code</th><th>Meaning</th><th>Effect</th></tr></thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(34,197,94,0.1)"><td><strong>K-NORMAL</strong></td><td>No drawdown issues. Full trading.</td><td>No restriction</td></tr>' +
+                        '<tr><td><strong>K-REDUCED</strong></td><td>Drawdown 5&ndash;10% or 2+ consecutive losses</td><td>Downgrades to CONDITIONAL. Max 1% risk.</td></tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)"><td><strong>K-LOCKED</strong></td><td>Drawdown &gt;10% or circuit breaker triggered</td><td>Forces STAND DOWN regardless of regime.</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<h4>U-Series (UTCC Conditions &mdash; Supporting Evidence)</h4>' +
+                '<p>Score and criteria are NEVER the primary reason. They provide supporting context only.</p>' +
+                '<table class="guide-table">' +
+                    '<thead><tr><th>Code</th><th>Meaning</th><th>Example</th></tr></thead>' +
+                    '<tbody>' +
+                        '<tr><td><strong>U-SCORE-XX</strong></td><td>Composite UTCC score</td><td>U-SCORE-86</td></tr>' +
+                        '<tr><td><strong>U-MTF-XOF3</strong></td><td>Multi-timeframe alignment count</td><td>U-MTF-3OF3 (all aligned)</td></tr>' +
+                        '<tr><td><strong>U-ATR-STATE</strong></td><td>ATR behaviour state</td><td>U-ATR-TREND, U-ATR-QUIET</td></tr>' +
+                        '<tr><td><strong>U-TREND-WEAK</strong></td><td>Trend criterion failed</td><td>&mdash;</td></tr>' +
+                        '<tr><td><strong>U-ENTRY-EXTENDED</strong></td><td>Price too far from EMA ribbon</td><td>&mdash;</td></tr>' +
+                        '<tr><td><strong>U-SR-CLOSE</strong></td><td>Too close to support/resistance</td><td>&mdash;</td></tr>' +
+                        '<tr><td><strong>U-NEWS-RISK</strong></td><td>High-impact news within buffer window</td><td>&mdash;</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<div class="guide-box guide-box-warn">' +
+                    '<strong>Authority Hierarchy: Most Restrictive Wins</strong>' +
+                    '<p>If regime says FULL but risk says CONDITIONAL, the result is CONDITIONAL. If either says STAND DOWN, nothing below can override it. The primary reason is always the highest authority that restricted.</p>' +
+                '</div>' +
+
             '</div>';
         },
 
@@ -559,6 +607,44 @@
                 '<div class="guide-nugget">' +
                     '&#x1F4A1; <strong>Gold Nugget:</strong> ARMED means "start process", not "press buy". The alert gives permission to look &mdash; price must earn the entry.' +
                 '</div>' +
+
+                '<h3>Trade Alert Types (Journal Field)</h3>' +
+                '<p>When logging a trade, you record the UTCC alert state at the time of entry. This tracks how often you execute with full vs partial permission.</p>' +
+                '<table class="guide-table">' +
+                    '<thead><tr><th>Alert Type</th><th>Badge</th><th>Criteria</th><th>Action</th></tr></thead>' +
+                    '<tbody>' +
+                        '<tr style="background:rgba(34,197,94,0.1)">' +
+                            '<td><strong>READY</strong></td>' +
+                            '<td style="color:var(--color-pass)">READY</td>' +
+                            '<td>All 5 UTCC criteria met. Score &ge;75.</td>' +
+                            '<td>Full position. Highest confidence. This is the target state.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>STRONG</strong></td>' +
+                            '<td style="color:var(--color-info)">STRONG</td>' +
+                            '<td>4 of 5 criteria met. One soft criterion missing.</td>' +
+                            '<td>Reduced position. Acceptable if missing criterion is soft (e.g. RSI neutral).</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>WATCH</strong></td>' +
+                            '<td style="color:var(--color-warning)">WATCH</td>' +
+                            '<td>Setup developing. Criteria not yet met.</td>' +
+                            '<td>No execution. Monitor only. Log as observation if you want to track it.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                            '<td><strong>MANUAL</strong></td>' +
+                            '<td style="color:var(--color-fail)">MANUAL</td>' +
+                            '<td>No UTCC confirmation. Discretionary entry.</td>' +
+                            '<td>Should be very rare. Flag for review. Track separately in performance analysis.</td>' +
+                        '</tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<div class="guide-box guide-box-fail">' +
+                    '<strong>Track Your Alert Distribution</strong>' +
+                    '<p>If more than 20% of your trades are MANUAL, you are bypassing the system. The goal: 80%+ trades at READY status. That is discipline.</p>' +
+                '</div>' +
+
             '</div>';
         },
         

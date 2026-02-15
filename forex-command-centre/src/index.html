@@ -9035,13 +9035,33 @@
                         </div>
                     </div>
                     
-                    <div class="grid grid-3">
+                    <div class="grid grid-4">
                         <div class="form-group">
                             <label class="form-label">Direction</label>
                             <select class="form-select" id="trade-direction">
                                 <option value="">Select</option>
                                 <option value="long">LONG</option>
                                 <option value="short">SHORT</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Alert Status
+                                <span class="regime-tooltip">&#x2139;
+                                    <span class="regime-tooltip-content">
+                                        <strong>What was the UTCC alert state when you took this trade?</strong><br><br>
+                                        <strong>READY:</strong> All 5 criteria met. Highest confidence. Full position.<br><br>
+                                        <strong>STRONG:</strong> 4/5 criteria met. Good setup but one criterion missing. Reduced position.<br><br>
+                                        <strong>WATCH:</strong> Developing setup. Criteria forming but not yet met. No execution.<br><br>
+                                        <strong>MANUAL:</strong> Discretionary entry without UTCC confirmation. Should be rare.
+                                    </span>
+                                </span>
+                            </label>
+                            <select class="form-select" id="trade-alert-type">
+                                <option value="">Select</option>
+                                <option value="TRADE_READY">READY (All 5 criteria)</option>
+                                <option value="STRONG">STRONG (4/5 criteria)</option>
+                                <option value="WATCH">WATCH (Developing)</option>
+                                <option value="MANUAL">MANUAL (Discretionary)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -9422,7 +9442,7 @@
                 </div>
                 
                 <!-- Hidden fields for backwards compatibility -->
-                <input type="hidden" id="trade-alert-type" value="MANUAL">
+                <!-- alert type moved to Section A dropdown -->
                 <input type="hidden" id="trade-entry-zone" value="">
                 <input type="hidden" id="trade-vol-state" value="">
                 <input type="hidden" id="trade-mtf" value="">

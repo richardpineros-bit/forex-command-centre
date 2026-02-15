@@ -5,6 +5,20 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v2.12.2] - 2026-02-15
+
+### Added (index.html)
+- **Alert Status dropdown** in Section A (Trade Metadata): visible select replacing hidden input
+- Options: READY (All 5 criteria), STRONG (4/5 criteria), WATCH (Developing), MANUAL (Discretionary)
+- Tooltip with definitions for each alert type
+
+### Added (trading-guide.js v2.2.0)
+- **R/K/U Reason Code Reference** in Definitions section: R-EXPANSION, R-COMPRESSION, R-TRANSITION, R-CHAOS, R-OFFSESSION; K-NORMAL, K-REDUCED, K-LOCKED; U-SCORE, U-MTF, U-ATR, U-TREND-WEAK, U-ENTRY-EXTENDED, U-SR-CLOSE, U-NEWS-RISK
+- **Authority hierarchy** explanation: most restrictive wins (Regime > Risk > UTCC)
+- **Trade Alert Types** in Alerts section: READY/STRONG/WATCH/MANUAL with criteria, actions, and distribution target (80%+ READY)
+
+---
+
 ## [v2.12.1] - 2026-02-15
 
 ### Added
