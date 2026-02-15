@@ -1,0 +1,873 @@
+//@version=6
+indicator("Institutional 3TF Candles Engine v1.4.2 (1D map; 4H setup; 1H trigger) + Candle Colours", overlay=true, max_labels_count=500, max_boxes_count=200)
+
+// ============================================================================
+// CHANGELOG v1.4.2
+// ============================================================================
+// FIX: f_tfMs simplified — timeframe.in_seconds handles all TFs natively;
+//      removed redundant "D" special-case; added na/zero fallback
+// NOTE: Box overlay already syncs with rawOnly5Core via label text gate —
+//       Three-Bar only gets label text when toggle OFF; no box without text
+// ============================================================================
+// CHANGELOG v1.4.1 (retained)
+// FIX: Rolling box queue — prevents max_boxes_count exhaustion (f_pushBox + arrays)
+// FIX: Dynamic setup TF duration — f_tfMs(tfSetup) replaces hard-coded 4h boxRight
+// FIX: Wick box bgcolor black(100) instead of white(100) — theme-independent
+// ============================================================================
+// CHANGELOG v1.4.0 (retained)
+// ADD: 4H candle box overlay — draws wick box + body box on any chart TF when
+//      RAW pattern fires. Perfect candle visibility on 1H/15m/etc.
+// FIX: Star labels unified: B-STR/S-STR → B-STAR/S-STAR (RAW + ARMED)
+// ============================================================================
+// CHANGELOG v1.3.0 (retained)
+// FIX: Core 5 redefined as 5 true families: Engulf, Pin (Shoot=subtype),
+//      Star (Morning/Evening unified), Inside, Tweezer. Three-Bar is extended.
+// FIX: rawFire gated by label text non-empty (bulletproof; anyRawBull/Bear removed)
+// NOTE: Offset logic kept as-is — perfect placement only on 4H chart (by design)
+// ============================================================================
+// CHANGELOG v1.2.1 (retained)
+// FIX: f_size() type corrected from string to size enum (compile blocker)
+// FIX: rawOnly5Core input label clarified (Core 5 vs +Inside +Tweezer)
+// FIX: Qualified inside bar direction from candle body (isBull4/isBear4), not daily bias
+// FIX: Single RAW label per bar via priority builder (no stacking overlaps)
+// FIX: RAW plot offset=-1 on 4H chart (marker sits on the actual setup candle)
+// ============================================================================
+// v1.2.0 CHANGELOG (retained)
+// ============================================================================
+// ADD: Raw pattern visual layer (no filters) — see patterns before qualification
+// ADD: Toggle between 5-core and all-7 raw pattern display
+// ADD: Raw inside bar + tweezer use geometry only (no daily bias dependency)
+// ADD: f_size() helper for configurable marker size
+// ============================================================================
+// v1.1.4 CHANGELOG (retained)
+// ============================================================================
+// FIX: isNew1H derived from ta.change(t1) — deterministic, symmetric with isNew4H
+// ============================================================================
+// v1.1.3 CHANGELOG (retained)
+// ============================================================================
+// FIX: sweepBull/sweepBear default true when sweep logic OFF (gate-pass semantics)
+// FIX: isNew4H derived from ta.change(closed4HTime) — deterministic confirmed bar event
+// FIX: Trigger uses c1 (1H close) + isNew1H gate — true 1H trigger, not chart TF
+// ============================================================================
+// v1.1.2 CHANGELOG (retained)
+// ============================================================================
+// FIX: Pattern labels now show direction (B-ENGULF, S-PIN, etc.)
+// FIX: Shooting star momentum uses rising closes, not just bull candle count
+// FIX: Sweep logic overrides daily bias filter (best reversals at extremes)
+// FIX: setupCol type declaration corrected to `color setupCol = na`
+// PERF: Consolidated request.security() calls into tuples per timeframe
+// NOTE: barcolor layering (offset=-1 + offset=0) reviewed and confirmed safe
+// ============================================================================
+// v1.1.1 CHANGELOG (retained)
+// ============================================================================
+// FIX: Alert gating — didArmBull/didArmBear flags drive alerts + plotshapes
+// FIX: rangeAvg4 now uses [1] shifted source inside security (confirmed only)
+// FIX: 4H setup barcolor uses offset=-1 (colours the closed setup bar)
+// FIX: ARM plotshape uses patLabel (pattern name visible on chart)
+// FIX: Three-bar reversal — bar2 close must be within bar1 range
+// FIX: armedTime uses closed4HTime for deterministic cross-TF expiry
+// ============================================================================
+// v1.1.0 CHANGELOG (retained)
+// ============================================================================
+// FIX: Repainting — ARM uses confirmed [1] 4H bar data only
+// FIX: Expiry is time-based (hours), not chart-bar-based
+// FIX: One-shot alert gating via lastArmed4HTime
+// FIX: Pinbar opposite-wick ceiling (rejects long-legged dojis)
+// FIX: Shooting star requires prior bullish momentum context
+// FIX: Renamed ENTRY → TRIGGERED (orientation, not instruction)
+// ADD: Inside Bar pattern (compression before breakout)
+// ADD: Tweezer Top/Bottom pattern (equal high/low rejection)
+// ADD: Three-Bar Reversal pattern
+// ============================================================================
+
+//====================================================
+// Inputs
+//====================================================
+groupTF   = "Timeframes"
+tfDaily   = input.timeframe("D",  "Daily timeframe", group=groupTF)
+tfSetup   = input.timeframe("240","Setup timeframe (4H)", group=groupTF)
+tfTrigger = input.timeframe("60", "Trigger timeframe (1H)", group=groupTF)
+
+groupDaily = "Daily Map"
+useDailyBias   = input.bool(true, "Use Daily bias filter", group=groupDaily)
+dailySmaLen    = input.int(50, "Daily SMA length", minval=5, group=groupDaily)
+showDailyLines = input.bool(true, "Plot PDH/PDL + Daily swing levels", group=groupDaily)
+dPivotL        = input.int(5, "Daily pivot left", minval=1, group=groupDaily)
+dPivotR        = input.int(5, "Daily pivot right", minval=1, group=groupDaily)
+
+groupSetup = "4H Setup Filters"
+useCompression   = input.bool(true, "Require 4H compression before signal", group=groupSetup)
+compLookback     = input.int(12, "Compression lookback (4H bars)", minval=3, group=groupSetup)
+compRatioMax     = input.float(0.75, "Compression ratio max (rangeAvg/ATR)", step=0.01, group=groupSetup)
+
+useAtrBodyFilter = input.bool(true, "Require 4H candle body meaningful vs ATR", group=groupSetup)
+atrLen           = input.int(14, "ATR length", minval=1, group=groupSetup)
+minBodyAtrMult   = input.float(0.20, "Min body as ATR multiple", step=0.01, group=groupSetup)
+
+useLevelProx     = input.bool(true, "Require near Daily level", group=groupSetup)
+levelAtrTol      = input.float(0.35, "Daily level proximity tolerance (ATR multiple)", step=0.01, group=groupSetup)
+
+useSweepLogic    = input.bool(false, "Require sweep behaviour vs Daily level", group=groupSetup)
+
+groupPatterns = "Tier-1 Patterns (4H setup)"
+enEngulf    = input.bool(true, "Engulfing", group=groupPatterns)
+enPinbar    = input.bool(true, "Pinbar / Kangaroo Tail", group=groupPatterns)
+enShooting  = input.bool(true, "Shooting Star (contextual bear pin at resistance)", group=groupPatterns)
+enStars     = input.bool(true, "Morning/Evening Star", group=groupPatterns)
+enInside    = input.bool(true, "Inside Bar (compression)", group=groupPatterns)
+enTweezer   = input.bool(true, "Tweezer Top/Bottom", group=groupPatterns)
+enThreeBar  = input.bool(true, "Three-Bar Reversal", group=groupPatterns)
+
+groupPin = "Pinbar Geometry"
+pinWickToBody     = input.float(2.0, "Min dominant wick:body ratio", step=0.1, group=groupPin)
+pinBodyToRangeMax = input.float(0.30, "Max body:range ratio", step=0.01, group=groupPin)
+pinCloseEndPct    = input.float(0.25, "Close near end (fraction of range)", step=0.01, group=groupPin)
+pinOppWickMax     = input.float(0.50, "Max opposite wick:body ratio", step=0.1, group=groupPin)
+
+groupStar = "Star Geometry"
+starMidBodyMax     = input.float(0.35, "Star candle max body:range", step=0.01, group=groupStar)
+starImpulseBodyMin = input.float(0.45, "Impulse candle min body:range", step=0.01, group=groupStar)
+
+groupTweezer = "Tweezer Geometry"
+twzTolAtrMult = input.float(0.05, "Tweezer high/low match tolerance (ATR multiple)", step=0.01, group=groupTweezer)
+
+groupThreeBar = "Three-Bar Reversal"
+tbMinBodyRatio = input.float(0.40, "Min body:range for impulse candles", step=0.01, group=groupThreeBar)
+
+groupTrigger = "1H Trigger Rules"
+require1HPattern = input.bool(false, "Require 1H trigger candle (pin/engulf) in same direction", group=groupTrigger)
+hoursToExpiry    = input.float(12.0, "Disarm if no trigger within N hours", minval=1.0, step=1.0, group=groupTrigger)
+
+groupViz = "Visual"
+bullColor = input.color(color.lime, "Bull colour", group=groupViz)
+bearColor = input.color(color.red,  "Bear colour", group=groupViz)
+
+// Candle colouring
+groupCandleCol = "Candle Colouring"
+colourChartCandles = input.bool(true, "Colour chart candles", group=groupCandleCol)
+colourArmedZone    = input.bool(true, "Tint candles while ARMED", group=groupCandleCol)
+
+colSetupBull  = input.color(color.new(color.lime, 0), "4H setup bull candle (on 4H chart)", group=groupCandleCol)
+colSetupBear  = input.color(color.new(color.red, 0),  "4H setup bear candle (on 4H chart)", group=groupCandleCol)
+
+colTrigBull   = input.color(color.new(color.green, 0), "Triggered bull candle", group=groupCandleCol)
+colTrigBear   = input.color(color.new(color.maroon,0), "Triggered bear candle", group=groupCandleCol)
+
+colArmedBull  = input.color(color.new(color.lime, 80), "Armed bull tint", group=groupCandleCol)
+colArmedBear  = input.color(color.new(color.red,  80), "Armed bear tint", group=groupCandleCol)
+
+// Raw pattern visual layer (detection separated from qualification)
+groupRaw = "Raw Pattern Visuals"
+showRawPatterns = input.bool(true, "Show RAW 4H pattern markers (no filters)", group=groupRaw)
+rawOnly5Core    = input.bool(true, "RAW set: Core 5 (Engulf/Pin/Star/Inside/Tweezer); OFF = +Three-Bar", group=groupRaw)
+rawSize         = input.string("tiny", "RAW marker size", options=["tiny","small","normal"], group=groupRaw)
+rawOffsetBars   = input.int(0, "RAW marker offset (bars)", minval=-5, maxval=5, group=groupRaw)
+
+// 4H candle box overlay (see the actual 4H candle on any chart TF)
+groupBox = "4H Candle Box Overlay"
+showCandleBox     = input.bool(true, "Draw 4H candle box on RAW pattern bars", group=groupBox)
+boxWickColor      = input.color(color.new(color.gray, 50), "Wick box colour", group=groupBox)
+boxBullBodyColor  = input.color(color.new(color.lime, 30), "Bull body fill", group=groupBox)
+boxBearBodyColor  = input.color(color.new(color.red, 30), "Bear body fill", group=groupBox)
+boxBullBorderCol  = input.color(color.new(color.lime, 0), "Bull body border", group=groupBox)
+boxBearBorderCol  = input.color(color.new(color.red, 0), "Bear body border", group=groupBox)
+maxPatternCandles = input.int(80, "Max pattern candles to keep", minval=10, maxval=100, group=groupBox)
+
+//====================================================
+// Helpers (no chained ternaries)
+//====================================================
+f_max(a, b) => math.max(a, b)
+f_min(a, b) => math.min(a, b)
+f_abs(x)    => math.abs(x)
+
+f_body(_o, _c) =>
+    f_abs(_c - _o)
+
+f_bodyHi(_o, _c) =>
+    f_max(_o, _c)
+
+f_bodyLo(_o, _c) =>
+    f_min(_o, _c)
+
+f_rng(_h, _l) =>
+    _h - _l
+
+f_upW(_h, _o, _c) =>
+    _h - f_bodyHi(_o, _c)
+
+f_dnW(_l, _o, _c) =>
+    f_bodyLo(_o, _c) - _l
+
+f_tfMs(_tf) =>
+    int ms = timeframe.in_seconds(_tf) * 1000
+    if na(ms) or ms <= 0
+        ms := 4 * 60 * 60 * 1000
+    ms
+
+f_pushBox(_arr, _b, _max) =>
+    array.push(_arr, _b)
+    if array.size(_arr) > _max
+        box old = array.shift(_arr)
+        box.delete(old)
+
+f_size(_s) =>
+    size r = size.normal
+    if _s == "tiny"
+        r := size.tiny
+    else if _s == "small"
+        r := size.small
+    else
+        r := size.normal
+    r
+
+//====================================================
+// Daily Map (PDH/PDL; Daily pivots; Daily bias)
+//====================================================
+dHighPrev = request.security(syminfo.tickerid, tfDaily, high[1], barmerge.gaps_off, barmerge.lookahead_off)
+dLowPrev  = request.security(syminfo.tickerid, tfDaily, low[1],  barmerge.gaps_off, barmerge.lookahead_off)
+
+dPivHi = request.security(syminfo.tickerid, tfDaily, ta.pivothigh(high, dPivotL, dPivotR), barmerge.gaps_off, barmerge.lookahead_off)
+dPivLo = request.security(syminfo.tickerid, tfDaily, ta.pivotlow(low,  dPivotL, dPivotR), barmerge.gaps_off, barmerge.lookahead_off)
+
+var float lastDailySwingHigh = na
+var float lastDailySwingLow  = na
+
+if not na(dPivHi)
+    lastDailySwingHigh := dPivHi
+if not na(dPivLo)
+    lastDailySwingLow := dPivLo
+
+dClose = request.security(syminfo.tickerid, tfDaily, close, barmerge.gaps_off, barmerge.lookahead_off)
+dSma   = request.security(syminfo.tickerid, tfDaily, ta.sma(close, dailySmaLen), barmerge.gaps_off, barmerge.lookahead_off)
+
+dailyBull = true
+dailyBear = true
+
+if useDailyBias
+    dailyBull := dClose > dSma
+    dailyBear := dClose < dSma
+else
+    dailyBull := true
+    dailyBear := true
+
+if showDailyLines
+    plot(dHighPrev, "PDH", color=color.new(color.gray, 40), linewidth=1, style=plot.style_linebr)
+    plot(dLowPrev,  "PDL", color=color.new(color.gray, 40), linewidth=1, style=plot.style_linebr)
+    plot(lastDailySwingHigh, "Daily Swing High", color=color.new(color.red, 55), linewidth=1, style=plot.style_linebr)
+    plot(lastDailySwingLow,  "Daily Swing Low",  color=color.new(color.lime,55), linewidth=1, style=plot.style_linebr)
+
+//====================================================
+// 4H Setup Layer — CONFIRMED bars via tuple security calls
+// PERF v1.1.2: Consolidated into tuples to reduce security call count
+//====================================================
+// Tuple: confirmed 4H bar [1] (the bar that just closed)
+[o4, h4, l4, c4, t4] = request.security(syminfo.tickerid, tfSetup, [open[1], high[1], low[1], close[1], time[1]], barmerge.gaps_off, barmerge.lookahead_off)
+
+// Tuple: prior confirmed bar [2]
+[o4_1, h4_1, l4_1, c4_1] = request.security(syminfo.tickerid, tfSetup, [open[2], high[2], low[2], close[2]], barmerge.gaps_off, barmerge.lookahead_off)
+
+// Tuple: two bars back [3]
+[o4_2, h4_2, l4_2, c4_2] = request.security(syminfo.tickerid, tfSetup, [open[3], high[3], low[3], close[3]], barmerge.gaps_off, barmerge.lookahead_off)
+
+// Tuple: three bars back [4] (for shooting star momentum context)
+[o4_3, h4_3, c4_3] = request.security(syminfo.tickerid, tfSetup, [open[4], high[4], close[4]], barmerge.gaps_off, barmerge.lookahead_off)
+
+// ATR + confirmed range average (shifted [1] inside expression)
+[atr4, rangeAvg4] = request.security(syminfo.tickerid, tfSetup, [ta.atr(atrLen), ta.sma((high - low)[1], compLookback)], barmerge.gaps_off, barmerge.lookahead_off)
+
+tol  = f_max(syminfo.mintick, atr4 * 0.02)
+lvlTol = atr4 * levelAtrTol
+
+body4 = f_body(o4, c4)
+rng4  = f_rng(h4, l4)
+upW4  = f_upW(h4, o4, c4)
+dnW4  = f_dnW(l4, o4, c4)
+
+bodyToRange4 = 0.0
+if rng4 > 0
+    bodyToRange4 := body4 / rng4
+
+isBull4 = c4 > o4
+isBear4 = c4 < o4
+isBull4_1 = c4_1 > o4_1
+isBear4_1 = c4_1 < o4_1
+
+bodyOk4 = true
+if useAtrBodyFilter
+    bodyOk4 := body4 >= atr4 * minBodyAtrMult
+else
+    bodyOk4 := true
+
+compressed4 = true
+if useCompression
+    compressed4 := (rangeAvg4 / atr4) <= compRatioMax
+else
+    compressed4 := true
+
+nearBullDailyZone = false
+nearBearDailyZone = false
+
+if not useLevelProx
+    nearBullDailyZone := true
+    nearBearDailyZone := true
+else
+    if f_abs(l4 - dLowPrev) <= lvlTol or f_abs(l4 - lastDailySwingLow) <= lvlTol
+        nearBullDailyZone := true
+    else
+        nearBullDailyZone := false
+
+    if f_abs(h4 - dHighPrev) <= lvlTol or f_abs(h4 - lastDailySwingHigh) <= lvlTol
+        nearBearDailyZone := true
+    else
+        nearBearDailyZone := false
+
+// Sweep detection — defaults true (gate passes) when sweep logic is OFF
+sweepBull = true
+sweepBear = true
+
+if useSweepLogic
+    sweepBull := false
+    sweepBear := false
+
+    if not na(dLowPrev)
+        if (l4 < dLowPrev - tol) and (c4 > dLowPrev + tol)
+            sweepBull := true
+    if not na(lastDailySwingLow)
+        if (l4 < lastDailySwingLow - tol) and (c4 > lastDailySwingLow + tol)
+            sweepBull := true
+
+    if not na(dHighPrev)
+        if (h4 > dHighPrev + tol) and (c4 < dHighPrev - tol)
+            sweepBear := true
+    if not na(lastDailySwingHigh)
+        if (h4 > lastDailySwingHigh + tol) and (c4 < lastDailySwingHigh - tol)
+            sweepBear := true
+
+//====================================================
+// 4H Tier-1 pattern definitions (raw geometry)
+//====================================================
+
+// --- ENGULFING ---
+bullEngulf4 = false
+bearEngulf4 = false
+if enEngulf and bodyOk4
+    if isBull4 and isBear4_1
+        if (o4 <= c4_1 + tol) and (c4 >= o4_1 - tol)
+            bullEngulf4 := true
+    if isBear4 and isBull4_1
+        if (o4 >= c4_1 - tol) and (c4 <= o4_1 + tol)
+            bearEngulf4 := true
+
+// --- PINBAR (with opposite-wick ceiling) ---
+bullPin4 = false
+bearPin4 = false
+
+if enPinbar and bodyOk4 and (rng4 > 0)
+    closePos4 = (c4 - l4) / rng4
+
+    // Bull pin: long lower wick, small upper wick
+    if (dnW4 >= body4 * pinWickToBody) and (bodyToRange4 <= pinBodyToRangeMax) and (closePos4 >= (1.0 - pinCloseEndPct))
+        if upW4 <= body4 * pinOppWickMax
+            bullPin4 := true
+
+    // Bear pin: long upper wick, small lower wick
+    if (upW4 >= body4 * pinWickToBody) and (bodyToRange4 <= pinBodyToRangeMax) and (closePos4 <= pinCloseEndPct)
+        if dnW4 <= body4 * pinOppWickMax
+            bearPin4 := true
+
+// --- SHOOTING STAR (contextual: bear pin + rising closes into resistance) ---
+// FIX v1.1.2: Uses rising closes (displacement) not just bull candle count
+shootingStar4 = false
+if enShooting and bearPin4
+    // Require rising closes: c[2] > c[3] AND c[1] > c[2] (displacement into the level)
+    risingCloses = (c4_1 > c4_2) and (c4_2 > c4_3)
+    // Also accept higher highs as alternative momentum proof
+    risingHighs = (h4_1 > h4_2) and (h4_2 > h4_3)
+
+    if risingCloses or risingHighs
+        shootingStar4 := true
+
+// --- MORNING / EVENING STAR ---
+morningStar4 = false
+eveningStar4 = false
+
+if enStars and bodyOk4
+    rng4_2 = f_rng(h4_2, l4_2)
+    body4_2 = f_body(o4_2, c4_2)
+
+    impulse2 = false
+    if rng4_2 > 0
+        if (body4_2 / rng4_2) >= starImpulseBodyMin
+            impulse2 := true
+
+    rng4_1 = f_rng(h4_1, l4_1)
+    body4_1 = f_body(o4_1, c4_1)
+
+    midSmall = false
+    if rng4_1 > 0
+        if (body4_1 / rng4_1) <= starMidBodyMax
+            midSmall := true
+
+    midpointC1 = (o4_2 + c4_2) / 2.0
+
+    if impulse2 and midSmall and (c4_2 < o4_2) and isBull4
+        if c4 > midpointC1
+            morningStar4 := true
+
+    if impulse2 and midSmall and (c4_2 > o4_2) and isBear4
+        if c4 < midpointC1
+            eveningStar4 := true
+
+// --- INSIDE BAR (compression before breakout) ---
+insideBar4 = false
+insideBarBull4 = false
+insideBarBear4 = false
+
+if enInside
+    if (h4 <= h4_1) and (l4 >= l4_1)
+        insideBar4 := true
+        // FIX v1.2.1: Direction from candle body (structural read), not daily bias
+        if isBull4
+            insideBarBull4 := true
+        if isBear4
+            insideBarBear4 := true
+
+// --- TWEEZER TOP / BOTTOM ---
+tweezerTop4 = false
+tweezerBot4 = false
+
+if enTweezer
+    twzTol = atr4 * twzTolAtrMult
+
+    // Tweezer bottom: nearly equal lows, prior bearish + current bullish
+    if f_abs(l4 - l4_1) <= twzTol
+        if isBear4_1 and isBull4
+            tweezerBot4 := true
+
+    // Tweezer top: nearly equal highs, prior bullish + current bearish
+    if f_abs(h4 - h4_1) <= twzTol
+        if isBull4_1 and isBear4
+            tweezerTop4 := true
+
+// --- THREE-BAR REVERSAL (bar2 close within bar1 range) ---
+threeBarBull4 = false
+threeBarBear4 = false
+
+if enThreeBar
+    rng4_cur = rng4
+    body4_cur = body4
+    rng4_2_val = f_rng(h4_2, l4_2)
+    body4_2_val = f_body(o4_2, c4_2)
+
+    // Bullish: strong bear bar1, bar2 lower low + close within bar1 range, strong bull bar3 closes above bar1 high
+    if rng4_2_val > 0 and rng4_cur > 0
+        bar1BearImpulse = (c4_2 < o4_2) and ((body4_2_val / rng4_2_val) >= tbMinBodyRatio)
+        bar2LowerLow = l4_1 < l4_2
+        bar2CloseInBar1 = (c4_1 > l4_2) and (c4_1 < h4_2)
+        bar3BullImpulse = isBull4 and ((body4_cur / rng4_cur) >= tbMinBodyRatio)
+        bar3ClosesAbove = c4 > h4_2
+
+        if bar1BearImpulse and bar2LowerLow and bar2CloseInBar1 and bar3BullImpulse and bar3ClosesAbove
+            threeBarBull4 := true
+
+    // Bearish: strong bull bar1, bar2 higher high + close within bar1 range, strong bear bar3 closes below bar1 low
+    if rng4_2_val > 0 and rng4_cur > 0
+        bar1BullImpulse = (c4_2 > o4_2) and ((body4_2_val / rng4_2_val) >= tbMinBodyRatio)
+        bar2HigherHigh = h4_1 > h4_2
+        bar2CloseInBar1B = (c4_1 < h4_2) and (c4_1 > l4_2)
+        bar3BearImpulse = isBear4 and ((body4_cur / rng4_cur) >= tbMinBodyRatio)
+        bar3ClosesBelow = c4 < l4_2
+
+        if bar1BullImpulse and bar2HigherHigh and bar2CloseInBar1B and bar3BearImpulse and bar3ClosesBelow
+            threeBarBear4 := true
+
+//====================================================
+// RAW pattern layer (no gating; confirmed 4H geometry only)
+// Separates detection from qualification for scanner debugging
+//====================================================
+// Core 5 patterns — always based on raw geometry
+// Family 1: Engulfing
+rawBullEngulf = bullEngulf4
+rawBearEngulf = bearEngulf4
+// Family 2: Pin (Shooting Star is bear-pin subtype at resistance)
+rawBullPin    = bullPin4
+rawBearPin    = bearPin4
+rawBearShoot  = shootingStar4
+// Family 3: Star (Morning/Evening unified as one family)
+rawBullMStar  = morningStar4
+rawBearEStar  = eveningStar4
+// Family 4: Inside Bar — raw geometry (current range within prior range)
+rawInsideBar = (h4 <= h4_1) and (l4 >= l4_1) and enInside
+// Family 5: Tweezer — raw geometry (matching highs/lows with opposing candles)
+rawTwzTol = atr4 * twzTolAtrMult
+rawTweezerBot = enTweezer and (f_abs(l4 - l4_1) <= rawTwzTol) and isBear4_1 and isBull4
+rawTweezerTop = enTweezer and (f_abs(h4 - h4_1) <= rawTwzTol) and isBull4_1 and isBear4
+
+// Extended patterns (toggle OFF to include)
+rawThreeBarBull = threeBarBull4
+rawThreeBarBear = threeBarBear4
+
+// NOTE v1.3.0: anyRawBull/anyRawBear removed — rawFire gated by label text non-empty
+
+//====================================================
+// RAW label priority builders (one label per bar, highest priority pattern)
+//====================================================
+f_rawLabelBull() =>
+    string r = ""
+    if rawBullEngulf
+        r := "B-ENG"
+    else if rawBullPin
+        r := "B-PIN"
+    else if rawBullMStar
+        r := "B-STAR"
+    else if rawTweezerBot
+        r := "B-TWZ"
+    else if rawInsideBar and isBull4
+        r := "B-INS"
+    else if (not rawOnly5Core) and rawThreeBarBull
+        r := "B-3BR"
+    r
+
+f_rawLabelBear() =>
+    string r = ""
+    if rawBearEngulf
+        r := "S-ENG"
+    else if rawBearShoot
+        r := "S-SHT"
+    else if rawBearPin
+        r := "S-PIN"
+    else if rawBearEStar
+        r := "S-STAR"
+    else if rawTweezerTop
+        r := "S-TWZ"
+    else if rawInsideBar and isBear4
+        r := "S-INS"
+    else if (not rawOnly5Core) and rawThreeBarBear
+        r := "S-3BR"
+    r
+
+//====================================================
+// 4H Setup qualification (context gates)
+// FIX v1.1.2: Sweep overrides daily bias (best reversals at extremes)
+//====================================================
+setupBull4 = false
+setupBear4 = false
+
+bullPattern4 = bullEngulf4 or bullPin4 or morningStar4 or insideBarBull4 or tweezerBot4 or threeBarBull4
+bearPattern4 = bearEngulf4 or shootingStar4 or eveningStar4 or bearPin4 or insideBarBear4 or tweezerTop4 or threeBarBear4
+
+// Bias gate: daily bias required UNLESS sweep confirmed (reversal at extreme)
+bullBiasOk = dailyBull or (useSweepLogic and sweepBull)
+bearBiasOk = dailyBear or (useSweepLogic and sweepBear)
+
+// Sweep gate: when sweep logic enabled, require sweep; when disabled, pass through
+sweepBullOk = true
+sweepBearOk = true
+if useSweepLogic
+    sweepBullOk := sweepBull
+    sweepBearOk := sweepBear
+
+if bullPattern4 and compressed4 and nearBullDailyZone and sweepBullOk and bullBiasOk
+    setupBull4 := true
+else
+    setupBull4 := false
+
+if bearPattern4 and compressed4 and nearBearDailyZone and sweepBearOk and bearBiasOk
+    setupBear4 := true
+else
+    setupBear4 := false
+
+//====================================================
+// Build pattern label text — FIX v1.1.2: shows direction
+//====================================================
+f_patternLabelBull() =>
+    string result = ""
+    if bullEngulf4
+        result := "B-ENGULF"
+    else if bullPin4
+        result := "B-PIN"
+    else if morningStar4
+        result := "B-STAR"
+    else if insideBarBull4
+        result := "B-INSIDE"
+    else if tweezerBot4
+        result := "B-TWEEZR"
+    else if threeBarBull4
+        result := "B-3BAR"
+    else
+        result := "B-ARM"
+    result
+
+f_patternLabelBear() =>
+    string result = ""
+    if bearEngulf4
+        result := "S-ENGULF"
+    else if shootingStar4
+        result := "S-SHOOT*"
+    else if bearPin4
+        result := "S-PIN"
+    else if eveningStar4
+        result := "S-STAR"
+    else if insideBarBear4
+        result := "S-INSIDE"
+    else if tweezerTop4
+        result := "S-TWEEZR"
+    else if threeBarBear4
+        result := "S-3BAR"
+    else
+        result := "S-ARM"
+    result
+
+//====================================================
+// State machine: ARMED on confirmed 4H setup;
+//   TRIGGERED on 1H confirmation; DISARM on invalid/expiry
+//====================================================
+var bool  armed = false
+var int   armedDir = 0
+var float sigHigh = na
+var float sigLow  = na
+var int   armedTime = na
+var int   lastArmed4HTime = 0
+
+// Expiry in milliseconds
+expiryMs = int(hoursToExpiry * 60 * 60 * 1000)
+
+// FIX v1.1.3: isNew4H derived from confirmed bar timestamp — deterministic across TFs
+closed4HTime = t4
+isNew4H = ta.change(closed4HTime) != 0
+
+// Clean arm flags (one-shot per bar)
+var bool didArmBull = false
+var bool didArmBear = false
+didArmBull := false
+didArmBear := false
+
+if isNew4H
+    if setupBull4 and (closed4HTime != lastArmed4HTime)
+        didArmBull := true
+        armed := true
+        armedDir := 1
+        sigHigh := h4
+        sigLow  := l4
+        armedTime := closed4HTime
+        lastArmed4HTime := closed4HTime
+    else if setupBear4 and (closed4HTime != lastArmed4HTime)
+        didArmBear := true
+        armed := true
+        armedDir := -1
+        sigHigh := h4
+        sigLow  := l4
+        armedTime := closed4HTime
+        lastArmed4HTime := closed4HTime
+
+// Time-based expiry (from closed 4H bar time)
+expired = false
+if armed and not na(armedTime)
+    if (time - armedTime) >= expiryMs
+        expired := true
+    else
+        expired := false
+
+// Structural invalidation
+invalid = false
+if armed
+    if armedDir == 1
+        if close < sigLow - tol
+            invalid := true
+        else
+            invalid := false
+    if armedDir == -1
+        if close > sigHigh + tol
+            invalid := true
+        else
+            invalid := false
+
+//====================================================
+// 1H Trigger layer — consolidated tuple security calls
+//====================================================
+// FIX v1.1.4: Added time to 1H tuple for deterministic isNew1H (symmetric with 4H)
+[o1, h1, l1, c1, t1] = request.security(syminfo.tickerid, tfTrigger, [open, high, low, close, time], barmerge.gaps_off, barmerge.lookahead_off)
+[o1_1, c1_1] = request.security(syminfo.tickerid, tfTrigger, [open[1], close[1]], barmerge.gaps_off, barmerge.lookahead_off)
+
+atr1 = request.security(syminfo.tickerid, tfTrigger, ta.atr(atrLen), barmerge.gaps_off, barmerge.lookahead_off)
+tol1 = f_max(syminfo.mintick, atr1 * 0.02)
+
+body1 = f_body(o1, c1)
+rng1  = f_rng(h1, l1)
+upW1  = f_upW(h1, o1, c1)
+dnW1  = f_dnW(l1, o1, c1)
+
+bodyToRange1 = 0.0
+if rng1 > 0
+    bodyToRange1 := body1 / rng1
+
+isBull1 = c1 > o1
+isBear1 = c1 < o1
+
+bullPin1 = false
+bearPin1 = false
+bullEngulf1 = false
+bearEngulf1 = false
+
+if rng1 > 0
+    closePos1 = (c1 - l1) / rng1
+    // 1H pinbar with opposite-wick check
+    if (dnW1 >= body1 * pinWickToBody) and (bodyToRange1 <= pinBodyToRangeMax) and (closePos1 >= (1.0 - pinCloseEndPct))
+        if upW1 <= body1 * pinOppWickMax
+            bullPin1 := true
+    if (upW1 >= body1 * pinWickToBody) and (bodyToRange1 <= pinBodyToRangeMax) and (closePos1 <= pinCloseEndPct)
+        if dnW1 <= body1 * pinOppWickMax
+            bearPin1 := true
+
+// 1H engulf uses current vs previous 1H candle
+if isBull1 and (c1_1 < o1_1)
+    if (o1 <= c1_1 + tol1) and (c1 >= o1_1 - tol1)
+        bullEngulf1 := true
+if isBear1 and (c1_1 > o1_1)
+    if (o1 >= c1_1 - tol1) and (c1 <= o1_1 + tol1)
+        bearEngulf1 := true
+
+triggerCandleBullOk = true
+triggerCandleBearOk = true
+
+if require1HPattern
+    triggerCandleBullOk := (bullPin1 or bullEngulf1)
+    triggerCandleBearOk := (bearPin1 or bearEngulf1)
+else
+    triggerCandleBullOk := true
+    triggerCandleBearOk := true
+
+// FIX v1.1.3+v1.1.4: True 1H trigger — deterministic from confirmed 1H bar timestamp
+isNew1H = ta.change(t1) != 0
+
+trigBull = false
+trigBear = false
+
+if isNew1H and armed and armedDir == 1
+    if (c1 > sigHigh + tol) and triggerCandleBullOk
+        trigBull := true
+if isNew1H and armed and armedDir == -1
+    if (c1 < sigLow - tol) and triggerCandleBearOk
+        trigBear := true
+
+// Disarm on trigger
+if trigBull or trigBear
+    armed := false
+    armedDir := 0
+    sigHigh := na
+    sigLow  := na
+    armedTime := na
+
+// Disarm on invalid / expired
+if armed and (invalid or expired)
+    armed := false
+    armedDir := 0
+    sigHigh := na
+    sigLow  := na
+    armedTime := na
+
+//====================================================
+// Visuals — directional pattern labels
+//====================================================
+bullPatLabel = f_patternLabelBull()
+bearPatLabel = f_patternLabelBear()
+
+// --- RAW pattern markers (Layer A: detection, no qualification) ---
+// FIX v1.2.1: Single label per bar via priority builder (no stacking)
+// FIX v1.2.1: offset=-1 on 4H chart so marker sits on the actual setup candle
+rawSz = f_size(rawSize)
+
+rawPlotOff = rawOffsetBars
+if timeframe.period == tfSetup
+    rawPlotOff := rawOffsetBars - 1
+
+rawBullTxt = f_rawLabelBull()
+rawBearTxt = f_rawLabelBear()
+
+// FIX v1.3.0: Gate by label text non-empty (bulletproof — no empty markers)
+rawFireBull = isNew4H and showRawPatterns and (rawBullTxt != "")
+rawFireBear = isNew4H and showRawPatterns and (rawBearTxt != "")
+
+plotshape(rawFireBull, title="RAW Bull Pattern", style=shape.diamond, text=rawBullTxt, color=color.new(color.lime, 40), textcolor=color.white, size=rawSz, location=location.belowbar, offset=rawPlotOff)
+plotshape(rawFireBear, title="RAW Bear Pattern", style=shape.diamond, text=rawBearTxt, color=color.new(color.red, 40),  textcolor=color.white, size=rawSz, location=location.abovebar, offset=rawPlotOff)
+
+//====================================================
+// 4H Candle Box Overlay — draw the actual 4H candle on any chart TF
+// Fires once per confirmed 4H close when a RAW pattern exists
+// Wick box = full H/L range; Body box = O/C range with directional colour
+// v1.4.1: Rolling queue prevents max_boxes_count exhaustion
+// v1.4.1: Dynamic TF duration via f_tfMs (supports any setup TF)
+//====================================================
+var box[] wickBoxes = array.new_box()
+var box[] bodyBoxes = array.new_box()
+
+if showCandleBox and isNew4H and (rawBullTxt != "" or rawBearTxt != "")
+    int boxRight = t4 + f_tfMs(tfSetup)
+    bool isBullBox = c4 > o4
+
+    // Wick box (full range — thin border, fully transparent fill)
+    box w = box.new(t4, h4, boxRight, l4, border_color=boxWickColor, border_width=1, bgcolor=color.new(color.black, 100), xloc=xloc.bar_time)
+
+    // Body box (open-close range — solid fill with directional colour)
+    float bodyTop = isBullBox ? c4 : o4
+    float bodyBot = isBullBox ? o4 : c4
+    color bodyFill = isBullBox ? boxBullBodyColor : boxBearBodyColor
+    color bodyBorder = isBullBox ? boxBullBorderCol : boxBearBorderCol
+    box b = box.new(t4, bodyTop, boxRight, bodyBot, border_color=bodyBorder, border_width=2, bgcolor=bodyFill, xloc=xloc.bar_time)
+
+    f_pushBox(wickBoxes, w, maxPatternCandles)
+    f_pushBox(bodyBoxes, b, maxPatternCandles)
+
+// --- ARMED markers (Layer B: qualified setups) ---
+
+plotshape(didArmBull, title="4H ARMED Bull", style=shape.labelup, text=bullPatLabel, color=bullColor, textcolor=color.white, size=size.tiny, location=location.belowbar)
+plotshape(didArmBear, title="4H ARMED Bear", style=shape.labeldown, text=bearPatLabel, color=bearColor, textcolor=color.white, size=size.tiny, location=location.abovebar)
+
+plotshape(trigBull, title="TRIGGERED Bull", style=shape.labelup, text="TRIG", color=bullColor, textcolor=color.white, size=size.small, location=location.belowbar)
+plotshape(trigBear, title="TRIGGERED Bear", style=shape.labeldown, text="TRIG", color=bearColor, textcolor=color.white, size=size.small, location=location.abovebar)
+
+plot((armed ? sigHigh : na), "Armed 4H High", color=color.new(color.orange, 0), linewidth=1, style=plot.style_linebr)
+plot((armed ? sigLow  : na), "Armed 4H Low",  color=color.new(color.orange, 0), linewidth=1, style=plot.style_linebr)
+
+//====================================================
+// Candle colouring
+// Layer 1: Setup candle on 4H chart (offset=-1 for closed bar)
+// Layer 2: Trigger + armed tint (offset=0 for current bar)
+// NOTE v1.1.2: Two barcolor calls confirmed safe; Layer 1 only fires on
+//   4H chart when didArm is true; Layer 2 never targets the same bar.
+//====================================================
+// Layer 1: 4H setup candle (closed bar)
+color setupCol = na
+if colourChartCandles and (timeframe.period == tfSetup)
+    if didArmBull
+        setupCol := colSetupBull
+    else if didArmBear
+        setupCol := colSetupBear
+barcolor(setupCol, offset=-1)
+
+// Layer 2: Trigger + armed tint (current bar)
+var color candleCol = na
+if colourChartCandles
+    candleCol := na
+
+    if trigBull
+        candleCol := colTrigBull
+    else if trigBear
+        candleCol := colTrigBear
+
+    // Armed tint (lowest priority — only if nothing else set)
+    if colourArmedZone and na(candleCol)
+        if armed and armedDir == 1
+            candleCol := colArmedBull
+        else if armed and armedDir == -1
+            candleCol := colArmedBear
+
+barcolor(candleCol)
+
+//====================================================
+// Alerts (driven by didArm flags — true one-shot)
+//====================================================
+alertcondition(didArmBull, title="ARMED Bull", message="ARMED BULL | 4H pattern confirmed at Daily level")
+alertcondition(didArmBear, title="ARMED Bear", message="ARMED BEAR | 4H pattern confirmed at Daily level")
+alertcondition(trigBull, title="TRIGGERED Bull", message="TRIGGERED BULL | 1H confirmed through 4H signal high")
+alertcondition(trigBear, title="TRIGGERED Bear", message="TRIGGERED BEAR | 1H confirmed through 4H signal low")
