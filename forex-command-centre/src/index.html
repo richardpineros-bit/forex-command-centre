@@ -392,10 +392,10 @@
             <div id="pretrade-gate-banner" class="pretrade-gate-banner" style="display: none;">
                 <span class="gate-icon">&#x1F6D1;</span>
                 <div class="gate-content">
-                    <div class="gate-title">PLAYBOOK NOT SELECTED</div>
-                    <p class="gate-message">You must select and lock a playbook before accessing Pre-Trade validation.</p>
+                    <div class="gate-title">CHOOSE YOUR PLAN FIRST</div>
+                    <p class="gate-message">Go to Game Plan and lock in your plan before running the Pre-Trade checklist.</p>
                 </div>
-                <button class="btn btn-primary" onclick="showTab('playbook')">Select Playbook</button>
+                <button class="btn btn-primary" onclick="showTab('playbook')">Go to Game Plan</button>
             </div>
             
             <!-- Leakage Warning Container -->
@@ -408,7 +408,7 @@
                 </div>
                 
                 <p class="text-muted mb-md" style="padding: 0 var(--spacing-md); font-size: 0.85rem;">
-                    6 HARD + 1 SOFT criteria. All HARD must pass. UTCC Armed = criteria already confirmed by system.
+                    7 checks before every trade. 6 must-pass + 1 position-sizing guide. If UTCC is Armed, the system has already confirmed score, timeframes, and volatility.
                 </p>
                 
                 <!-- Basic Setup Info -->
@@ -476,8 +476,8 @@
                 <!-- Unified Pre-Trade Checklist (7 Checks) -->
                 <div class="inst-checklist">
                     <div class="inst-checklist-header">
-                        <span class="inst-checklist-title">&#x1F3DB; Pre-Trade Checklist</span>
-                        <span class="inst-checklist-badge hard">6 HARD + 1 SOFT</span>
+                        <span class="inst-checklist-title">&#x1F3DB; 7 Checks Before You Trade</span>
+                        <span class="inst-checklist-badge hard">6 MUST-PASS + 1 SIZING</span>
                     </div>
                     
                     <!-- Check 1: UTCC Armed State -->
@@ -485,13 +485,13 @@
                         <span class="inst-check-number">1</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                UTCC Armed State
-                                <span class="inst-checklist-badge hard">HARD</span>
+                                Is UTCC Armed?
+                                <span class="inst-checklist-badge hard">MUST PASS</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">Permission gate. UTCC must show ARMED state on the 4H chart. If ARMED, all criteria (score, MTF, volatility) are already confirmed by the system. &#x2191; = Long, &#x2193; = Short. Direction is contextual, not instruction.</span>
+                                    <span class="tooltip-content">This is your permission gate. UTCC must show ARMED on the 4H chart. When Armed, the system has already confirmed trend score, timeframe alignment, and volatility. &#x2191; = bullish bias, &#x2193; = bearish bias.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">UTCC panel shows &#x2191; ARMED or &#x2193; ARMED &mdash; if armed, criteria are already met</div>
+                            <div class="inst-check-criteria">Check your 4H chart &mdash; UTCC panel should show &#x2191; ARMED or &#x2193; ARMED</div>
                             <div class="inst-check-input">
                                 <select class="form-select" id="check-utcc-armed" onchange="updateInstitutionalChecklist()" style="width: auto; min-width: 160px;">
                                     <option value="">Select Status</option>
@@ -509,13 +509,13 @@
                         <span class="inst-check-number">2</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                1H EMAs Stacked Same Direction
-                                <span class="inst-checklist-badge hard">HARD</span>
+                                Are the 1H Moving Averages Lined Up?
+                                <span class="inst-checklist-badge hard">MUST PASS</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">1H gives TIMING &mdash; lower timeframe must confirm higher timeframe bias. Fast &gt; Mid &gt; Slow for longs, reversed for shorts.</span>
+                                    <span class="tooltip-content">The 1H chart gives you timing. The fast, mid, and slow moving averages must be stacked in the same direction as the 4H trend. This confirms the lower timeframe agrees with the bigger picture.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">On 1H: Fast &gt; Mid &gt; Slow (bullish) or Fast &lt; Mid &lt; Slow (bearish), matching 4H</div>
+                            <div class="inst-check-criteria">On the 1H chart: EMAs stacked in order (fast &gt; mid &gt; slow for longs, reversed for shorts)</div>
                             <div class="inst-check-input">
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                                     <input type="checkbox" id="check-ema-stacked" onchange="updateInstitutionalChecklist()">
@@ -526,43 +526,43 @@
                         </div>
                     </div>
                     
-                    <!-- Check 3: Price Acceptance/Rejection at EMA -->
+                    <!-- Check 3: Price Reaction at EMA -->
                     <div class="inst-check-item" id="inst-check-3">
                         <span class="inst-check-number">3</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                Price Acceptance/Rejection at EMA
-                                <span class="inst-checklist-badge hard">HARD</span>
+                                Did Price React at the Moving Average?
+                                <span class="inst-checklist-badge hard">MUST PASS</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">Not just proximity. Price must show REACTION &mdash; acceptance (closes inside, rides it) or rejection (sharp displacement away). Just touching is meaningless.</span>
+                                    <span class="tooltip-content">Price must DO something at the EMA ribbon &mdash; either hold there (acceptance) or bounce sharply away (rejection). Just touching the ribbon and drifting through it means nothing. You need a visible reaction.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">Price shows clear acceptance OR rejection behaviour at EMA ribbon &mdash; not just touching</div>
+                            <div class="inst-check-criteria">Price shows a clear reaction at the EMA ribbon &mdash; holding there or bouncing away. Just touching is not enough.</div>
                             <div class="inst-check-input">
                                 <select class="form-select" id="check-ema-reaction" onchange="updateInstitutionalChecklist()" style="width: auto; min-width: 180px;">
-                                    <option value="">Select Reaction</option>
-                                    <option value="acceptance">Acceptance (holding at level)</option>
-                                    <option value="rejection">Rejection (bouncing away)</option>
-                                    <option value="touch_only">Just touched (no reaction)</option>
-                                    <option value="none">No interaction</option>
+                                    <option value="">What did price do?</option>
+                                    <option value="acceptance">Holding at the level (acceptance)</option>
+                                    <option value="rejection">Bounced away sharply (rejection)</option>
+                                    <option value="touch_only">Just touched it, no reaction</option>
+                                    <option value="none">Hasn't reached it yet</option>
                                 </select>
                                 <span class="inst-check-status status-pending" id="check-3-status">PENDING</span>
                             </div>
                         </div>
                     </div>
                     
-                    <!-- Check 4: Price Failed Opposite Direction -->
+                    <!-- Check 4: Price Failed the Other Way -->
                     <div class="inst-check-item" id="inst-check-4">
                         <span class="inst-check-number">4</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                Price Failed to Do Opposite
-                                <span class="inst-checklist-badge hard">HARD</span>
+                                Did Price Try the Other Way and Fail?
+                                <span class="inst-checklist-badge hard">MUST PASS</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">Reaction, not prediction. For longs: price tried to go lower and FAILED. For shorts: price tried to go higher and FAILED. You trade the failure, not the prediction.</span>
+                                    <span class="tooltip-content">You trade the failure, not a prediction. For longs: price tried to break lower and couldn't &mdash; buyers stepped in. For shorts: price tried to push higher and failed &mdash; sellers won. This is your confirmation that the other side lost.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">Price attempted the opposite direction and failed. Trading reaction, not prediction.</div>
+                            <div class="inst-check-criteria">Price attempted the opposite direction and failed. You are trading the reaction, not predicting.</div>
                             <div class="inst-check-input">
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                                     <input type="checkbox" id="check-failed-opposite" onchange="updateInstitutionalChecklist()">
@@ -573,18 +573,18 @@
                         </div>
                     </div>
                     
-                    <!-- Check 5: Alert Fired > 1 Candle Ago -->
+                    <!-- Check 5: Not Chasing the Alert -->
                     <div class="inst-check-item" id="inst-check-5">
                         <span class="inst-check-number">5</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                Alert Fired &gt; 1 Candle Ago
-                                <span class="inst-checklist-badge hard">HARD</span>
+                                Are You Chasing?
+                                <span class="inst-checklist-badge hard">MUST PASS</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">Kills FOMO. If the alert just fired this candle, you're chasing. Let it breathe. Wait for next candle minimum.</span>
+                                    <span class="tooltip-content">If the alert just fired on the current candle, you are chasing. Let it breathe. Wait for at least the next candle close before entering. Urgency is the enemy of discipline.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">Alert fired on a PREVIOUS candle, not the current one. Prevents chasing.</div>
+                            <div class="inst-check-criteria">The alert fired on a previous candle, not the current one. You are not rushing in.</div>
                             <div class="inst-check-input">
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                                     <input type="checkbox" id="check-alert-lag" onchange="updateInstitutionalChecklist()">
@@ -595,18 +595,18 @@
                         </div>
                     </div>
                     
-                    <!-- Check 6: 1H RSI Favourable (SOFT) -->
+                    <!-- Check 6: RSI Position Sizing (SOFT) -->
                     <div class="inst-check-item" id="inst-check-6">
                         <span class="inst-check-number">6</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                1H RSI Favourable
-                                <span class="inst-checklist-badge soft">SOFT</span>
+                                Is Momentum On Your Side?
+                                <span class="inst-checklist-badge soft">SIZING</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">MOMENTUM confirmation &mdash; RSI at extreme = higher probability entry. Affects position size, not entry permission.</span>
+                                    <span class="tooltip-content">RSI tells you if momentum supports your direction. It doesn't block you from trading &mdash; it adjusts your position size. Ideal RSI = full size. Wrong-way RSI = smaller size or no entry.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">See RSI matrix below &mdash; affects position size, not entry permission</div>
+                            <div class="inst-check-criteria">Check the RSI table below &mdash; this adjusts your position size, not whether you can trade</div>
                             <div class="inst-check-input">
                                 <input type="number" class="form-input" id="check-rsi-value" placeholder="RSI value" min="0" max="100" style="width: 100px;" oninput="updateInstitutionalChecklist(); updateRSIMatrix();">
                                 <span class="inst-check-status status-pending" id="check-6-status">PENDING</span>
@@ -656,22 +656,61 @@
                         </div>
                     </div>
                     
-                    <!-- Check 7: No Stop Loss in Last 48h -->
+                    <!-- Check 7: 48h Cooling Period -->
                     <div class="inst-check-item" id="inst-check-7">
                         <span class="inst-check-number">7</span>
                         <div class="inst-check-content">
                             <div class="inst-check-label">
-                                No Stop Loss in Last 48h
-                                <span class="inst-checklist-badge hard">HARD</span>
+                                Have You Lost on This Pair Recently?
+                                <span class="inst-checklist-badge hard">MUST PASS</span>
                                 <span class="inst-check-tooltip">?
-                                    <span class="tooltip-content">DISCIPLINE &mdash; 48h cooldown prevents revenge trading after a loss. Auto-detected from your trade journal.</span>
+                                    <span class="tooltip-content">48-hour cooling period after a loss on the same pair. This prevents revenge trading &mdash; the urge to immediately "win it back." Auto-checked from your trade journal.</span>
                                 </span>
                             </div>
-                            <div class="inst-check-criteria">No losing trade logged on this pair within the last 48 hours</div>
+                            <div class="inst-check-criteria">No losing trade on this pair in the last 48 hours (auto-detected from your journal)</div>
                             <div class="inst-check-input">
                                 <span class="inst-check-status status-pending" id="check-7-status">Select pair first</span>
                             </div>
                             <div id="cooldown-warning-container"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Auto-Detected System Checks -->
+                    <div class="inst-check-auto-section">
+                        <div class="inst-checklist-header" style="border-top: 1px solid var(--border-primary); margin-top: var(--spacing-sm); padding-top: var(--spacing-sm);">
+                            <span class="inst-checklist-title" style="font-size: 0.85rem;">&#x1F916; Auto-Detected</span>
+                        </div>
+                        
+                        <!-- Auto Check: Regime Match -->
+                        <div class="inst-check-item inst-check-auto" id="inst-check-auto-regime">
+                            <span class="inst-check-number" style="font-size: 0.7rem;">A</span>
+                            <div class="inst-check-content">
+                                <div class="inst-check-label" style="font-size: 0.85rem;">
+                                    Does the Market Agree With Your Briefing?
+                                    <span class="inst-check-tooltip">?
+                                        <span class="tooltip-content">Compares what you declared in your Briefing (regime) with what UTCC is actually seeing. If they disagree, your read may be wrong.</span>
+                                    </span>
+                                </div>
+                                <div class="inst-check-input">
+                                    <span class="inst-check-status status-pending" id="check-auto-regime-status">Waiting for data</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Auto Check: Correlation -->
+                        <div class="inst-check-item inst-check-auto" id="inst-check-auto-correlation">
+                            <span class="inst-check-number" style="font-size: 0.7rem;">B</span>
+                            <div class="inst-check-content">
+                                <div class="inst-check-label" style="font-size: 0.85rem;">
+                                    Are You Doubling Up on Correlated Pairs?
+                                    <span class="inst-check-tooltip">?
+                                        <span class="tooltip-content">Checks if you already have an open trade on a pair that shares a currency with this one. Two trades on correlated pairs = double the risk exposure.</span>
+                                    </span>
+                                </div>
+                                <div class="inst-check-input">
+                                    <span class="inst-check-status status-pending" id="check-auto-correlation-status">Select pair first</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -679,8 +718,8 @@
                 <!-- Unified Verdict Panel -->
                 <div class="entry-verdict-panel verdict-pending" id="entry-verdict-panel" style="margin: var(--spacing-md);">
                     <div class="entry-verdict-icon" id="entry-verdict-icon">&#x23F3;</div>
-                    <div class="entry-verdict-status" id="entry-verdict-status">COMPLETE CHECKLIST</div>
-                    <div class="entry-verdict-reason" id="entry-verdict-reason">Fill in the 7 checks above to see entry verdict</div>
+                    <div class="entry-verdict-status" id="entry-verdict-status">COMPLETE THE CHECKS</div>
+                    <div class="entry-verdict-reason" id="entry-verdict-reason">Fill in all 7 checks above to see if you can trade</div>
                     <div class="entry-verdict-checklist" id="entry-verdict-checklist">
                         <span class="verdict-check" id="vc-1">&#x23F3; Armed</span>
                         <span class="verdict-check" id="vc-2">&#x23F3; EMAs</span>
@@ -698,12 +737,12 @@
                         <div style="display: flex; align-items: flex-start; gap: var(--spacing-sm);">
                             <span style="font-size: 1.2rem;">&#x26A0;</span>
                             <div>
-                                <strong style="color: var(--color-warning);">Logs Are Not Justification</strong>
+                                <strong style="color: var(--color-warning);">Your Logs Don't Override the System</strong>
                                 <p style="font-size: 0.85rem; margin: 4px 0 0 0; color: var(--text-secondary);">
                                     If UTCC disarms, the market wins the argument.<br>
-                                    <em>"It downgraded because X"</em> is information.<br>
-                                    <em>"I overrode it because Y"</em> is <strong>leakage</strong>.<br>
-                                    <span style="color: var(--color-fail);">Disarm = No trade. No exceptions.</span>
+                                    <em>"It downgraded because X"</em> is useful information.<br>
+                                    <em>"I overrode it because Y"</em> is <strong>you breaking your own rules</strong>.<br>
+                                    <span style="color: var(--color-fail);">Disarm = No trade. Full stop.</span>
                                 </p>
                             </div>
                         </div>
@@ -713,11 +752,11 @@
                         <div style="display: flex; align-items: flex-start; gap: var(--spacing-sm);">
                             <span style="font-size: 1.2rem;">&#x23F1;</span>
                             <div>
-                                <strong style="color: var(--color-info);">Trust Lag on Re-Arm</strong>
+                                <strong style="color: var(--color-info);">The System Will Feel Late &mdash; That's Normal</strong>
                                 <p style="font-size: 0.85rem; margin: 4px 0 0 0; color: var(--text-secondary);">
-                                    After quiet periods, first re-arm will feel late.<br>
-                                    If you think <em>"This is obvious, UTCC is late"</em> &mdash; that's your edge trying to leak into prediction.<br>
-                                    <span style="color: var(--color-pass);">Let price earn it. Late is correct.</span>
+                                    After quiet periods, the first re-arm will feel obvious and late.<br>
+                                    If you think <em>"This is obvious, why didn't UTCC arm sooner?"</em> &mdash; that's your ego trying to predict instead of react.<br>
+                                    <span style="color: var(--color-pass);">Let price prove it first. Late is correct.</span>
                                 </p>
                             </div>
                         </div>
@@ -763,7 +802,7 @@
                 <div class="override-section" id="rsi-override-section" style="display: none; margin: 0 var(--spacing-md) var(--spacing-md);">
                     <label>
                         <input type="checkbox" id="rsi-override-confirm" onchange="updateInstitutionalChecklist()">
-                        <span>I understand RSI is NEUTRAL (45-55). I am proceeding anyway with reduced conviction.</span>
+                        <span>I know RSI is neutral (45-55). I'm going ahead anyway with reduced conviction and smaller size.</span>
                     </label>
                 </div>
 
@@ -772,15 +811,15 @@
             <div class="pretrade-gate-divider" id="pretrade-gate-divider">
                 <span class="gate-status-pill gate-locked" id="gate-status-pill">
                     <span id="gate-icon">&#x1F512;</span>
-                    <span id="gate-text">Complete checklist to unlock</span>
+                    <span id="gate-text">Pass the checklist above to unlock</span>
                 </span>
             </div>
             
             <!-- Structure Analysis Section -->
             <div class="card mb-lg pretrade-gated" id="structure-analysis">
                 <div class="card-header">
-                    <h2 class="card-title">&#x1F4CB; Structure Analysis</h2>
-                    <button class="btn btn-secondary btn-sm" onclick="toggleStructureEducation()">&#x2139; What is Structure?</button>
+                    <h2 class="card-title">&#x1F4CB; Where Are You Getting In?</h2>
+                    <button class="btn btn-secondary btn-sm" onclick="toggleStructureEducation()">&#x2139; What Are Levels?</button>
                 </div>
                 
                 <!-- Structure Education (hidden by default) -->
@@ -966,7 +1005,7 @@
             <!-- Entry Strategy Section -->
             <div class="card mb-lg pretrade-gated" id="entry-strategy-card">
                 <div class="card-header">
-                    <h2 class="card-title">&#x26A1; Entry Strategy</h2>
+                    <h2 class="card-title">&#x26A1; How Will You Enter?</h2>
                 </div>
                 
                 <!-- Entry Decision Panel - NEW -->
@@ -1189,7 +1228,7 @@
             <!-- Stop Loss Strategy Section -->
             <div class="card mb-lg pretrade-gated" id="sl-strategy-card">
                 <div class="card-header">
-                    <h2 class="card-title">&#x1F6D1; Stop Loss Strategy</h2>
+                    <h2 class="card-title">&#x1F6D1; Where Is Your Stop?</h2>
                 </div>
                 
                 <!-- ATR-Based Calculator -->

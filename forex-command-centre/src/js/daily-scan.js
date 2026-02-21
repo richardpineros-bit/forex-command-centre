@@ -292,8 +292,8 @@ function validateFromScan(pair) {
         if (volSelect && data.volatility) volSelect.value = data.volatility;
         if (zoneSelect && data.entryZone) zoneSelect.value = data.entryZone;
         
-        // Trigger validation update
-        updateCriteria();
+        // Trigger validation update (legacy 5-criteria removed in v4.1.0)
+        if (typeof updateInstitutionalChecklist === 'function') updateInstitutionalChecklist();
     }, 100);
 }
 

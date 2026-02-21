@@ -111,6 +111,12 @@ function updateInstitutionalChecklist() {
     const rsiOk = rsiLevel === 'pass' || rsiLevel === 'warning' || (rsiLevel === 'neutral' && rsiOverride);
     const hardChecksPassed = check1Pass && check2Pass && check3Pass && check4Pass && check5Pass && check7Pass;
     
+    // ============================================
+    // AUTO-DETECTED CHECKS (R-Code Match + Correlation)
+    // ============================================
+    updateAutoRegimeCheck(pair);
+    updateAutoCorrelationCheck(pair);
+    
     // Update verdict mini-icons
     updateVerdictCheck('vc-1', check1Pass, utccArmed);
     updateVerdictCheck('vc-2', check2Pass, emaStacked);
@@ -227,48 +233,48 @@ function updateEntryVerdict(hardPass, rsiLevel, rsiOk, positionSize, cooldownDat
             if (utccArmed === 'disarmed') reasons.push('UTCC disarmed');
             else reasons.push('UTCC not armed');
         }
-        if (!document.getElementById('check-ema-stacked')?.checked) reasons.push('EMAs not stacked');
+        if (!document.getElementById('check-ema-stacked')?.checked) reasons.push('1H EMAs not lined up');
         const emaReaction = document.getElementById('check-ema-reaction')?.value || '';
-        if (emaReaction === 'touch_only') reasons.push('Just touch - no reaction');
-        else if (emaReaction === 'none') reasons.push('No EMA reaction');
+        if (emaReaction === 'touch_only') reasons.push('Just touched EMA, no reaction');
+        else if (emaReaction === 'none') reasons.push('No EMA reaction yet');
         else if (!emaReaction) reasons.push('EMA reaction not checked');
-        if (!document.getElementById('check-failed-opposite')?.checked) reasons.push('No failed opposite');
-        if (!document.getElementById('check-alert-lag')?.checked) reasons.push('Chasing alert (same candle)');
-        if (!cooldownData.pass) reasons.push(`48h cooldown: ${cooldownData.hoursLeft}h remaining`);
+        if (!document.getElementById('check-failed-opposite')?.checked) reasons.push('No failed opposite move');
+        if (!document.getElementById('check-alert-lag')?.checked) reasons.push('Chasing (alert same candle)');
+        if (!cooldownData.pass) reasons.push(`48h cooldown: ${cooldownData.hoursLeft}h left`);
         
         reason.textContent = reasons.join(' | ');
     } else if (rsiLevel === 'neutral' && !document.getElementById('rsi-override-confirm')?.checked) {
         // CAUTION - RSI Neutral
         panel.classList.add('verdict-caution');
         icon.innerHTML = 'WARNING:';
-        status.textContent = 'ENTRY CAUTION - RSI NEUTRAL';
-        reason.textContent = 'RSI 45-55 = no momentum edge. Tick override box to proceed with reduced conviction.';
+        status.textContent = 'CAUTION - RSI IS NEUTRAL';
+        reason.textContent = 'RSI 45-55 means no momentum edge. Tick the override box if you want to proceed with smaller size.';
     } else if (rsiLevel === 'fail') {
         // BLOCKED - Wrong RSI direction
         panel.classList.add('verdict-blocked');
         icon.innerHTML = '&#x26D4;';
-        status.textContent = 'ENTRY BLOCKED - RSI WRONG DIRECTION';
-        reason.textContent = 'RSI indicates momentum against your trade direction.';
+        status.textContent = 'BLOCKED - MOMENTUM AGAINST YOU';
+        reason.textContent = 'RSI shows momentum going the other way. Do not enter.';
     } else if (rsiLevel === 'pass') {
         // APPROVED FULL
         panel.classList.add('verdict-approved');
         icon.innerHTML = '&#x2705;';
-        status.textContent = 'ENTRY APPROVED - FULL SIZE';
-        reason.textContent = 'All 6 HARD checks passed. RSI IDEAL. Execute with confidence.';
+        status.textContent = 'GO - FULL SIZE';
+        reason.textContent = 'All checks passed. Momentum in your favour. Execute with confidence.';
     } else if (rsiLevel === 'warning' || (rsiLevel === 'neutral' && document.getElementById('rsi-override-confirm')?.checked)) {
         // APPROVED REDUCED
         panel.classList.add('verdict-approved-reduced');
         icon.innerHTML = '&#x2705;';
-        status.textContent = 'ENTRY APPROVED - REDUCED SIZE';
+        status.textContent = 'GO - REDUCED SIZE';
         reason.textContent = rsiLevel === 'warning' ? 
-            'All 6 HARD checks passed. RSI ACCEPTABLE. Use 50-75% position size.' :
-            'All 6 HARD checks passed. RSI NEUTRAL with override. Proceed with caution.';
+            'All checks passed. RSI is acceptable but not ideal. Use 50-75% position size.' :
+            'All checks passed. RSI is neutral \u2014 proceed with caution and smaller size.';
     } else {
         // PENDING
         panel.classList.add('verdict-pending');
         icon.innerHTML = '&#x23F3;';
-        status.textContent = 'COMPLETE CHECKLIST';
-        reason.textContent = 'Fill in the 7 checks above to see entry verdict';
+        status.textContent = 'COMPLETE THE CHECKS';
+        reason.textContent = 'Fill in all 7 checks above to see if you can trade';
     }
     
     // v2.12.1: Toggle gated sections
@@ -291,14 +297,14 @@ function updatePreTradeGate(isApproved, isBlocked) {
         if (pill) {
             pill.className = 'gate-status-pill gate-unlocked';
             if (gateIcon) gateIcon.innerHTML = '&#x1F513;';
-            if (gateText) gateText.textContent = 'Checklist passed - proceed to structure';
+            if (gateText) gateText.textContent = 'Checks passed \u2014 now set your levels';
         }
     } else {
         gatedSections.forEach(el => el.classList.remove('gate-open'));
         if (pill) {
             pill.className = 'gate-status-pill ' + (isBlocked ? 'gate-blocked' : 'gate-locked');
             if (gateIcon) gateIcon.innerHTML = isBlocked ? '&#x26D4;' : '&#x1F512;';
-            if (gateText) gateText.textContent = isBlocked ? 'Entry blocked - fix failing checks above' : 'Complete checklist to unlock';
+            if (gateText) gateText.textContent = isBlocked ? 'Blocked \u2014 fix the failing checks above' : 'Pass the checklist above to unlock';
         }
     }
 }
@@ -488,8 +494,8 @@ function resetInstitutionalChecklist() {
     
     if (panel) panel.className = 'entry-verdict-panel verdict-pending';
     if (icon) icon.innerHTML = '&#x23F3;';
-    if (status) status.textContent = 'COMPLETE CHECKLIST';
-    if (reason) reason.textContent = 'Fill in the 7 checks above to see entry verdict';
+    if (status) status.textContent = 'COMPLETE THE CHECKS';
+    if (reason) reason.textContent = 'Fill in all 7 checks above to see if you can trade';
     
     // Reset other displays
     const overrideSection = document.getElementById('rsi-override-section');
@@ -505,6 +511,107 @@ function resetInstitutionalChecklist() {
         const el = document.getElementById('atr-tier-' + tier);
         if (el) el.classList.remove('active');
     });
+}
+
+// ============================================
+// AUTO-DETECTED CHECKS (v4.1.0)
+// ============================================
+
+// Auto Check A: Regime Match
+// Compares DailyContext regime with what UTCC alert reported
+function updateAutoRegimeCheck(pair) {
+    const statusEl = document.getElementById('check-auto-regime-status');
+    const itemEl = document.getElementById('inst-check-auto-regime');
+    if (!statusEl) return;
+
+    // Get declared regime from DailyContext
+    let declaredRegime = null;
+    if (window.DailyContext && typeof window.DailyContext.getState === 'function') {
+        const dcState = window.DailyContext.getState();
+        if (dcState && dcState.locked && dcState.regime) {
+            declaredRegime = dcState.regime.toLowerCase();
+        }
+    }
+
+    if (!declaredRegime) {
+        statusEl.textContent = 'No briefing locked yet';
+        statusEl.className = 'inst-check-status status-pending';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto';
+        return;
+    }
+
+    // Try to get UTCC regime from armed panel data or alert queue
+    let utccRegime = null;
+    if (window.AlertQueue && typeof window.AlertQueue.getAlerts === 'function') {
+        const alerts = window.AlertQueue.getAlerts();
+        if (alerts && alerts.length > 0 && pair) {
+            const pairAlerts = alerts.filter(function(a) {
+                return a.pair === pair || a.instrument === pair;
+            });
+            if (pairAlerts.length > 0) {
+                const latest = pairAlerts[pairAlerts.length - 1];
+                utccRegime = (latest.regime || latest.r_code || '').toLowerCase();
+            }
+        }
+    }
+
+    if (!utccRegime) {
+        statusEl.textContent = 'No UTCC alert data for this pair';
+        statusEl.className = 'inst-check-status status-pending';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto';
+        return;
+    }
+
+    // Compare regimes
+    const regimeMap = {
+        'exp': 'expansion', 'expansion': 'expansion',
+        'rot': 'rotation', 'rotation': 'rotation',
+        'comp': 'compression', 'compression': 'compression',
+        'dist': 'distribution', 'distribution': 'distribution',
+        'trans': 'transition', 'transition': 'transition',
+        'unclear': 'unclear'
+    };
+
+    const normalised = regimeMap[utccRegime] || utccRegime;
+    const match = normalised === declaredRegime;
+
+    if (match) {
+        statusEl.textContent = 'MATCH \u2014 Briefing and UTCC agree (' + declaredRegime + ')';
+        statusEl.className = 'inst-check-status status-pass';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto check-pass';
+    } else {
+        statusEl.textContent = 'MISMATCH \u2014 You said ' + declaredRegime + ', UTCC says ' + normalised;
+        statusEl.className = 'inst-check-status status-warning';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto check-warning';
+    }
+}
+
+// Auto Check B: Correlation Check
+// Shows if you already have open trades on correlated pairs
+function updateAutoCorrelationCheck(pair) {
+    const statusEl = document.getElementById('check-auto-correlation-status');
+    const itemEl = document.getElementById('inst-check-auto-correlation');
+    if (!statusEl) return;
+
+    if (!pair) {
+        statusEl.textContent = 'Select pair first';
+        statusEl.className = 'inst-check-status status-pending';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto';
+        return;
+    }
+
+    const correlated = getCorrelatedOpenPositions(pair);
+
+    if (correlated.length === 0) {
+        statusEl.textContent = 'CLEAR \u2014 No correlated positions open';
+        statusEl.className = 'inst-check-status status-pass';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto check-pass';
+    } else {
+        const pairNames = correlated.map(function(t) { return t.pair; }).join(', ');
+        statusEl.textContent = 'WARNING \u2014 Open on: ' + pairNames + ' (shared currency exposure)';
+        statusEl.className = 'inst-check-status status-warning';
+        if (itemEl) itemEl.className = 'inst-check-item inst-check-auto check-warning';
+    }
 }
 
 // UTCC v2.5 INSTITUTIONAL CHECKLIST COMPLETE

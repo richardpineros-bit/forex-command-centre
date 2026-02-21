@@ -1,9 +1,11 @@
 // ============================================
-// PLAYBOOK MODULE v1.1.0
+// PLAYBOOK MODULE v1.2.0
 // Institutional Playbook Architecture for UTCC
 // ============================================
 // Purpose: UTCC is a FILTER, not a GENERATOR
 // Rule: If you cannot name the playbook BEFORE looking at UTCC, you don't trade
+// v1.2.0: Plain English rewrite of all descriptions, labels, and steps.
+//         Card names: Ride the Trend, Deep Dip Buy, Range Break, Watch Only, Stand Down
 // v1.1.0: Consolidated from 6 playbooks to 5 institutional-grade playbooks
 //         with full execution steps, invalidation rules, and regime gating.
 // ============================================
@@ -22,25 +24,25 @@
     const PLAYBOOKS = {
         'continuation': {
             id: 'continuation',
-            name: 'Continuation',
+            name: 'Ride the Trend',
             shortName: 'Continuation',
             icon: '\u2197',
             tagClass: 'playbook-continuation',
-            description: 'Trading in the direction of an established, healthy trend. Price making consistent progress with orderly pullbacks.',
-            definition: 'Enter on pullback into EMA ribbon in a confirmed trend. Wait for acceptance or rejection at ribbon. Never chase.',
-            whenApplies: 'Regime = Expansion. UTCC Armed in trend direction. ATR state = TREND or STABLE. Structure = Trending.',
+            description: 'The market is trending cleanly. You wait for a dip back to the moving averages, then join the move already in progress.',
+            definition: 'Wait for price to pull back to the EMA ribbon, watch for a reaction (not just a touch), then enter in the trend direction.',
+            whenApplies: 'Market is in Expansion (strong trend). UTCC is Armed. Volatility is steady or trending.',
             executionSteps: [
-                'Wait for pullback into EMA ribbon (9/21/50 zone)',
-                'Confirm price is ACCEPTED at ribbon (closes inside, rides it) or REJECTED (sharp displacement back in trend direction)',
-                'A simple touch of the ribbon is NOT enough \u2014 you need a reaction',
-                'Enter after 1+ candle closes post-UTCC arm (FOMO gate)',
-                'Stop: Beyond the pullback swing low/high',
-                'Target: Next significant S/R level or 2:1 R:R minimum'
+                'Wait for price to dip back to the moving average zone (EMA ribbon)',
+                'Watch for a reaction \u2014 price holds at the ribbon or bounces sharply off it',
+                'A simple touch is NOT enough \u2014 you need to see buyers/sellers step in',
+                'Wait at least 1 candle after the UTCC alert fires (no chasing)',
+                'Place stop beyond the pullback low (longs) or high (shorts)',
+                'Target the next key level, or aim for at least 2:1 reward vs risk'
             ],
             invalidation: [
-                'MTF alignment breaks (drops below 3/3)',
-                'EMA compression (trend direction = 0)',
-                'Price breaks below/above the pullback level that formed your entry',
+                'Timeframes stop agreeing (1H/4H/Daily no longer aligned)',
+                'Moving averages flatten out \u2014 trend is dying',
+                'Price breaks past the pullback level you used for entry',
                 'UTCC disarms'
             ],
             regimes: ['expansion'],
@@ -53,26 +55,26 @@
 
         'deep-pullback': {
             id: 'deep-pullback',
-            name: 'Deep Pullback',
+            name: 'Deep Dip Buy',
             shortName: 'Deep Pullback',
             icon: '\u21A9',
             tagClass: 'playbook-pullback',
-            description: 'Trading a deeper retracement within a still-valid trend. Price pulled back past 50 EMA but higher timeframe trend intact.',
-            definition: 'Enter on rejection at significant S/R level during a deep correction. Higher timeframe must still hold. Reduced position size mandatory.',
-            whenApplies: 'Regime = Expansion or Distribution. UTCC Armed. Structure = Corrective (deeper than normal pullback).',
+            description: 'The trend is still valid but price has pulled back further than normal \u2014 past the moving averages to a key support/resistance level. Higher risk, so you use a smaller position.',
+            definition: 'Wait for price to reach a significant level during a deep correction. Look for a rejection candle. The bigger picture trend must still be intact.',
+            whenApplies: 'Market is in Expansion or Distribution. Price has corrected deeper than a normal pullback. Daily trend still holds.',
             executionSteps: [
-                'Wait for price to reach a significant S/R level (not just EMA ribbon \u2014 this is deeper)',
-                'Look for rejection candle at that level (pin bar, engulfing, inside bar breakout)',
-                'Confirm higher timeframe still holds (Daily trend intact, 4H structure not broken)',
-                'Enter after rejection confirmation (1+ candle)',
-                'Stop: Beyond the S/R level being tested',
-                'Target: Return to prior trend high/low or 2:1 R:R minimum',
-                'Reduce position size to 0.75x (volatility is elevated)'
+                'Wait for price to reach a significant support/resistance level (deeper than the EMA ribbon)',
+                'Look for a rejection candle at that level (pin bar, engulfing, inside bar break)',
+                'Confirm the bigger picture still holds (Daily trend intact, 4H structure not broken)',
+                'Enter after the rejection candle confirms (wait 1+ candle)',
+                'Place stop beyond the support/resistance level being tested',
+                'Target a return to the prior trend high/low, or at least 2:1 R:R',
+                'Use 75% position size \u2014 volatility is higher than normal'
             ],
             invalidation: [
-                'Higher timeframe trend breaks',
-                'Price closes decisively through the S/R level (not a wick \u2014 a close)',
-                'Second consecutive rejection failure (price keeps pushing through)',
+                'The bigger picture trend breaks (Daily flips)',
+                'Price closes decisively through the key level (not just a wick \u2014 a full close)',
+                'Second attempt to hold the level also fails',
                 'UTCC disarms'
             ],
             regimes: ['expansion', 'distribution', 'transition'],
@@ -85,25 +87,25 @@
 
         'range-breakout': {
             id: 'range-breakout',
-            name: 'Range Breakout',
+            name: 'Range Break',
             shortName: 'Range Breakout',
             icon: '\u25B3',
             tagClass: 'playbook-breakout',
-            description: 'Trading the break of an established range. Price contained between S/R, now breaking with conviction.',
-            definition: 'Wait for decisive close beyond range boundary, then enter on retest of broken level. If price re-enters range, breakout failed.',
-            whenApplies: 'Regime = Compression (breaking). Structure = Compressing then Breaking Out. ATR = QUIET transitioning to EXPANDING.',
+            description: 'Price has been stuck in a box between two levels. Now it is breaking out with conviction. You trade the break after it retests the broken level.',
+            definition: 'Wait for a strong close beyond the range boundary, then enter when price comes back to test the broken level as new support/resistance.',
+            whenApplies: 'Market is in Compression (squeezing) or Transition. A clear range is visible. Volatility is shifting from quiet to expanding.',
             executionSteps: [
-                'Identify the range boundaries clearly (Asian session high/low, or multi-day range)',
-                'Wait for a decisive close beyond the boundary \u2014 not just a wick',
-                'Wait for a retest of the broken boundary (the breakout pullback)',
-                'Enter on successful retest (boundary acts as new support/resistance)',
-                'Stop: Back inside the range (if price re-enters, the breakout failed)',
-                'Target: Range height projected from breakout point, or next S/R level'
+                'Mark the range boundaries clearly (e.g. Asian session high/low, or multi-day box)',
+                'Wait for a strong candle close beyond the boundary \u2014 wicks don\'t count',
+                'Wait for price to pull back and retest the broken level',
+                'Enter when the old boundary holds as new support (broke up) or resistance (broke down)',
+                'Place stop back inside the range \u2014 if price re-enters, the breakout failed',
+                'Target: project the range height from the breakout point, or the next key level'
             ],
             invalidation: [
                 'Price re-enters the range and closes back inside',
-                'False breakout (wick beyond boundary, close back inside)',
-                'No retest within 2 sessions (breakout is too extended to chase)'
+                'False breakout \u2014 wick beyond the edge, then closes back in',
+                'No retest within 2 sessions (breakout is too far gone to chase)'
             ],
             regimes: ['compression', 'transition'],
             permissions: ['FULL'],
@@ -115,18 +117,18 @@
 
         'observation': {
             id: 'observation',
-            name: 'Observation Only',
+            name: 'Watch Only',
             shortName: 'Observation',
             icon: '\u2609',
             tagClass: 'playbook-observation',
-            description: 'Not a tradeable playbook. Conditions exist but not clear enough to act. Watch, analyse, prepare \u2014 but do not execute.',
-            definition: 'Monitor armed instruments without trading them. Prepare entry plans for when conditions improve. Log observations.',
-            whenApplies: 'Regime = Rotation, Compression (without breakout), Distribution, or Transition. Permission = CONDITIONAL.',
+            description: 'Something is happening but it is not clear enough to act on. Your job is to watch, take notes, and prepare \u2014 not to trade.',
+            definition: 'Monitor your armed instruments without entering any trades. Prepare plans for when conditions improve. Log what you see.',
+            whenApplies: 'Market is choppy (Rotation), squeezing without a break (Compression), or changing character (Distribution/Transition). No clear edge.',
             executionSteps: [
-                'Monitor armed instruments without trading them',
-                'Prepare entry plans for when conditions improve',
-                'Log observations in No-Trade Journal',
-                'Review existing positions only'
+                'Keep your armed instruments on screen but hands off',
+                'Write down what would need to change for a trade to appear',
+                'Log your observations in the No-Trade Journal',
+                'Review any existing open positions \u2014 manage, don\'t add'
             ],
             invalidation: [],
             regimes: ['rotation', 'compression', 'distribution', 'transition'],
@@ -145,13 +147,13 @@
             shortName: 'Stand Down',
             icon: '\u26D4',
             tagClass: 'playbook-standdown',
-            description: 'No trading activity permitted. System is locked. Close charts, complete reviews, wait for reset.',
-            definition: 'Zero trading. This is not optional. The system has determined conditions are too dangerous or you have hit a behavioural/risk threshold.',
-            whenApplies: 'Permission = STAND_DOWN. Circuit breaker triggered. Drawdown threshold hit. Regime = Unclear.',
+            description: 'No trading. Full stop. The system has determined it is too dangerous to trade right now \u2014 either market conditions are unclear or you have hit a risk/behaviour threshold.',
+            definition: 'Zero trading activity. This is not optional. Close the charts, complete any required reviews, and wait for conditions to reset.',
+            whenApplies: 'Permission is STAND DOWN. Circuit breaker triggered. Drawdown limit hit. Or you cannot identify the market regime at all.',
             executionSteps: [
-                'Close the charts',
-                'Complete any required reviews',
-                'Wait for conditions to reset'
+                'Close the charts \u2014 seriously, close them',
+                'Complete any required reviews from previous sessions',
+                'Do something else until conditions reset'
             ],
             invalidation: [],
             regimes: ['unclear'],
@@ -174,42 +176,42 @@
             available: ['deep-pullback'],
             forbidden: ['range-breakout'],
             forced: null,
-            note: 'Trend-following playbooks. Continuation is primary. Deep Pullback available for larger retracements.'
+            note: 'Strong trend \u2014 ride the pullbacks. Deep Pullback available if price dips further than normal.'
         },
         'rotation': {
             primary: [],
             available: [],
             forbidden: ['continuation', 'deep-pullback', 'range-breakout'],
             forced: 'observation',
-            note: 'Most dangerous regime. No directional edge. Observation only.'
+            note: 'Choppy, directionless market. No edge here. Watch only.'
         },
         'compression': {
             primary: [],
             available: ['range-breakout'],
             forbidden: ['continuation', 'deep-pullback'],
             forced: 'observation',
-            note: 'Breakout building but direction unknown. Range Breakout if breaking. Default to Observation.'
+            note: 'Price is squeezing. A breakout is building but direction is unknown. Range Break if it breaks, otherwise watch.'
         },
         'distribution': {
             primary: [],
             available: ['deep-pullback'],
             forbidden: ['continuation', 'range-breakout'],
             forced: 'observation',
-            note: 'Late-stage regime. Deep Pullback with caution only. Default to Observation.'
+            note: 'Late stage \u2014 the trend may be ending. Deep Pullback with caution only. Default is to watch.'
         },
         'transition': {
             primary: [],
             available: ['deep-pullback', 'range-breakout'],
             forbidden: ['continuation'],
             forced: 'observation',
-            note: 'Regime changing. Deep Pullback if direction clear. Range Breakout if breaking. Default to Observation.'
+            note: 'Market is changing character. Deep Pullback if you can see direction. Range Break if a level breaks. Otherwise watch.'
         },
         'unclear': {
             primary: [],
             available: [],
             forbidden: ['continuation', 'deep-pullback', 'range-breakout', 'observation'],
             forced: 'stand-down',
-            note: 'Cannot identify regime. Automatic Stand Down. No exceptions.'
+            note: 'Cannot read the market. Automatic Stand Down. No exceptions.'
         }
     };
 
@@ -219,27 +221,27 @@
     const EXECUTION_MODELS = {
         'limit-pullback': {
             id: 'limit-pullback',
-            name: 'Limit Order at Level',
+            name: 'Set a Limit Order',
             shortName: 'Limit',
             icon: '\u23F8',
-            description: 'Place limit order at predetermined level, set SL/TP, walk away.',
-            bestFor: 'Continuation, Deep Pullback, Range Breakout (retest)'
+            description: 'Place your order at a specific price level, set your stop and target, then walk away. The market comes to you.',
+            bestFor: 'Ride the Trend, Deep Dip Buy, Range Break (on retest)'
         },
         'break-retest': {
             id: 'break-retest',
-            name: 'Break-Retest Entry',
+            name: 'Wait for Break + Retest',
             shortName: 'B&R',
             icon: '\u21BA',
-            description: 'Wait for level break, then enter on confirmed retest.',
-            bestFor: 'Range Breakout, Continuation (break of structure)'
+            description: 'Wait for a level to break, then enter when price comes back to test the broken level. Confirmation before commitment.',
+            bestFor: 'Range Break, Ride the Trend (at structure breaks)'
         },
         'market-confirmation': {
             id: 'market-confirmation',
-            name: 'Market on Confirmation',
+            name: 'Market Order on Signal',
             shortName: 'Market',
             icon: '\u26A1',
-            description: 'Market order after confirmation pattern completes. Immediate stop placement.',
-            bestFor: 'Fast-moving setups, session open plays'
+            description: 'Enter at current price once your confirmation pattern completes. Place your stop immediately. For fast-moving setups.',
+            bestFor: 'Fast setups, session opens, time-sensitive entries'
         }
     };
 
@@ -259,24 +261,24 @@
         'perfect-extended': {
             id: 'perfect-extended',
             severity: 'critical',
-            title: 'LOCATION VIOLATION',
-            message: 'High score does NOT override zone quality. EXTENDED zone = NO ENTRY.',
+            title: 'TOO FAR FROM LEVEL',
+            message: 'A high score does not fix a bad location. Price is too far from structure \u2014 no entry.',
             trigger: function(data) { return data.score >= 85 && data.entryZone === 'extended'; },
             action: 'block'
         },
         'score-size-mismatch': {
             id: 'score-size-mismatch',
             severity: 'warning',
-            title: 'POSITION SIZE ALERT',
-            message: 'Score 75-79 requires 50% position size. Full size not permitted.',
+            title: 'REDUCE POSITION SIZE',
+            message: 'Score 75-79 means half size only. You don\'t have enough edge for a full position.',
             trigger: function(data) { return data.score >= 75 && data.score < 80 && data.positionSize === 'full'; },
             action: 'warn'
         },
         'regime-mismatch': {
             id: 'regime-mismatch',
             severity: 'critical',
-            title: 'REGIME MISMATCH',
-            message: 'Selected playbook is not permitted in current regime.',
+            title: 'WRONG PLAN FOR THIS MARKET',
+            message: 'Your selected plan doesn\'t match the current market conditions. Pick a different plan or stand down.',
             trigger: function(data) {
                 var matrix = REGIME_PLAYBOOK_MATRIX[data.regime];
                 return matrix && matrix.forbidden && matrix.forbidden.indexOf(data.playbook) !== -1;
@@ -286,8 +288,8 @@
         'late-session': {
             id: 'late-session',
             severity: 'warning',
-            title: 'LATE SESSION WARNING',
-            message: 'After 9:30pm AEST. New entries not recommended. Consider tomorrow.',
+            title: 'LATE SESSION',
+            message: 'After 9:30pm AEST. Fresh entries not recommended this late. Consider waiting for tomorrow.',
             trigger: function(data) {
                 var now = new Date();
                 var aestHour = parseInt(now.toLocaleString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', hour12: false }));
@@ -299,8 +301,8 @@
         'observation-trade-attempt': {
             id: 'observation-trade-attempt',
             severity: 'critical',
-            title: 'OBSERVATION MODE ACTIVE',
-            message: 'Observation playbook is selected. Pre-Trade tab is blocked. No trades permitted.',
+            title: 'WATCH ONLY MODE',
+            message: 'You chose Watch Only. Pre-Trade tab is blocked. No trades allowed right now.',
             trigger: function(data) { return data.playbook === 'observation'; },
             action: 'block'
         },
@@ -308,23 +310,23 @@
             id: 'stand-down-active',
             severity: 'critical',
             title: 'STAND DOWN ACTIVE',
-            message: 'All workflow tabs blocked. Complete required reviews before resuming.',
+            message: 'Everything is blocked. Complete your required reviews before doing anything else.',
             trigger: function(data) { return data.playbook === 'stand-down'; },
             action: 'block'
         },
         'almost-criteria': {
             id: 'almost-criteria',
             severity: 'warning',
-            title: '4/5 IS NOT 5/5',
-            message: 'One criterion failed. All criteria must pass. No exceptions.',
+            title: '4 OUT OF 5 IS NOT ENOUGH',
+            message: 'One check failed. All checks must pass. Close is not close enough.',
             trigger: function(data) { return data.criteriaPass === 4 && data.criteriaTrial === 5; },
             action: 'warn'
         },
         'correlation-risk': {
             id: 'correlation-risk',
             severity: 'warning',
-            title: 'CORRELATION EXPOSURE',
-            message: 'You have correlated positions open. Combined exposure may exceed risk limits.',
+            title: 'DOUBLING UP',
+            message: 'You already have a position on a correlated pair. Combined exposure may exceed your risk limit.',
             trigger: function(data) { return data.correlatedPositions && data.correlatedPositions.length > 0; },
             action: 'warn'
         }
@@ -639,9 +641,9 @@
                 '<div class="playbook-gate-warning">' +
                     '<span class="gate-icon">&#x26A0;</span>' +
                     '<div class="gate-content">' +
-                        '<div class="gate-title">Complete Daily Context First</div>' +
-                        '<div class="gate-message">You must lock your Daily Context before selecting a playbook.</div>' +
-                        '<button class="btn btn-primary" onclick="showTab(\'daily-context\')">Set Daily Context</button>' +
+                        '<div class="gate-title">Complete Your Briefing First</div>' +
+                        '<div class="gate-message">Lock your Daily Briefing before choosing a plan.</div>' +
+                        '<button class="btn btn-primary" onclick="showTab(\'daily-context\')">Go to Briefing</button>' +
                     '</div>' +
                 '</div>';
             return;
@@ -655,8 +657,8 @@
                 '<div class="playbook-gate-warning">' +
                     '<span class="gate-icon">&#x26A0;</span>' +
                     '<div class="gate-content">' +
-                        '<div class="gate-title">No Playbooks Available</div>' +
-                        '<div class="gate-message">Current regime (' + regime.toUpperCase() + ') has no permitted playbooks.</div>' +
+                        '<div class="gate-title">Nothing Available</div>' +
+                        '<div class="gate-message">The current market conditions (' + regime.toUpperCase() + ') don\'t support any active plans.</div>' +
                     '</div>' +
                 '</div>';
             return;
@@ -677,7 +679,7 @@
             if (pb.tradeable && pb.executionSteps && pb.executionSteps.length > 0) {
                 stepsHtml =
                     '<div class="playbook-steps-preview">' +
-                        '<div class="steps-title">&#x1F4CB; Execution Steps:</div>' +
+                        '<div class="steps-title">&#x1F4CB; How to Execute:</div>' +
                         '<ol class="steps-list">' +
                             pb.executionSteps.map(function(s) { return '<li>' + s + '</li>'; }).join('') +
                         '</ol>' +
@@ -689,7 +691,7 @@
             if (pb.invalidation && pb.invalidation.length > 0) {
                 invHtml =
                     '<div class="playbook-invalidation-preview">' +
-                        '<div class="invalidation-title">&#x26D4; Invalidation:</div>' +
+                        '<div class="invalidation-title">&#x26D4; Walk Away If:</div>' +
                         '<ul class="invalidation-list">' +
                             pb.invalidation.map(function(inv) { return '<li>' + inv + '</li>'; }).join('') +
                         '</ul>' +
@@ -706,7 +708,7 @@
                         (isForced ? '<span class="preferred-badge forced-badge">FORCED</span>' : '') +
                     '</div>' +
                     '<div class="playbook-card-desc">' + pb.description + '</div>' +
-                    '<div class="playbook-when-applies"><strong>When:</strong> ' + pb.whenApplies + '</div>' +
+                    '<div class="playbook-when-applies"><strong>Conditions:</strong> ' + pb.whenApplies + '</div>' +
                     '<div class="playbook-card-meta">' +
                         '<span class="meta-item">' + (pb.tradeable ? 'Min Score: ' + pb.minScore : 'Non-Tradeable') + '</span>' +
                         '<span class="meta-item">' + (RISK_PROFILES[pb.riskProfile] ? RISK_PROFILES[pb.riskProfile].label : '') + '</span>' +
@@ -723,7 +725,7 @@
             var allowedModels = PLAYBOOK_EXECUTION_MAP[state.selectedPlaybook] || [];
             if (allowedModels.length > 0) {
                 executionHtml = '<div class="execution-model-section">' +
-                    '<h4 class="section-subtitle">2. Select Execution Model</h4>' +
+                    '<h4 class="section-subtitle">2. How Will You Enter?</h4>' +
                     '<div class="execution-cards">';
 
                 allowedModels.forEach(function(modelId) {
@@ -764,7 +766,7 @@
             lockButtonHtml =
                 '<div class="playbook-lock-section">' +
                     '<button class="btn btn-primary btn-lg" onclick="PlaybookModule.handleLockSelection()">' + lockLabel + '</button>' +
-                    '<p class="lock-warning">Once locked, you cannot change playbook for this trade.</p>' +
+                    '<p class="lock-warning">Once locked, this is your plan for this trade. No switching mid-setup.</p>' +
                 '</div>';
         }
 
@@ -778,7 +780,7 @@
             }).join('');
             forbiddenHtml =
                 '<div class="playbook-forbidden-section">' +
-                    '<h4 class="section-subtitle forbidden-title">&#x26D4; Forbidden in ' + regime.toUpperCase() + ' Regime</h4>' +
+                    '<h4 class="section-subtitle forbidden-title">&#x26D4; Not Available Right Now</h4>' +
                     '<div class="forbidden-list">' + forbiddenItems + '</div>' +
                     '<p class="forbidden-note">' + matrix.note + '</p>' +
                 '</div>';
@@ -793,10 +795,10 @@
                     '<span class="context-value permission-' + (permission || 'unknown').toLowerCase() + '">' + (permission || 'N/A') + '</span>' +
                 '</div>' +
                 '<div class="selection-rule">' +
-                    '<strong>RULE:</strong> Name your playbook BEFORE looking at the setup. UTCC is a filter, not a generator.' +
+                    '<strong>RULE:</strong> Name your plan BEFORE looking at the chart setup. UTCC confirms your idea \u2014 it doesn\'t give you one.' +
                 '</div>' +
             '</div>' +
-            '<h4 class="section-subtitle">1. Select Playbook</h4>' +
+            '<h4 class="section-subtitle">1. What\'s Your Plan?</h4>' +
             '<div class="playbook-cards">' + cardsHtml + '</div>' +
             executionHtml +
             lockButtonHtml +
@@ -816,7 +818,7 @@
         if (pb.executionSteps && pb.executionSteps.length > 0) {
             stepsHtml =
                 '<div class="locked-criteria">' +
-                    '<div class="criteria-title">' + (pb.tradeable ? '&#x1F4CB; Execution Steps:' : 'What You Do:') + '</div>' +
+                    '<div class="criteria-title">' + (pb.tradeable ? '&#x1F4CB; How to Execute:' : 'What to Do:') + '</div>' +
                     '<ol class="criteria-list">' +
                         pb.executionSteps.map(function(s) { return '<li>' + s + '</li>'; }).join('') +
                     '</ol>' +
@@ -827,7 +829,7 @@
         if (pb.invalidation && pb.invalidation.length > 0) {
             invHtml =
                 '<div class="locked-forbidden">' +
-                    '<div class="forbidden-title">&#x26D4; Invalidation Rules:</div>' +
+                    '<div class="forbidden-title">&#x26D4; Walk Away If:</div>' +
                     '<ul class="forbidden-list-detail">' +
                         pb.invalidation.map(function(inv) { return '<li>' + inv + '</li>'; }).join('') +
                     '</ul>' +
@@ -873,10 +875,10 @@
                 '<div class="dc-playbook-alert">' +
                     '<span>&#x1F4CB;</span>' +
                     '<div>' +
-                        '<strong>No Playbook Selected</strong>' +
-                        '<p>Complete Regime &#x27A1; Playbook workflow to activate</p>' +
+                        '<strong>No Plan Selected</strong>' +
+                        '<p>Complete Briefing &#x27A1; Game Plan to activate</p>' +
                     '</div>' +
-                    '<button class="btn btn-secondary btn-sm" onclick="showTab(\'playbook\')">Select Playbook &#x27A1;</button>' +
+                    '<button class="btn btn-secondary btn-sm" onclick="showTab(\'playbook\')">Choose Plan &#x27A1;</button>' +
                 '</div>' +
             '</div>';
         }
@@ -889,7 +891,7 @@
 
         return '<div class="dc-playbook-card dc-playbook-' + permClass + '">' +
             '<div class="dc-playbook-header">' +
-                '<span>&#x1F4CB; Active Playbook: ' + pb.name.toUpperCase() + '</span>' +
+                '<span>&#x1F4CB; Active Plan: ' + pb.name.toUpperCase() + '</span>' +
                 (model ? '<span class="dc-playbook-execution">' + model.icon + ' ' + model.shortName + '</span>' : '') +
             '</div>' +
             '<div class="dc-playbook-definition">' + pb.definition + '</div>' +
@@ -999,6 +1001,6 @@
         handleResetSelection: handleResetSelection
     };
 
-    console.log('Playbook Module v1.1.0 loaded - 5 institutional playbooks');
+    console.log('Playbook Module v1.2.0 loaded - 5 institutional playbooks (plain English)');
 
 })();

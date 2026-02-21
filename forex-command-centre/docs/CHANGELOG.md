@@ -12,6 +12,47 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v4.1.0] - 2026-02-21
+
+### MINOR - Plain English Rebuild Phase 2 (Game Plan + Pre-Trade)
+
+### Changed
+- **playbook-module.js v1.2.0:** Plain English rewrite of all playbook cards
+  - Continuation → "Ride the Trend", Deep Pullback → "Deep Dip Buy", Range Breakout → "Range Break", Observation → "Watch Only"
+  - All descriptions, execution steps, invalidation rules, and "when applies" rewritten conversationally
+  - Execution models renamed: "Set a Limit Order", "Wait for Break + Retest", "Market Order on Signal"
+  - Section headers: "What's Your Plan?", "How Will You Enter?", "Not Available Right Now"
+  - Leakage warnings rewritten in plain English
+  - Regime matrix notes rewritten conversationally
+  - Dashboard briefing card updated to "Active Plan" language
+- **index.html:** Pre-Trade tab plain English rewrite
+  - All 7 checklist labels rewritten as questions: "Is UTCC Armed?", "Are the 1H Moving Averages Lined Up?", etc.
+  - HARD badges → "MUST PASS", SOFT → "SIZING"
+  - Tooltip explanations rewritten for clarity
+  - Gate banner, divider, verdict panel, and sanity warnings all conversational
+  - Structure Analysis → "Where Are You Getting In?", Entry Strategy → "How Will You Enter?", Stop Loss → "Where Is Your Stop?"
+  - Added Auto-Detected system checks section (Regime Match + Correlation)
+- **institutional-checklist.js:** Verdict messages rewritten plain English
+  - "ENTRY APPROVED" → "GO - FULL SIZE" / "GO - REDUCED SIZE"
+  - "ENTRY BLOCKED" → clearer reason descriptions
+  - Gate text updated to match new tone
+  - Reset text updated
+
+### Added
+- **institutional-checklist.js:** 2 new auto-detected checks merged from removed 10-point panel
+  - Auto Check A: "Does the Market Agree With Your Briefing?" (regime match)
+  - Auto Check B: "Are You Doubling Up on Correlated Pairs?" (correlation check)
+  - Both auto-fire when pair is selected, no manual input needed
+
+### Removed
+- **pre-trade.js:** Removed 229 lines of dead 5-criteria system code
+  - updateCriteria(), checkCriterion1-5(), old updateValidationVerdict(), calculateRR(), calculateValidationPosition()
+  - These referenced element IDs that no longer exist in the HTML
+  - File reduced from 489 → 260 lines
+- **daily-scan.js:** Replaced dead updateCriteria() call with updateInstitutionalChecklist()
+
+---
+
 ## [v4.0.0] - 2026-02-21
 
 ### MAJOR - Plain English Workflow Rebuild (Phase 1)
