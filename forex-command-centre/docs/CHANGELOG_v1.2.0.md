@@ -12,6 +12,33 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v4.0.0] - 2026-02-21
+
+### MAJOR - Plain English Workflow Rebuild (Phase 1)
+
+### Added
+- **daily-context.js v4.0.0:** Complete plain English rewrite
+  - 6 numbered questions replacing technical form fields
+  - Conversational labels with technical terms in small text
+  - News status merged in (eliminates triple news checking)
+  - Session selection merged in (replaces 3 separate regime forms)
+  - Chart hints showing what to look for on each question
+  - Permission auto-calculates live as questions are answered
+- **regime.css:** Additional CSS for question-based layout
+
+### Changed
+- **index.html:** Regime tab section removed (~275 lines), tab renamed Context to Briefing, Playbook to Game Plan
+- **core-ui.js:** Tab gating updated to bypass RegimeModule, uses DailyContext + CircuitBreaker directly
+- **Workflow stepper:** 4 steps (Briefing, Game Plan, Pre-Trade, Execute) instead of 5
+
+### Removed
+- Regime tab and all session-specific regime forms
+- 10-Point Validation Panel (auto-checks moved to dashboard, manual checks merged into Daily Context)
+- Triple volatility assessment (one unified system now)
+- Triple news checking (single check in Daily Context)
+
+---
+
 ## [v2.12.2] - 2026-02-15
 
 ### Added (index.html)
