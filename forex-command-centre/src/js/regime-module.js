@@ -451,22 +451,34 @@ Example:
     // PRE-TRADE ACCESS GATING
     // ============================================
     function checkPreTradeAccess() {
+        // v4.1.1: DailyContext replaces old session regime checks
+        if (window.DailyContext && typeof DailyContext.isLocked === 'function' && DailyContext.isLocked()) {
+            // DailyContext is locked = sufficient for pre-trade access
+            // Still check permission level
+            var dcState = DailyContext.getState ? DailyContext.getState() : null;
+            if (dcState && dcState.permission === 'stand_down') {
+                return { allowed: false, reason: 'Permission is STAND DOWN. No trading allowed.' };
+            }
+            return { allowed: true, reason: null };
+        }
+        
+        // Fallback: old regime checks (backward compat)
         const activeSession = getActiveSession();
         
         // Must have daily context
         if (!isDailyContextComplete()) {
-            return { allowed: false, reason: 'Complete Daily Context Regime first' };
+            return { allowed: false, reason: 'Lock your Daily Briefing first' };
         }
         
         // Must have session regime for active session
         if (activeSession && !isSessionRegimeComplete(activeSession)) {
-            return { allowed: false, reason: `Complete ${SESSIONS[activeSession].name} Session Regime first` };
+            return { allowed: false, reason: 'Lock your Daily Briefing first' };
         }
         
         // Check permission level
         const permission = getCurrentPermission();
         if (permission && permission.level === 'stand-down' && !hasActiveOverride()) {
-            return { allowed: false, reason: 'Permission is STAND DOWN. Create override to proceed.' };
+            return { allowed: false, reason: 'Permission is STAND DOWN. No trading allowed.' };
         }
         
         return { allowed: true, reason: null };
@@ -1273,7 +1285,7 @@ Example:
                 const access = checkPreTradeAccess();
                 if (!access.allowed) {
                     alert(access.reason);
-                    originalShowTab('regime');
+                    originalShowTab('daily-context');
                     return;
                 }
             }

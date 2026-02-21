@@ -770,7 +770,7 @@
         if (!state.global.sessionActive) {
             return {
                 allowed: false,
-                reason: 'No active session. Complete regime check first.',
+                reason: 'No active session. Lock your Briefing first.',
                 lockoutType: 'no_session',
                 reasonCode: NON_TRADE_REASONS.SESSION_LOCKOUT
             };

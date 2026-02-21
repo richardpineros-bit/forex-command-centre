@@ -954,6 +954,13 @@ window.DailyContext = (function () {
 
         save(data);
         syncWithRegimeModule(data);
+        
+        // v4.1.1: Start circuit breaker session (was triggered by old Regime tab lock)
+        if (window.CircuitBreaker && typeof CircuitBreaker.startSession === 'function') {
+            CircuitBreaker.startSession(sessions[0]);
+            console.log('[DailyContext v4.0] Circuit breaker session started:', sessions[0]);
+        }
+        
         refreshAll();
         console.log('[DailyContext v4.0] Locked:', data);
     }
