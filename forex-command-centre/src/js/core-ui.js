@@ -1,0 +1,712 @@
+// core-ui.js - FCC Phase 3 extraction
+// Server storage UI, theme, tabs, modals, FAB, toasts, system info, auto-save, regime validation, init
+
+// SERVER STORAGE UI FUNCTIONS
+// ============================================
+
+function serverStorageSave() {
+    showServerMessage('Saving to server...', 'info');
+    
+    if (typeof ServerStorage !== 'undefined') {
+        ServerStorage.saveAll().then(result => {
+            if (result.success) {
+                showServerMessage('Saved successfully!', 'success');
+                updateServerStorageStatus();
+            } else {
+                showServerMessage('Save failed: ' + (result.error || 'Unknown error'), 'error');
+            }
+        }).catch(err => {
+            showServerMessage('Save error: ' + err.message, 'error');
+        });
+    } else {
+        showServerMessage('ServerStorage not loaded', 'error');
+    }
+}
+
+function serverStorageLoad() {
+    if (!confirm('Load from server? This will replace your current local data.')) {
+        return;
+    }
+    
+    showServerMessage('Loading from server...', 'info');
+    
+    if (typeof ServerStorage !== 'undefined') {
+        ServerStorage.loadAll().then(result => {
+            if (result.success) {
+                showServerMessage('Loaded successfully! Refreshing...', 'success');
+                updateServerStorageStatus();
+                // Refresh UI
+                setTimeout(() => {
+                    loadSettings();
+                    loadTrades();
+                    updateDashboard();
+                }, 500);
+            } else {
+                showServerMessage('Load failed: ' + (result.error || 'Unknown error'), 'error');
+            }
+        }).catch(err => {
+            showServerMessage('Load error: ' + err.message, 'error');
+        });
+    } else {
+        showServerMessage('ServerStorage not loaded', 'error');
+    }
+}
+
+function showServerMessage(message, type) {
+    const msgEl = document.getElementById('server-storage-message');
+    if (!msgEl) return;
+    
+    const colors = {
+        success: 'var(--color-pass)',
+        error: 'var(--color-fail)',
+        warning: 'var(--color-warning)',
+        info: 'var(--color-info)'
+    };
+    
+    msgEl.style.display = 'block';
+    msgEl.style.padding = '8px 12px';
+    msgEl.style.borderRadius = '4px';
+    msgEl.style.background = type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 
+                             type === 'success' ? 'rgba(34, 197, 94, 0.1)' : 
+                             'rgba(59, 130, 246, 0.1)';
+    msgEl.style.color = colors[type] || colors.info;
+    msgEl.textContent = message;
+    
+    if (type !== 'info') {
+        setTimeout(() => { msgEl.style.display = 'none'; }, 5000);
+    }
+}
+
+function updateServerStorageStatus() {
+    const lastSave = localStorage.getItem('ftcc_server_last_save');
+    const lastLoad = localStorage.getItem('ftcc_server_last_load');
+    
+    const saveEl = document.getElementById('server-last-save');
+    const loadEl = document.getElementById('server-last-load');
+    const statusEl = document.getElementById('server-storage-status');
+    
+    if (saveEl) {
+        saveEl.textContent = lastSave ? formatDateTimeShort(lastSave) : 'Never';
+    }
+    if (loadEl) {
+        loadEl.textContent = lastLoad ? formatDateTimeShort(lastLoad) : 'Never';
+    }
+    if (statusEl && lastSave) {
+        statusEl.innerHTML = '<span class="badge badge-pass">Synced</span>';
+    }
+}
+
+function formatDateTimeShort(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('en-AU', { 
+        day: '2-digit', 
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// ============================================
+// THEME MANAGEMENT
+// ============================================
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    saveToStorage(STORAGE_KEYS.theme, theme);
+    
+    // Update toggle buttons
+    document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(theme)) {
+            btn.classList.add('active');
+        }
+    });
+}
+
+function loadTheme() {
+    const theme = loadFromStorage(STORAGE_KEYS.theme, 'dark');
+    setTheme(theme);
+}
+
+// ============================================
+// TAB NAVIGATION
+// ============================================
+
+function showTab(tabId) {
+    // ============================================
+    // GATING CHECKS (before showing tab)
+    // ============================================
+    
+    // v3.0.0: Daily Context gating (Phase 2 - Interlocked Navigation)
+    // Workflow tabs require Daily Context to be locked first
+    if (window.DailyContext) {
+        const dcAccess = DailyContext.canAccess(tabId);
+        if (!dcAccess.allowed) {
+            alert(dcAccess.reason);
+            showTab('daily-context');
+            return;
+        }
+    }
+
+    // v4.0: Gate Pre-Trade through Playbook + Circuit Breaker
+    if (tabId === 'validation') {
+        if (window.CircuitBreaker) {
+            const cbCheck = CircuitBreaker.canTrade();
+            if (!cbCheck.allowed) {
+                alert(cbCheck.reason);
+                return;
+            }
+            if (CircuitBreaker.isReviewRequired()) {
+                const review = CircuitBreaker.getPendingReview();
+                alert('Post-session review required: ' + (review ? review.reason : 'Complete review first'));
+                return;
+            }
+        }
+        if (window.PlaybookModule) {
+            const playbookAccess = window.PlaybookModule.canAccessPreTrade();
+            if (!playbookAccess.allowed) {
+                const banner = document.getElementById('pretrade-gate-banner');
+                if (banner) {
+                    banner.style.display = 'flex';
+                    const msgEl = banner.querySelector('.gate-message');
+                    if (msgEl) msgEl.textContent = playbookAccess.reason;
+                }
+                showTab('playbook');
+                return;
+            } else {
+                const banner = document.getElementById('pretrade-gate-banner');
+                if (banner) banner.style.display = 'none';
+            }
+        }
+    }
+    
+    // v4.0: Gate Playbook through Daily Context only
+    if (tabId === 'playbook') {
+        if (window.DailyContext && !DailyContext.isLocked()) {
+            alert('Complete your morning briefing first');
+            showTab('daily-context');
+            return;
+        }
+    }
+    
+    // ============================================
+    // STANDARD TAB SWITCHING
+    // ============================================
+    
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active from all buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const targetTab = document.getElementById('tab-' + tabId);
+    if (targetTab) {
+        targetTab.classList.add('active');
+    }
+    
+    // Activate the clicked button
+    const clickedBtn = document.querySelector(`[onclick="showTab('${tabId}')"]`);
+    if (clickedBtn) {
+        clickedBtn.classList.add('active');
+    }
+    
+    // Refresh tab-specific data
+    switch(tabId) {
+        case 'daily-context':
+            if (window.DailyContext) DailyContext.renderForm('dc-form-container');
+            break;
+        case 'dashboard':
+            updateDashboard();
+            if (window.DailyContext) {
+                DailyContext.renderBriefingCard('dc-briefing-container');
+                DailyContext.renderStandDownBanner('dc-standdown-container');
+            // v3.1.0: Render Playbook Briefing Card (Phase 3)
+            if (window.PlaybookModule && PlaybookModule.renderPlaybookBriefingCard) {
+                var pbContainer = document.getElementById('dc-playbook-briefing-container');
+                if (pbContainer) {
+                    pbContainer.innerHTML = PlaybookModule.renderPlaybookBriefingCard();
+                }
+            }
+            }
+            break;
+        case 'playbook':
+            // Render playbook selection UI
+            if (window.PlaybookModule) {
+                PlaybookModule.renderPlaybookSelection('playbook-selection-container');
+            }
+            break;
+        case 'validation':
+            // Validation is user-driven
+            break;
+        case 'journal':
+            loadTrades();
+            break;
+        case 'performance':
+            updatePerformanceStats();
+            break;
+        case 'guide':
+            // Static content
+            break;
+        case 'reference':
+            // Static content
+            break;
+        case 'settings':
+            loadSettings();
+            updateSystemInfo();
+            break;
+    }
+
+    // v3.0.0: Refresh workflow stepper on every tab switch
+    if (window.DailyContext) {
+        DailyContext.renderStepper('dc-stepper-container');
+    }
+}
+
+// ============================================
+// MODAL MANAGEMENT
+// ============================================
+
+// v3.1.0: Refresh dashboard briefing cards (called by PlaybookModule on lock/reset)
+function refreshDashboardBriefing() {
+    if (window.DailyContext) {
+        DailyContext.renderBriefingCard('dc-briefing-container');
+        DailyContext.renderStandDownBanner('dc-standdown-container');
+    }
+    if (window.PlaybookModule && PlaybookModule.renderPlaybookBriefingCard) {
+        var pbContainer = document.getElementById('dc-playbook-briefing-container');
+        if (pbContainer) {
+            pbContainer.innerHTML = PlaybookModule.renderPlaybookBriefingCard();
+        }
+    }
+}
+
+function scrollToArmedPanel() {
+    var panel = document.getElementById('armed-panel');
+    if (panel) {
+        // Switch to dashboard first if not already there
+        if (typeof showTab === 'function') showTab('dashboard');
+        setTimeout(function() {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            panel.style.outline = '2px solid var(--accent-primary)';
+            panel.style.outlineOffset = '4px';
+            setTimeout(function() {
+                panel.style.outline = '';
+                panel.style.outlineOffset = '';
+            }, 1500);
+        }, 100);
+    }
+}
+
+function openModal(modalId) {
+    document.getElementById(modalId).classList.add('active');
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.remove('active');
+}
+
+// Close modal on overlay click
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-overlay')) {
+        e.target.classList.remove('active');
+    }
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+            modal.classList.remove('active');
+        });
+    }
+});
+
+// ============================================
+// ARMED INSTRUMENTS FAB BADGE (counts READY pairs only)
+// ============================================
+
+function updateFabArmedCount() {
+    var countBadge = document.getElementById('fab-armed-count');
+    if (!countBadge) return;
+
+    // Count armed instruments with READY or AGEING status (passed FOMO gate, not expired)
+    var readyItems = document.querySelectorAll('#armed-list .armed-ttl-fresh, #armed-list .armed-ttl-ageing');
+    var count = readyItems.length;
+
+    countBadge.textContent = count;
+    countBadge.className = 'fab-trade-count' + (count === 0 ? ' zero' : '');
+}
+
+// Update FAB badge whenever the armed list changes
+var _fabArmedObserver = new MutationObserver(updateFabArmedCount);
+var _fabArmedTarget = document.getElementById('armed-list');
+if (_fabArmedTarget) {
+    _fabArmedObserver.observe(_fabArmedTarget, { childList: true, characterData: true, subtree: true });
+}
+// Initial update (after armed panel loads)
+setTimeout(updateFabArmedCount, 3000);
+
+// ============================================
+// TOAST NOTIFICATIONS
+// ============================================
+
+function showToast(message, type = 'info', duration = 3000) {
+    // Remove existing toasts
+    document.querySelectorAll('.toast').forEach(t => t.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <span>${message}</span>
+        <button onclick="this.parentElement.remove()">&times;</button>
+    `;
+    
+    // Add toast styles if not exists
+    if (!document.getElementById('toast-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'toast-styles';
+        styles.textContent = `
+            .toast {
+                position: fixed;
+                bottom: 100px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                font-size: 0.9rem;
+                max-width: 350px;
+                box-shadow: var(--shadow-lg);
+            }
+            .toast-success { background: var(--color-pass); color: white; }
+            .toast-error { background: var(--color-fail); color: white; }
+            .toast-warning { background: var(--color-warning); color: #000; }
+            .toast-info { background: var(--color-info); color: white; }
+            .toast button {
+                background: none;
+                border: none;
+                color: inherit;
+                font-size: 1.2rem;
+                cursor: pointer;
+                opacity: 0.8;
+            }
+            .toast button:hover { opacity: 1; }
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(styles);
+    }
+    
+    document.body.appendChild(toast);
+    
+    if (duration > 0) {
+        setTimeout(() => toast.remove(), duration);
+    }
+}
+
+// ============================================
+// SYSTEM INFO
+// ============================================
+
+function updateSystemInfo() {
+    const trades = loadFromStorage(STORAGE_KEYS.trades, []);
+    const lastBackup = loadFromStorage(STORAGE_KEYS.lastBackup, null);
+    
+    const storageEl = document.getElementById('storage-used');
+    const tradesEl = document.getElementById('trades-logged');
+    const backupEl = document.getElementById('last-backup');
+    
+    if (storageEl) storageEl.textContent = getStorageSize();
+    if (tradesEl) tradesEl.textContent = trades.length;
+    if (backupEl) backupEl.textContent = lastBackup ? formatDate(lastBackup) : 'Never';
+    
+    // Check backup reminder
+    checkBackupReminder();
+}
+
+function checkBackupReminder() {
+    const lastBackup = loadFromStorage(STORAGE_KEYS.lastBackup, null);
+    const settings = getSettings();
+    
+    if (!lastBackup) {
+        showToast('Reminder: Export a backup of your data', 'warning', 5000);
+        return;
+    }
+    
+    const daysSinceBackup = Math.floor((Date.now() - new Date(lastBackup)) / (1000 * 60 * 60 * 24));
+    if (daysSinceBackup >= settings.backupReminder) {
+        showToast(`It's been ${daysSinceBackup} days since your last backup`, 'warning', 5000);
+    }
+}
+
+// ============================================
+// AUTO-SAVE SYSTEM
+// ============================================
+
+const autoSave = debounce(() => {
+    const settings = getSettings();
+    if (settings.autoSave) {
+        // Auto-save is handled by individual save functions
+        console.log('Auto-save triggered');
+    }
+}, 1000);
+
+// Watch for changes on input fields
+document.addEventListener('input', (e) => {
+    if (e.target.matches('input, select, textarea')) {
+        autoSave();
+    }
+});
+
+
+// ============================================
+// PHASE 7: REGIME VALIDATION PANEL
+// ============================================
+function updateRegimeValidation() {
+    const checks = [];
+    let passCount = 0;
+    let failCount = 0;
+    let pendingCount = 0;
+
+    // Check 1: Daily Context locked (AUTO)
+    const dcLocked = (function() {
+        try {
+            if (window.DailyContext && typeof window.DailyContext.isLocked === 'function') {
+                return window.DailyContext.isLocked();
+            }
+            const dcData = JSON.parse(localStorage.getItem('dailyContext') || '{}');
+            return dcData.locked === true;
+        } catch(e) { return false; }
+    })();
+    checks.push({ id: 1, status: dcLocked ? 'pass' : 'fail', detail: dcLocked ? 'Locked' : 'Not locked' });
+
+    // Check 2: R-Code alignment (MANUAL)
+    const rCode = document.getElementById('rv-input-rcode')?.value || '';
+    if (!rCode) checks.push({ id: 2, status: 'pending', detail: 'Select R-Code' });
+    else if (rCode === 'match') checks.push({ id: 2, status: 'pass', detail: 'R-Code matches' });
+    else if (rCode === 'no-data') checks.push({ id: 2, status: 'pending', detail: 'Awaiting UTCC data' });
+    else checks.push({ id: 2, status: 'fail', detail: 'R-Code mismatch' });
+
+    // Check 3: Permission level (AUTO)
+    const permission = (function() {
+        try {
+            if (window.DailyContext && typeof window.DailyContext.getPermission === 'function') {
+                return window.DailyContext.getPermission();
+            }
+            const dcData = JSON.parse(localStorage.getItem('dailyContext') || '{}');
+            return dcData.permission || null;
+        } catch(e) { return null; }
+    })();
+    if (!permission) checks.push({ id: 3, status: 'fail', detail: 'No permission set' });
+    else if (permission === 'STAND_DOWN' || permission === 'stand-down') checks.push({ id: 3, status: 'fail', detail: 'STAND_DOWN' });
+    else checks.push({ id: 3, status: 'pass', detail: permission });
+
+    // Check 4: Playbook valid (AUTO)
+    const playbook = (function() {
+        try {
+            if (window.PlaybookModule && typeof window.PlaybookModule.getSelected === 'function') {
+                return window.PlaybookModule.getSelected();
+            }
+            const pbData = JSON.parse(localStorage.getItem('selectedPlaybook') || 'null');
+            return pbData;
+        } catch(e) { return null; }
+    })();
+    if (!playbook) checks.push({ id: 4, status: 'pending', detail: 'No playbook selected' });
+    else if (playbook === 'stand-down' || playbook === 'observation-only') checks.push({ id: 4, status: 'fail', detail: playbook.replace(/-/g, ' ').toUpperCase() });
+    else checks.push({ id: 4, status: 'pass', detail: playbook.replace(/-/g, ' ') });
+
+    // Check 5: K-Code (MANUAL)
+    const kCode = document.getElementById('rv-input-kcode')?.value || '';
+    if (!kCode) checks.push({ id: 5, status: 'pending', detail: 'Select K-Code' });
+    else if (kCode === 'k-spike') checks.push({ id: 5, status: 'fail', detail: 'K-SPIKE (blocked)' });
+    else if (kCode === 'k-elevated') checks.push({ id: 5, status: 'warn', detail: 'K-ELEVATED (caution)' });
+    else checks.push({ id: 5, status: 'pass', detail: kCode.replace('k-', 'K-').toUpperCase() });
+
+    // Check 6: Active session (AUTO)
+    const activeSession = (function() {
+        const now = new Date();
+        const utcH = now.getUTCHours();
+        // Tokyo: 00:00-09:00 UTC, London: 07:00-16:00, NY: 12:00-21:00
+        if (utcH >= 0 && utcH < 9) return 'Tokyo';
+        if (utcH >= 7 && utcH < 16) return 'London';
+        if (utcH >= 12 && utcH < 21) return 'New York';
+        if (utcH >= 21 || utcH < 0) return null;
+        return null;
+    })();
+    if (activeSession) checks.push({ id: 6, status: 'pass', detail: activeSession + ' active' });
+    else checks.push({ id: 6, status: 'fail', detail: 'R-OFFSESSION' });
+
+    // Check 7: Circuit breaker (AUTO)
+    const cbClear = (function() {
+        try {
+            if (window.CircuitBreaker && typeof window.CircuitBreaker.isTripped === 'function') {
+                return !window.CircuitBreaker.isTripped();
+            }
+            const cbData = JSON.parse(localStorage.getItem('circuitBreaker') || '{}');
+            return !cbData.tripped;
+        } catch(e) { return true; }
+    })();
+    checks.push({ id: 7, status: cbClear ? 'pass' : 'fail', detail: cbClear ? 'Clear' : 'LOCKOUT ACTIVE' });
+
+    // Check 8: Correlation (SOFT MANUAL)
+    const corr = document.getElementById('rv-input-correlation')?.checked || false;
+    checks.push({ id: 8, status: corr ? 'pass' : 'pending', detail: corr ? 'Checked' : 'Not confirmed', soft: true });
+
+    // Check 9: News (MANUAL)
+    const news = document.getElementById('rv-input-news')?.value || '';
+    if (!news) checks.push({ id: 9, status: 'pending', detail: 'Select status' });
+    else if (news === 'clear') checks.push({ id: 9, status: 'pass', detail: 'Clear' });
+    else if (news === 'medium') checks.push({ id: 9, status: 'warn', detail: 'Medium impact nearby' });
+    else checks.push({ id: 9, status: 'fail', detail: 'HIGH IMPACT BLOCKED' });
+
+    // Check 10: Daily loss (AUTO)
+    const ddOk = (function() {
+        try {
+            const balance = parseFloat(localStorage.getItem('currentBalance') || '0');
+            const peak = parseFloat(localStorage.getItem('peakBalance') || '0');
+            if (!peak || !balance) return { status: 'pass', detail: 'No drawdown data' };
+            const dd = ((peak - balance) / peak) * 100;
+            if (dd >= 5) return { status: 'fail', detail: '-' + dd.toFixed(1) + '% (STAND DOWN)' };
+            if (dd >= 3) return { status: 'warn', detail: '-' + dd.toFixed(1) + '% (risk cap)' };
+            return { status: 'pass', detail: '-' + dd.toFixed(1) + '%' };
+        } catch(e) { return { status: 'pass', detail: 'OK' }; }
+    })();
+    checks.push({ id: 10, status: ddOk.status, detail: ddOk.detail });
+
+    // Apply to DOM
+    checks.forEach(function(c) {
+        const item = document.getElementById('rv-check-' + c.id);
+        const status = document.getElementById('rv-status-' + c.id);
+        if (!item || !status) return;
+
+        item.className = 'regime-val-item val-' + (c.status === 'warn' ? 'pending' : c.status);
+        status.className = 'regime-val-status s-' + (c.status === 'warn' ? 'warn' : c.status);
+        status.textContent = c.status === 'pass' ? '\u2713 PASS' : c.status === 'fail' ? '\u2716 FAIL' : c.status === 'warn' ? '\u26A0 WARN' : '\u23F3 PENDING';
+
+        if (c.status === 'pass') passCount++;
+        else if (c.status === 'fail') failCount++;
+        else pendingCount++;
+    });
+
+    // Update counters
+    const passEl = document.getElementById('rv-pass-count');
+    const failEl = document.getElementById('rv-fail-count');
+    const pendEl = document.getElementById('rv-pending-count');
+    if (passEl) passEl.textContent = passCount + ' PASS';
+    if (failEl) failEl.textContent = failCount + ' FAIL';
+    if (pendEl) pendEl.textContent = pendingCount + ' PENDING';
+
+    // Update flow visualisation
+    const flowSteps = {
+        'rv-flow-utcc': checks[1]?.status === 'pass' ? 'done' : checks[1]?.status === 'fail' ? 'fail' : '',
+        'rv-flow-context': checks[0]?.status === 'pass' ? 'done' : checks[0]?.status === 'fail' ? 'fail' : '',
+        'rv-flow-permission': checks[2]?.status === 'pass' ? 'done' : checks[2]?.status === 'fail' ? 'fail' : '',
+        'rv-flow-playbook': checks[3]?.status === 'pass' ? 'done' : checks[3]?.status === 'fail' ? 'fail' : '',
+        'rv-flow-execute': (failCount === 0 && pendingCount === 0) ? 'done' : failCount > 0 ? 'fail' : ''
+    };
+    Object.keys(flowSteps).forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.className = 'regime-val-flow-step' + (flowSteps[id] ? ' ' + flowSteps[id] : '');
+        }
+    });
+
+    // Verdict
+    const verdict = document.getElementById('rv-verdict');
+    if (verdict) {
+        const hardFails = checks.filter(function(c) { return c.status === 'fail' && !c.soft; }).length;
+        const hardPending = checks.filter(function(c) { return (c.status === 'pending') && !c.soft; }).length;
+        const warns = checks.filter(function(c) { return c.status === 'warn'; }).length;
+
+        if (hardFails > 0) {
+            verdict.className = 'regime-val-verdict v-blocked';
+            verdict.innerHTML = '&#x1F6AB; BLOCKED \u2014 ' + hardFails + ' HARD gate(s) failed. No trading permitted.';
+        } else if (hardPending > 0) {
+            verdict.className = 'regime-val-verdict v-pending';
+            verdict.innerHTML = '\u23F3 ' + hardPending + ' check(s) pending. Complete all gates to resolve.';
+        } else if (warns > 0) {
+            verdict.className = 'regime-val-verdict v-conditional';
+            verdict.innerHTML = '\u26A0 CONDITIONAL \u2014 All hard gates pass but ' + warns + ' warning(s). Proceed with reduced risk.';
+        } else {
+            verdict.className = 'regime-val-verdict v-clear';
+            verdict.innerHTML = '&#x2705; ALL CLEAR \u2014 10/10 gates passed. Trading permitted under current regime.';
+        }
+    }
+}
+
+function resetRegimeValidation() {
+    const rCode = document.getElementById('rv-input-rcode');
+    const kCode = document.getElementById('rv-input-kcode');
+    const corr = document.getElementById('rv-input-correlation');
+    const news = document.getElementById('rv-input-news');
+    if (rCode) rCode.value = '';
+    if (kCode) kCode.value = '';
+    if (corr) corr.checked = false;
+    if (news) news.value = '';
+    updateRegimeValidation();
+}
+
+// ============================================
+// INITIALISATION
+// ============================================
+
+function initApp() {
+    console.log(`Forex Trading Command Centre v${APP_VERSION} initialising...`);
+    
+    // Load theme
+    loadTheme();
+    
+    // Load settings
+    loadSettings();
+    
+    // Set today's date on scan
+    const scanDate = document.getElementById('scan-date');
+    if (scanDate) {
+        scanDate.value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Update dashboard
+    updateDashboard();
+    
+    // Update system info
+    updateSystemInfo();
+    
+    // Load trades for journal
+    loadTrades();
+    
+    // v2.12.0: Load no-trade journal
+    loadNoTrades();
+    
+    // Initialize entry strategy (session timing)
+    initEntryStrategy();
+    
+    // Load economic calendar data
+    loadEconomicCalendar().then(loaded => {
+        if (loaded) {
+            console.log('Economic calendar loaded successfully');
+        } else {
+            console.log('Economic calendar not available - using reference mode');
+        }
+    });
+    
+    // Update server storage status
+    updateServerStorageStatus();
+    
+    console.log('App initialised successfully');
+}
+
+// Run on DOM ready
+document.addEventListener('DOMContentLoaded', initApp);
+
+// CHUNK 1 COMPLETE - Core utilities, storage, theme, tabs, armed instruments FAB, toasts
+// NEWS MANAGEMENT moved to regime-module.js

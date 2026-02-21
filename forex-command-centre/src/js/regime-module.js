@@ -10,9 +10,9 @@
     // STORAGE KEY
     // ============================================
     const REGIME_STORAGE_KEY = 'ftcc_regime';
-    const NEWS_STORAGE_KEY = 'forex_upcoming_news';
-    const NEWS_TIMESTAMP_KEY = 'forex_news_timestamp';
     const NEWS_STALE_HOURS = 12;
+    // v3.4.0: News data now stored inside ftcc_regime object (syncs to server)
+    // Legacy keys 'forex_upcoming_news' / 'forex_news_timestamp' migrated on load
 
     // ============================================
     // REGIME CONSTANTS
@@ -44,7 +44,7 @@
     // ============================================
     function getDefaultRegimeData() {
         return {
-            version: '1.0',
+            version: '1.1',
             dailyContext: null,
             sessions: {
                 tokyo: null,
@@ -53,7 +53,11 @@
             },
             overrides: [],
             tracking: [],
-            activeOverride: null
+            activeOverride: null,
+            upcomingNews: {
+                text: '',
+                timestamp: null
+            }
         };
     }
 
@@ -65,6 +69,25 @@
             const data = localStorage.getItem(REGIME_STORAGE_KEY);
             if (data) {
                 const parsed = JSON.parse(data);
+
+                // v3.4.0: Ensure upcomingNews field exists (migration)
+                if (!parsed.upcomingNews) {
+                    parsed.upcomingNews = { text: '', timestamp: null };
+                }
+
+                // v3.4.0: Migrate legacy standalone news keys into regime object
+                var legacyText = localStorage.getItem('forex_upcoming_news');
+                var legacyTs = localStorage.getItem('forex_news_timestamp');
+                if (legacyText && !parsed.upcomingNews.text) {
+                    parsed.upcomingNews.text = legacyText;
+                    parsed.upcomingNews.timestamp = legacyTs ? parseInt(legacyTs) : null;
+                    // Save migrated data and clean up legacy keys
+                    localStorage.setItem(REGIME_STORAGE_KEY, JSON.stringify(parsed));
+                    localStorage.removeItem('forex_upcoming_news');
+                    localStorage.removeItem('forex_news_timestamp');
+                    console.log('News data migrated into regime object');
+                }
+
                 // Check if data is from today
                 if (parsed.dailyContext && isToday(parsed.dailyContext.timestamp)) {
                     return parsed;
@@ -320,25 +343,34 @@
     }
 
     // ============================================
-    // UPCOMING NEWS FUNCTIONS
+    // UPCOMING NEWS FUNCTIONS (v3.4.0: stored inside ftcc_regime for server sync)
     // ============================================
     function loadUpcomingNews() {
+        var data = loadRegimeData();
+        var news = data.upcomingNews || { text: '', timestamp: null };
         return {
-            text: localStorage.getItem(NEWS_STORAGE_KEY) || '',
-            timestamp: localStorage.getItem(NEWS_TIMESTAMP_KEY) || null
+            text: news.text || '',
+            timestamp: news.timestamp || null
         };
     }
 
     function saveUpcomingNews() {
-        const textarea = document.getElementById('upcoming-news-input');
+        var textarea = document.getElementById('upcoming-news-input');
         if (!textarea) return;
         
-        const newsText = textarea.value.trim();
-        const now = Date.now();
-        
-        localStorage.setItem(NEWS_STORAGE_KEY, newsText);
-        localStorage.setItem(NEWS_TIMESTAMP_KEY, now.toString());
-        
+        var newsText = textarea.value.trim();
+        var now = Date.now();
+        var data = loadRegimeData();
+
+        // Ensure upcomingNews field exists
+        if (!data.upcomingNews) {
+            data.upcomingNews = { text: '', timestamp: null };
+        }
+
+        data.upcomingNews.text = newsText;
+        data.upcomingNews.timestamp = now;
+
+        saveRegimeData(data);
         renderUpcomingNews();
         
         // Show toast if available
@@ -348,20 +380,22 @@
     }
 
     function isNewsStale() {
-        const timestamp = localStorage.getItem(NEWS_TIMESTAMP_KEY);
-        if (!timestamp) return true;
+        var data = loadRegimeData();
+        var ts = data.upcomingNews ? data.upcomingNews.timestamp : null;
+        if (!ts) return true;
         
-        const savedTime = new Date(parseInt(timestamp));
-        const now = new Date();
-        const hoursAgo = (now - savedTime) / (1000 * 60 * 60);
+        var savedTime = new Date(ts);
+        var now = new Date();
+        var hoursAgo = (now - savedTime) / (1000 * 60 * 60);
         return hoursAgo > NEWS_STALE_HOURS;
     }
 
     function getNewsTimestampDisplay() {
-        const timestamp = localStorage.getItem(NEWS_TIMESTAMP_KEY);
-        if (!timestamp) return 'Never updated';
+        var data = loadRegimeData();
+        var ts = data.upcomingNews ? data.upcomingNews.timestamp : null;
+        if (!ts) return 'Never updated';
         
-        const savedTime = new Date(parseInt(timestamp));
+        var savedTime = new Date(ts);
         return 'Updated: ' + savedTime.toLocaleString('en-AU', { 
             day: 'numeric', 
             month: 'short', 
