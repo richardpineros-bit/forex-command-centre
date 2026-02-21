@@ -12,6 +12,23 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v4.1.1] - 2026-02-21
+
+### PATCH - Hotfix: Circuit breaker + regime gating for v4.0 flow
+
+### Fixed
+- **daily-context.js:** Now calls `CircuitBreaker.startSession()` when Briefing is locked
+  - Old Regime tab lock used to trigger this — removing Regime tab broke the chain
+  - Without this, all tabs showed "No active session. Complete regime check first."
+- **regime-module.js:** `checkPreTradeAccess()` now checks `DailyContext.isLocked()` first
+  - Bypasses old session regime requirement when Briefing is locked
+  - Fallback messages updated from "Complete regime" to "Lock your Briefing first"
+  - `showTab()` wrapper redirect changed from removed 'regime' tab to 'daily-context'
+- **circuit-breaker-module.js:** Error message updated to "Lock your Briefing first"
+- **index.html:** Header updated from "DAILY CONTEXT / Step 0 — Required Before Trading" to "Daily Briefing / Start here every day"
+
+---
+
 ## [v4.1.0] - 2026-02-21
 
 ### MINOR - Plain English Rebuild Phase 2 (Game Plan + Pre-Trade)
