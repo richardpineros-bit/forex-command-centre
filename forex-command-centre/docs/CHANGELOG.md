@@ -31,6 +31,18 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v4.1.2] - 2026-02-22
+
+### PATCH - Add all 6 asset classes to pair dropdowns
+
+### Changed
+- **index.html (Pre-Trade dropdown):** Added Metals, Energy, Indices, Bonds, Crypto optgroups with all instruments from asset-class.js
+- **index.html (Journal dropdown):** Expanded from partial (Gold, Silver, 3 US indices) to full set matching Pre-Trade
+- Both dropdowns now consistent: Forex (28 pairs) + Metals (4) + Energy (3) + Indices (12) + Bonds (6) + Crypto (4) = 57 instruments
+- Journal filter dropdown already had full set — no change needed
+
+---
+
 ## [v4.1.1] - 2026-02-21
 
 ### PATCH - Hotfix: Circuit breaker + regime gating for v4.0 flow
