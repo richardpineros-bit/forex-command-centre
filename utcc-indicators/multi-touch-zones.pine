@@ -1,5 +1,5 @@
 //@version=6
-indicator("Pro S/R Zones - Enhanced Multi-Touch", shorttitle="ProZones_V2", overlay=true, max_lines_count=500, max_labels_count=100, max_boxes_count=200)
+indicator("Pro S/R Zones v3.4.1 - Proximity", shorttitle="ProZones_V3", overlay=true, max_lines_count=500, max_labels_count=100, max_boxes_count=200)
 
 //========================
 // CORE INPUTS
@@ -19,7 +19,8 @@ nearN = input.int(15, "Nearest N zones", minval=1, maxval=80, group=grpDisp)
 grpCaps = "Memory Caps"
 maxKept = input.int(160, "Max zones in memory", minval=50, maxval=300, group=grpCaps)
 maxDraw = input.int(50, "Max zones drawn", minval=5, maxval=100, group=grpCaps)
-minTouches = input.int(3, "Min touches to display", minval=2, maxval=10, group=grpCaps)
+minTouches = input.int(3, "Min touches to display", minval=2, maxval=50, group=grpCaps)
+touchCooldown = input.int(6, "Touch cooldown (bars)", minval=1, maxval=50, group=grpCaps, tooltip="Min bars between counted touches on same zone. 6 bars on 4H = 24 hours.")
 
 grpClamp = "Zone Width Control"
 useClamp = input.bool(true, "Enable width clamping", group=grpClamp)
@@ -65,6 +66,17 @@ alExit = input.bool(true, "Exit zone", group=grpAlr)
 alBoundary = input.bool(true, "Boundary touch", group=grpAlr)
 alReject = input.bool(true, "Rejection detected", group=grpAlr)
 alBreak = input.bool(true, "Zone broken", group=grpAlr)
+
+grpProx = "Proximity Panel"
+showProxPanel   = input.bool(true,  "Show Proximity Panel",                         group=grpProx)
+proxPosition    = input.string("Bottom Left", "Panel Position", 
+                 options=["Top Left", "Top Centre", "Top Right", "Middle Left", "Middle Right", "Bottom Left", "Bottom Centre", "Bottom Right"], group=grpProx)
+proxWarnATR     = input.float(1.0,  "Warning distance (ATR) - amber",  minval=0.1, step=0.1, group=grpProx)
+proxDangerATR   = input.float(0.5,  "Danger distance (ATR) - red",    minval=0.1, step=0.1, group=grpProx)
+proxStrongTouch = input.int(4,      "Strong zone: min touches",        minval=2,             group=grpProx)
+proxStrongReject = input.int(2,     "Strong zone: min rejections",     minval=0,             group=grpProx)
+proxModTouch    = input.int(3,      "Moderate zone: min touches",      minval=2,             group=grpProx)
+proxAlertATR    = input.float(1.0,  "Alert when within (ATR)",         minval=0.1, step=0.1, group=grpProx)
 
 dbgOn = input.bool(true, "Show debug panel", group="Debug")
 
@@ -195,6 +207,7 @@ var arrFlipped = array.new_bool()
 var arrSession = array.new_bool()
 var arrVol = array.new_float()
 var arrLastReject = array.new_int()
+var arrLastTouchBar = array.new_int()
 
 f_n() => array.size(arrLo)
 
@@ -230,7 +243,10 @@ f_add_or_expand(_p, _ts, _tol, _isSess) =>
             [loM, hiM] = f_clamp_width(loU, hiU, atr14)
             array.set(arrLo, _idx, loM)
             array.set(arrHi, _idx, hiM)
-            array.set(arrTch, _idx, f_get_i(arrTch, _idx) + 1)
+            _lastBar = f_get_i(arrLastTouchBar, _idx)
+            if (bar_index - _lastBar) >= touchCooldown and not f_get_b(arrBroken, _idx)
+                array.set(arrTch, _idx, f_get_i(arrTch, _idx) + 1)
+                array.set(arrLastTouchBar, _idx, bar_index)
             if f_get_i(arrFirst, _idx) == 0
                 array.set(arrFirst, _idx, _ts)
             array.set(arrLast, _idx, _ts)
@@ -256,6 +272,7 @@ f_add_or_expand(_p, _ts, _tol, _isSess) =>
             array.push(arrSession, _isSess)
             array.push(arrVol, volume)
             array.push(arrLastReject, 0)
+            array.push(arrLastTouchBar, bar_index)
 
 if newPH
     f_add_or_expand(lastPH, time, tolTF, isSessionPivot)
@@ -290,7 +307,7 @@ f_merge_capped() =>
                             [loM, hiM] = f_clamp_width(loU, hiU, atr14)
                             array.set(arrLo, i, loM)
                             array.set(arrHi, i, hiM)
-                            array.set(arrTch, i, f_get_i(arrTch, i) + f_get_i(arrTch, j))
+                            array.set(arrTch, i, math.max(f_get_i(arrTch, i), f_get_i(arrTch, j)))
                             array.set(arrFirst, i, math.min(f_get_i(arrFirst, i), f_get_i(arrFirst, j)))
                             array.set(arrLast, i, math.max(f_get_i(arrLast, i), f_get_i(arrLast, j)))
                             array.set(arrIn, i, f_get_b(arrIn, i) or f_get_b(arrIn, j))
@@ -298,10 +315,11 @@ f_merge_capped() =>
                             array.set(arrBndR, i, f_get_f(arrBndR, i) + f_get_f(arrBndR, j))
                             array.set(arrPasR, i, f_get_f(arrPasR, i) + f_get_f(arrPasR, j))
                             array.set(arrPkR, i, f_get_f(arrPkR, i) + f_get_f(arrPkR, j))
-                            array.set(arrReject, i, f_get_i(arrReject, i) + f_get_i(arrReject, j))
+                            array.set(arrReject, i, math.max(f_get_i(arrReject, i), f_get_i(arrReject, j)))
                             array.set(arrSession, i, f_get_b(arrSession, i) or f_get_b(arrSession, j))
                             array.set(arrVol, i, f_get_f(arrVol, i) + f_get_f(arrVol, j))
                             array.set(arrBroken, i, f_get_b(arrBroken, i) or f_get_b(arrBroken, j))
+                            array.set(arrLastTouchBar, i, math.max(f_get_i(arrLastTouchBar, i), f_get_i(arrLastTouchBar, j)))
                             
                             array.remove(arrLo, j)
                             array.remove(arrHi, j)
@@ -320,6 +338,7 @@ f_merge_capped() =>
                             array.remove(arrSession, j)
                             array.remove(arrVol, j)
                             array.remove(arrLastReject, j)
+                            array.remove(arrLastTouchBar, j)
                             
                             _n -= 1
                             _changed := true
@@ -368,6 +387,7 @@ f_prune_cap(_cap) =>
         array.remove(arrSession, _idx)
         array.remove(arrVol, _idx)
         array.remove(arrLastReject, _idx)
+        array.remove(arrLastTouchBar, _idx)
         _rem += 1
     _rem
 
@@ -456,9 +476,11 @@ f_interest_and_events() =>
                 _wasBelow = close[1] < _lo
                 [_broke, _flip] = f_break_detect(_lo, _hi, _inNow, _wasAbove, _wasBelow)
                 
-                if _rej
-                    array.set(arrReject, i, f_get_i(arrReject, i) + 1)
-                    array.set(arrLastReject, i, bar_index)
+                if _rej and not f_get_b(arrBroken, i)
+                    _lastRejBar = f_get_i(arrLastReject, i)
+                    if (bar_index - _lastRejBar) >= touchCooldown
+                        array.set(arrReject, i, f_get_i(arrReject, i) + 1)
+                        array.set(arrLastReject, i, bar_index)
                 if _broke
                     array.set(arrBroken, i, true)
                 if _flip
@@ -481,8 +503,11 @@ f_interest_and_events() =>
                 
                 array.set(arrScore, i, _sc)
                 
-                if _ent or _bnd
-                    array.set(arrTch, i, f_get_i(arrTch, i) + 1)
+                if (_ent or _bnd) and not f_get_b(arrBroken, i)
+                    _lastTchBar = f_get_i(arrLastTouchBar, i)
+                    if (bar_index - _lastTchBar) >= touchCooldown
+                        array.set(arrTch, i, f_get_i(arrTch, i) + 1)
+                        array.set(arrLastTouchBar, i, bar_index)
                 
                 array.set(arrIn, i, _inNow)
                 
@@ -586,6 +611,109 @@ if array.size(idxs) > 0
     _k = math.min(array.size(idxs) - 1, targetN - 1)
     _idxK = array.get(idxs, _k)
     thrScore := f_get_f(arrScore, _idxK)
+
+//========================
+// PROXIMITY DETECTION
+//========================
+// Find nearest qualifying zone ABOVE and BELOW current price
+var float nearResistLo = na
+var float nearResistHi = na
+var int   nearResistTch = 0
+var int   nearResistRej = 0
+var float nearResistScore = 0.0
+var bool  nearResistBroken = false
+var float nearResistDistATR = na
+
+var float nearSupportLo = na
+var float nearSupportHi = na
+var int   nearSupportTch = 0
+var int   nearSupportRej = 0
+var float nearSupportScore = 0.0
+var bool  nearSupportBroken = false
+var float nearSupportDistATR = na
+
+nearResistLo := na
+nearResistHi := na
+nearResistTch := 0
+nearResistRej := 0
+nearResistScore := 0.0
+nearResistBroken := false
+nearResistDistATR := na
+
+nearSupportLo := na
+nearSupportHi := na
+nearSupportTch := 0
+nearSupportRej := 0
+nearSupportScore := 0.0
+nearSupportBroken := false
+nearSupportDistATR := na
+
+float _bestResistDist = 1e10
+float _bestSupportDist = 1e10
+
+if _nZones > 0
+    for i = 0 to _nZones - 1
+        _lo = f_get_f(arrLo, i)
+        _hi = f_get_f(arrHi, i)
+        _tch = f_get_i(arrTch, i)
+        if not na(_lo) and not na(_hi) and _tch >= minTouches
+            _mid = (_lo + _hi) * 0.5
+
+            // Zone is ABOVE price (potential resistance)
+            if _mid > close
+                _dist = (_lo - close) / atrNow
+                if _dist < _bestResistDist
+                    _bestResistDist := _dist
+                    nearResistLo := _lo
+                    nearResistHi := _hi
+                    nearResistTch := _tch
+                    nearResistRej := f_get_i(arrReject, i)
+                    nearResistScore := f_get_f(arrScore, i)
+                    nearResistBroken := f_get_b(arrBroken, i)
+                    nearResistDistATR := math.max(0, _dist)
+
+            // Zone is BELOW price (potential support)
+            if _mid < close
+                _dist = (close - _hi) / atrNow
+                if _dist < _bestSupportDist
+                    _bestSupportDist := _dist
+                    nearSupportLo := _lo
+                    nearSupportHi := _hi
+                    nearSupportTch := _tch
+                    nearSupportRej := f_get_i(arrReject, i)
+                    nearSupportScore := f_get_f(arrScore, i)
+                    nearSupportBroken := f_get_b(arrBroken, i)
+                    nearSupportDistATR := math.max(0, _dist)
+
+// --- Strength tiers ---
+f_strength(_tch, _rej) =>
+    if _tch >= proxStrongTouch and _rej >= proxStrongReject
+        "STRONG"
+    else if _tch >= proxModTouch or _rej >= 1
+        "MODERATE"
+    else
+        "WEAK"
+
+resistStrength  = f_strength(nearResistTch, nearResistRej)
+supportStrength = f_strength(nearSupportTch, nearSupportRej)
+
+// --- Colour by distance ---
+f_proxCol(_distATR) =>
+    if na(_distATR)
+        color.new(color.gray, 50)
+    else if _distATR <= proxDangerATR
+        color.new(color.red, 0)
+    else if _distATR <= proxWarnATR
+        color.new(#FF9800, 0)
+    else
+        color.new(color.green, 0)
+
+resistCol  = f_proxCol(nearResistDistATR)
+supportCol = f_proxCol(nearSupportDistATR)
+
+// --- Proximity alerts ---
+resistAlert  = not na(nearResistDistATR) and nearResistDistATR <= proxAlertATR and nearResistTch >= proxStrongTouch
+supportAlert = not na(nearSupportDistATR) and nearSupportDistATR <= proxAlertATR and nearSupportTch >= proxStrongTouch
 
 //========================
 // DRAWING ENGINE
@@ -793,3 +921,111 @@ if dbgOn
     table.cell(T, 0, 11, "Performance", text_color=color.white, bgcolor=color.new(color.gray, 80))
     perfText = "Prune:" + str.tostring(_pruned) + " Merge:" + str.tostring(_merges)
     table.cell(T, 1, 11, perfText)
+
+//========================
+// PROXIMITY PANEL
+//========================
+var table P = na
+if showProxPanel
+    if na(P)
+        _pos = if proxPosition == "Top Left"
+            position.top_left
+        else if proxPosition == "Top Centre"
+            position.top_center
+        else if proxPosition == "Top Right"
+            position.top_right
+        else if proxPosition == "Middle Left"
+            position.middle_left
+        else if proxPosition == "Middle Right"
+            position.middle_right
+        else if proxPosition == "Bottom Centre"
+            position.bottom_center
+        else if proxPosition == "Bottom Right"
+            position.bottom_right
+        else
+            position.bottom_left
+        P := table.new(_pos, 4, 4, border_width=1, frame_color=color.new(color.white, 60))
+
+    // Header row
+    table.cell(P, 0, 0, "PROXIMITY", text_color=color.white, bgcolor=color.new(#2962FF, 40), text_size=size.small)
+    table.cell(P, 1, 0, "Dist (ATR)", text_color=color.white, bgcolor=color.new(#2962FF, 40), text_size=size.small)
+    table.cell(P, 2, 0, "Strength", text_color=color.white, bgcolor=color.new(#2962FF, 40), text_size=size.small)
+    table.cell(P, 3, 0, "T / R", text_color=color.white, bgcolor=color.new(#2962FF, 40), text_size=size.small)
+
+    // Resistance row (nearest above)
+    if not na(nearResistDistATR)
+        _rTag = nearResistBroken ? "BROKEN RES" : "RESISTANCE"
+        _rDist = str.tostring(nearResistDistATR, "#.##")
+        _rTR = str.tostring(nearResistTch) + " / " + str.tostring(nearResistRej)
+        table.cell(P, 0, 1, _rTag, text_color=color.white, bgcolor=color.new(color.red, 60), text_size=size.small)
+        table.cell(P, 1, 1, _rDist, text_color=color.white, bgcolor=resistCol, text_size=size.small)
+        table.cell(P, 2, 1, resistStrength, text_color=color.white, bgcolor=resistCol, text_size=size.small)
+        table.cell(P, 3, 1, _rTR, text_color=color.white, bgcolor=resistCol, text_size=size.small)
+    else
+        table.cell(P, 0, 1, "RESISTANCE", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+        table.cell(P, 1, 1, "---", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+        table.cell(P, 2, 1, "---", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+        table.cell(P, 3, 1, "---", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+
+    // Support row (nearest below)
+    if not na(nearSupportDistATR)
+        _sTag = nearSupportBroken ? "BROKEN SUP" : "SUPPORT"
+        _sDist = str.tostring(nearSupportDistATR, "#.##")
+        _sTR = str.tostring(nearSupportTch) + " / " + str.tostring(nearSupportRej)
+        table.cell(P, 0, 2, _sTag, text_color=color.white, bgcolor=color.new(color.green, 60), text_size=size.small)
+        table.cell(P, 1, 2, _sDist, text_color=color.white, bgcolor=supportCol, text_size=size.small)
+        table.cell(P, 2, 2, supportStrength, text_color=color.white, bgcolor=supportCol, text_size=size.small)
+        table.cell(P, 3, 2, _sTR, text_color=color.white, bgcolor=supportCol, text_size=size.small)
+    else
+        table.cell(P, 0, 2, "SUPPORT", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+        table.cell(P, 1, 2, "---", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+        table.cell(P, 2, 2, "---", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+        table.cell(P, 3, 2, "---", text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.small)
+
+    // Location verdict row
+    // Broken zones flip roles: broken support acts as resistance, broken resistance acts as support
+    _resistIsReal = not na(nearResistDistATR) and (nearResistBroken ? false : true)
+    _resistFromBrokenSup = not na(nearSupportDistATR) and nearSupportBroken
+    _supportIsReal = not na(nearSupportDistATR) and (nearSupportBroken ? false : true)
+    _supportFromBrokenRes = not na(nearResistDistATR) and nearResistBroken
+
+    // Effective distances: use actual resistance OR broken support (whichever is closer)
+    _effResistDist = 10e9
+    if _resistIsReal
+        _effResistDist := nearResistDistATR
+    if _resistFromBrokenSup and nearSupportDistATR < _effResistDist
+        _effResistDist := nearSupportDistATR
+
+    _effSupportDist = 10e9
+    if _supportIsReal
+        _effSupportDist := nearSupportDistATR
+    if _supportFromBrokenRes and nearResistDistATR < _effSupportDist
+        _effSupportDist := nearResistDistATR
+
+    _verdict = ""
+    _verdictCol = color.new(color.gray, 40)
+    if _effResistDist <= proxDangerATR
+        _verdict := "AT RESISTANCE"
+        _verdictCol := color.new(color.red, 20)
+    else if _effSupportDist <= proxDangerATR
+        _verdict := "AT SUPPORT"
+        _verdictCol := color.new(color.green, 20)
+    else if _effResistDist <= proxWarnATR
+        _verdict := "APPROACHING RESISTANCE"
+        _verdictCol := color.new(#FF9800, 20)
+    else if _effSupportDist <= proxWarnATR
+        _verdict := "APPROACHING SUPPORT"
+        _verdictCol := color.new(color.green, 40)
+    else
+        _verdict := "MID-RANGE"
+        _verdictCol := color.new(color.gray, 40)
+    table.cell(P, 0, 3, _verdict, text_color=color.white, bgcolor=_verdictCol, text_size=size.small, text_halign=text.align_center)
+    table.merge_cells(P, 0, 3, 3, 3)
+
+//========================
+// PROXIMITY ALERTS
+//========================
+alertcondition(resistAlert, title="Approaching Strong Resistance",
+     message="Price within proximity of STRONG resistance zone")
+alertcondition(supportAlert, title="Approaching Strong Support",
+     message="Price within proximity of STRONG support zone")

@@ -3,6 +3,25 @@
 All notable changes to the Forex Command Centre are documented here.
 Format follows [Semantic Versioning](https://semver.org/).
 
+## ProZones v3.4.1 - 2026-02-22
+
+### Fixed (v3.2.0)
+- Touch counting: pivot expansion path now gated by cooldown (was bypassing cooldown entirely)
+- Merge logic: uses math.max instead of summing touch/rejection counts when zones merge
+
+### Fixed (v3.3.0)
+- Broken zone freeze: touch and rejection counts freeze at moment of break (all 3 counting paths gated)
+- Prevents post-break noise from inflating zone strength numbers
+
+### Added (v3.4.0)
+- Broken zone role flip in verdict logic: broken support treated as resistance, broken resistance treated as support
+- Verdict now reflects actual market role, not just position relative to price
+
+### Changed (v3.4.1)
+- Direction-neutral verdict labels: "BUYING INTO RESISTANCE" → "AT RESISTANCE", "NEAR SUPPORT" → "APPROACHING SUPPORT"
+- Prepares for FCC integration where UTCC direction determines if location is good or bad
+
+
 ---
 
 ## Known Infrastructure Notes
