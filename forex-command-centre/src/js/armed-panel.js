@@ -173,10 +173,17 @@
 
         // --- WATCHLIST section (candidates) ---
         var candidates = data.candidates || [];
+        // v4.1.2: Remove candidates that are already in armed list
+        var armedNames = {};
+        var pairs = data.pairs || [];
+        for (var k = 0; k < pairs.length; k++) {
+            if (pairs[k].pair) armedNames[pairs[k].pair] = true;
+        }
+        candidates = candidates.filter(function(c) { return !armedNames[c.pair]; });
         if (candidates.length > 0) {
             html += '<div class="armed-section-header">' +
                 'Watchlist ' +
-                '<span class="armed-section-count candidate">' + candidateCount + '</span>' +
+                '<span class="armed-section-count candidate">' + candidates.length + '</span>' +
             '</div>';
             html += buildColHeaders();
             for (var j = 0; j < candidates.length; j++) {

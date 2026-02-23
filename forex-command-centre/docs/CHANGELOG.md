@@ -31,6 +31,26 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [v4.1.3] - 2026-02-22
+
+### PATCH - Briefing persistence, armed dedup, UI polish
+
+### Fixed
+- **daily-context.js:** Briefing now persists across browsers
+  - `ServerStorage.save` / `.load` calls were wrong — methods don't exist. Fixed to use `saveToServer` / `loadFromServer`
+  - Briefing data was NEVER saving to server (silently failing since v4.0)
+  - `init()` now tries server if localStorage is empty (cross-browser restore)
+- **armed-panel.js:** Instruments no longer appear in both Armed and Watchlist
+  - Client-side dedup filters candidates already present in armed list
+  - Candidate count badge now reflects filtered count
+
+### Changed
+- **index.html:** "Playbook Selection" header renamed to "Game Plan"
+- **playbook-module.js:** "Proceed to Pre-Trade Validation" button renamed to "Go to Pre-Trade Checks"
+- **regime.css:** Added `.dc-session-check` styling — session checkboxes now spaced correctly with inline-flex layout
+
+---
+
 ## [v4.1.2] - 2026-02-22
 
 ### PATCH - Add all 6 asset classes to pair dropdowns

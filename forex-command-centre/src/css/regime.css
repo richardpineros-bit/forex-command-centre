@@ -1675,6 +1675,32 @@ background: rgba(234, 179, 8, 0.2);
 .dc-perm-badge-stand_down { color: #ef4444; background: rgba(239,68,68,0.15); }
 
 /* Execution rules */
+/* Session checkboxes */
+.dc-session-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 16px;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.dc-session-check input[type="checkbox"] {
+    accent-color: var(--accent-primary);
+}
+.dc-session-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.dc-session-name {
+    font-weight: 600;
+}
+.dc-session-time {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
 .dc-rules-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

@@ -266,6 +266,25 @@ window.DailyContext = (function () {
         return null;
     }
 
+    // v4.1.2: Load from server (cross-browser persistence)
+    function loadFromServer() {
+        if (typeof window.ServerStorage !== 'undefined' && window.ServerStorage.loadFromServer) {
+            return window.ServerStorage.loadFromServer('daily-context').then(function(result) {
+                if (result && result.success && result.data && isToday(result.data.lockedAt)) {
+                    _data = result.data;
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+                    console.log('[DailyContext] Loaded from server, synced to localStorage');
+                    return result.data;
+                }
+                return null;
+            }).catch(function(e) {
+                console.warn('[DailyContext] Server load failed:', e);
+                return null;
+            });
+        }
+        return Promise.resolve(null);
+    }
+
     function save(data) {
         _data = data;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -273,8 +292,14 @@ window.DailyContext = (function () {
     }
 
     function saveToServer(data) {
-        if (typeof window.ServerStorage !== 'undefined' && window.ServerStorage.save) {
-            window.ServerStorage.save('daily-context', data).catch(function (e) {
+        if (typeof window.ServerStorage !== 'undefined' && window.ServerStorage.saveToServer) {
+            window.ServerStorage.saveToServer('daily-context', data).then(function(result) {
+                if (result && result.success) {
+                    console.log('[DailyContext] Saved to server');
+                } else {
+                    console.warn('[DailyContext] Server save failed:', result ? result.error : 'unknown');
+                }
+            }).catch(function (e) {
                 console.warn('[DailyContext] Server save failed:', e);
             });
         }
@@ -1097,6 +1122,15 @@ window.DailyContext = (function () {
 
     function init() {
         load();
+        if (!_data) {
+            // v4.1.2: No local data — try server (cross-browser)
+            loadFromServer().then(function(serverData) {
+                if (serverData) {
+                    refreshAll();
+                    console.log('[DailyContext v4.0] Restored from server');
+                }
+            });
+        }
         refreshAll();
         console.log('[DailyContext v4.0] Initialised. Locked:', isLocked());
     }

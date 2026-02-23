@@ -838,7 +838,7 @@
 
         var actionsHtml = pb.tradeable
             ? '<div class="locked-actions">' +
-                '<button class="btn btn-primary" onclick="showTab(\'validation\')">&#x27A1; Proceed to Pre-Trade Validation</button>' +
+                '<button class="btn btn-primary" onclick="showTab(\'validation\')">&#x27A1; Go to Pre-Trade Checks</button>' +
                 '<button class="btn btn-secondary btn-sm" onclick="PlaybookModule.handleResetSelection()">Reset Selection</button>' +
               '</div>'
             : '<div class="locked-actions">' +
