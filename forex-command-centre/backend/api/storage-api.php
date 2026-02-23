@@ -32,7 +32,8 @@ $allowedFiles = [
     'settings' => 'settings.json',
     'regime' => 'regime.json',
     'playbook' => 'playbook.json',
-    'app-state' => 'app-state.json'
+    'app-state' => 'app-state.json',
+    'daily-context' => 'daily-context.json'
 ];
 
 // Get requested file
