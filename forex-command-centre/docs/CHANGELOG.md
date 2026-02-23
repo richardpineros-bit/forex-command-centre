@@ -47,6 +47,7 @@ Format follows [Semantic Versioning](https://semver.org/).
 ### Changed
 - **index.html:** "Playbook Selection" header renamed to "Game Plan"
 - **playbook-module.js:** "Proceed to Pre-Trade Validation" button renamed to "Go to Pre-Trade Checks"
+- **storage-api.php:** Added `daily-context` to allowed files whitelist — was returning 400 Bad Request because the key wasn't registered
 - **regime.css:** Added `.dc-session-check` styling — session checkboxes now spaced correctly with inline-flex layout
 
 ---
