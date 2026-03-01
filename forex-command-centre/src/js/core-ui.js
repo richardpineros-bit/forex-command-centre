@@ -233,6 +233,12 @@ function showTab(tabId) {
                 }
             }
             }
+            // v4.4.0: Trigger Gold Nugget Reminder (30% chance, once per day)
+            if (window.GoldNuggetReminder) {
+                setTimeout(function() {
+                    GoldNuggetReminder.showReminder();
+                }, 1000);
+            }
             break;
         case 'playbook':
             // Render playbook selection UI
