@@ -1,5 +1,6 @@
 // institutional-checklist.js - FCC Phase 3 extraction
 // UTCC v2.5 institutional checklist
+// v2.1.0: News Gate Module integration - displays news event verdicts before validation checks
 
 // ============================================
 // UTCC v2.5 INSTITUTIONAL CHECKLIST SYSTEM
@@ -9,6 +10,13 @@ function updateInstitutionalChecklist() {
     const pair = document.getElementById('val-pair')?.value || '';
     const direction = document.getElementById('val-direction')?.value || '';
     const rsiOverride = document.getElementById('rsi-override-confirm')?.checked || false;
+    
+    // ============================================
+    // NEWS GATE ASSESSMENT (VETO LAYER)
+    // ============================================
+    if (pair && typeof window.NewsGateModule !== 'undefined') {
+        updateNewsGateWarning(pair);
+    }
     
     // ============================================
     // CHECK 1: UTCC Armed State (HARD)
@@ -612,6 +620,88 @@ function updateAutoCorrelationCheck(pair) {
         statusEl.className = 'inst-check-status status-warning';
         if (itemEl) itemEl.className = 'inst-check-item inst-check-auto check-warning';
     }
+}
+
+// ============================================
+// NEWS GATE INTEGRATION (v1.0.0)
+// ============================================
+
+function updateNewsGateWarning(pair) {
+    const container = document.getElementById('news-gate-warning-container');
+    if (!container) return;
+    
+    // Clear previous content
+    container.innerHTML = '';
+    container.style.display = 'none';
+    
+    // Assess tradability using news gate module
+    const verdict = window.NewsGateModule.assessTradability(pair, 4);
+    
+    if (verdict.verdict === 'GREEN') {
+        // Green = no warning needed
+        return;
+    }
+    
+    // Build warning HTML
+    let warningClass = 'warning-banner';
+    let iconCode = '&#x26A0;'; // Warning triangle
+    let titleText = 'News Warning';
+    let backgroundColor = '#fff3cd'; // Yellow
+    let borderColor = '#ffc107';
+    
+    if (verdict.verdict === 'RED') {
+        warningClass = 'alert-banner alert-danger';
+        iconCode = '&#x1F6D1;'; // Stop sign
+        titleText = 'TRADE BLOCKED: News Event';
+        backgroundColor = '#f8d7da';
+        borderColor = '#dc3545';
+    } else if (verdict.verdict === 'YELLOW') {
+        warningClass = 'alert-banner alert-warning';
+        titleText = 'Caution: News Approaching';
+        backgroundColor = '#fff3cd';
+        borderColor = '#ffc107';
+    }
+    
+    // Format time until event
+    let timeString = 'TBD';
+    if (verdict.minutesUntil !== null) {
+        const mins = verdict.minutesUntil;
+        if (mins < 60) timeString = mins + ' minutes';
+        else {
+            const hours = Math.floor(mins / 60);
+            const leftoverMins = mins % 60;
+            timeString = hours + 'h ' + (leftoverMins > 0 ? leftoverMins + 'm' : '');
+        }
+    }
+    
+    const html = `
+        <div class="${warningClass}" style="
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            border-left: 4px solid ${borderColor};
+            background-color: ${backgroundColor};
+            border-radius: 4px;
+            font-size: 0.9rem;
+        ">
+            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <span style="font-size: 1.2rem; flex-shrink: 0;">${iconCode}</span>
+                <div style="flex-grow: 1;">
+                    <div style="font-weight: 600; margin-bottom: 4px;">${titleText}</div>
+                    <div style="margin-bottom: 6px;">
+                        <strong>${verdict.nextEvent ? verdict.nextEvent.title : 'Upcoming event'}</strong>
+                        ${verdict.nextEvent ? ' (' + verdict.nextEvent.currency + ')' : ''}
+                        <br/><span style="font-size: 0.85rem;">In ${timeString}</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #666; margin-top: 4px;">
+                        ${verdict.reason}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    container.style.display = 'block';
 }
 
 // UTCC v2.5 INSTITUTIONAL CHECKLIST COMPLETE
