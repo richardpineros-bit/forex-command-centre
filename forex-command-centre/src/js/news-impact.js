@@ -15,11 +15,12 @@ let LIVE_CALENDAR_DATA = {
     events: []
 };
 
-// Calendar JSON file paths - try multiple locations (scraper vs web app)
+// Calendar JSON file paths - try multiple locations (data folder primary)
 const CALENDAR_PATHS = [
-    './calendar.json',
-    '../config/calendar.json',
-    '/calendar.json'
+    '../data/calendar.json',        // Primary: relative to src/index.html
+    './data/calendar.json',         // Root level (absolute)
+    '/data/calendar.json',          // Server root
+    './calendar.json'               // Fallback: legacy location
 ];
 
 // Auto-refresh interval (30 minutes)
@@ -143,29 +144,103 @@ function formatTimeUntil(minutes) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
-// Check if it's safe to trade based on news
-function isNewsSafeToTrade(pair, minBufferMinutes = 30) {
-    const highImpactEvents = getHighImpactEventsForPair(pair, 2);
-    
-    if (highImpactEvents.length === 0) {
-        return { safe: true, reason: 'No high impact news within 2 hours' };
+// Check if it's safe to trade based on news (v4.1.0 - Tiered Impact)
+function isNewsSafeToTrade(pair, hoursAhead = 4) {
+    // Return UNKNOWN if calendar not loaded (safe to trade, but warn)
+    if (!LIVE_CALENDAR_DATA.events || LIVE_CALENDAR_DATA.events.length === 0) {
+        return { status: 'UNKNOWN', safe: true, reason: 'Calendar offline - check manually', nextEvent: null, minutesUntil: null };
     }
     
-    const nearestEvent = highImpactEvents[0];
-    const minutesUntil = getMinutesUntilEvent(nearestEvent);
+    // Extract currencies
+    if (!pair || pair.length < 6) {
+        return { status: 'GREEN', safe: true, reason: 'Invalid pair', nextEvent: null };
+    }
     
-    if (minutesUntil !== null && minutesUntil < minBufferMinutes) {
+    const baseCurrency = pair.substring(0, 3);
+    const quoteCurrency = pair.substring(3, 6);
+    
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + (hoursAhead * 60 * 60 * 1000));
+    
+    // Find all upcoming events for this pair's currencies within window
+    const upcomingEvents = LIVE_CALENDAR_DATA.events.filter(event => {
+        if (event.currency !== baseCurrency && event.currency !== quoteCurrency) return false;
+        if (!event.datetime_utc) return false;
+        
+        const eventTime = new Date(event.datetime_utc);
+        return eventTime > now && eventTime <= windowEnd;
+    }).sort((a, b) => new Date(a.datetime_utc) - new Date(b.datetime_utc));
+    
+    // No events found = GREEN
+    if (upcomingEvents.length === 0) {
         return { 
-            safe: false, 
-            reason: `${nearestEvent.title} (${nearestEvent.currency}) in ${formatTimeUntil(minutesUntil)}`,
-            event: nearestEvent
+            status: 'GREEN', 
+            safe: true, 
+            reason: 'No upcoming events in next ' + hoursAhead + 'h', 
+            nextEvent: null,
+            minutesUntil: null,
+            buffer: 0
         };
     }
     
-    return { 
-        safe: true, 
-        reason: `Next high impact: ${nearestEvent.title} in ${formatTimeUntil(minutesUntil)}`,
-        event: nearestEvent
+    const nearestEvent = upcomingEvents[0];
+    const minutesUntil = Math.round((new Date(nearestEvent.datetime_utc) - now) / 60000);
+    
+    // Check if it's a CRITICAL event (4h lockout)
+    const isCritical = CRITICAL_EVENTS_BY_PAIR[pair]?.some(eventName => 
+        nearestEvent.title && nearestEvent.title.includes(eventName)
+    ) || false;
+    
+    if (isCritical) {
+        const isRed = minutesUntil < 240;
+        return {
+            status: isRed ? 'RED' : 'YELLOW',
+            safe: !isRed,
+            reason: `CRITICAL: ${nearestEvent.title} (${nearestEvent.currency}) in ${formatTimeUntil(minutesUntil)}`,
+            nextEvent: nearestEvent,
+            minutesUntil,
+            buffer: 240,
+            tier: 'CRITICAL'
+        };
+    }
+    
+    // HIGH impact events (2h buffer)
+    if (nearestEvent.impact === 'High') {
+        const isRed = minutesUntil < 120;
+        return {
+            status: isRed ? 'RED' : 'YELLOW',
+            safe: !isRed,
+            reason: `HIGH: ${nearestEvent.title} (${nearestEvent.currency}) in ${formatTimeUntil(minutesUntil)}`,
+            nextEvent: nearestEvent,
+            minutesUntil,
+            buffer: 120,
+            tier: 'High'
+        };
+    }
+    
+    // MEDIUM impact events (1h buffer)
+    if (nearestEvent.impact === 'Medium') {
+        const isYellow = minutesUntil < 60;
+        return {
+            status: isYellow ? 'YELLOW' : 'GREEN',
+            safe: !isYellow,
+            reason: `MEDIUM: ${nearestEvent.title} (${nearestEvent.currency}) in ${formatTimeUntil(minutesUntil)}`,
+            nextEvent: nearestEvent,
+            minutesUntil,
+            buffer: 60,
+            tier: 'Medium'
+        };
+    }
+    
+    // LOW impact = always tradeable
+    return {
+        status: 'GREEN',
+        safe: true,
+        reason: 'LOW impact event ahead',
+        nextEvent: nearestEvent,
+        minutesUntil,
+        buffer: 0,
+        tier: 'Low'
     };
 }
 
@@ -173,6 +248,34 @@ function isNewsSafeToTrade(pair, minBufferMinutes = 30) {
 // END LIVE ECONOMIC CALENDAR
 // ============================================
 
+// ============================================
+// NEWS IMPACT TIER SYSTEM (v4.1.0)
+// ============================================
+
+// Impact tier definitions for pre-trade gating
+const NEWS_IMPACT_TIERS = {
+    'CRITICAL': { buffer: 240, description: '4h mandatory lockout', color: '#dc3545' },
+    'High': { buffer: 120, description: '2h buffer required', color: '#ff6b35' },
+    'Medium': { buffer: 60, description: '1h buffer, reduced risk', color: '#ffa500' },
+    'Low': { buffer: 0, description: 'Tradeable', color: '#28a745' }
+};
+
+// Pair-specific CRITICAL events (force 4h lockout)
+const CRITICAL_EVENTS_BY_PAIR = {
+    'AUDUSD': ['RBA Rate Decision', 'RBA Minutes Release', 'RBA Monetary Policy Decision'],
+    'USDJPY': ['FOMC Rate Decision', 'BoJ Monetary Policy Decision', 'BoJ Press Conference'],
+    'EURUSD': ['ECB Rate Decision', 'ECB Monetary Policy Minutes', 'ECB Press Conference'],
+    'GBPUSD': ['BoE Rate Decision', 'BoE Monetary Policy Minutes', 'BoE Press Conference'],
+    'EURGBP': ['ECB Rate Decision', 'BoE Rate Decision'],
+    'EURJPY': ['ECB Rate Decision', 'BoJ Monetary Policy Decision'],
+    'GBPJPY': ['BoE Rate Decision', 'BoJ Monetary Policy Decision'],
+    'NZDUSD': ['RBNZ Rate Decision', 'RBNZ Monetary Policy Decision'],
+    'USDCAD': ['BoC Rate Decision', 'BoC Monetary Policy Decision'],
+    'USDCHF': ['SNB Rate Decision', 'SNB Monetary Policy Decision'],
+    'NZDJPY': ['RBNZ Rate Decision', 'BoJ Monetary Policy Decision']
+};
+
+// ============================================
 // News Impact Database - Comprehensive reference for major economic events
 const NEWS_IMPACT_DATABASE = {
     USD: [

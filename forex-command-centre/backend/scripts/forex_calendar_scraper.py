@@ -6,8 +6,10 @@ Fetches weekly calendar data and saves as JSON for Command Center integration.
 Usage:
     python forex_calendar_scraper.py [--output /path/to/calendar.json]
 
+Default output: ../src/data/calendar.json (relative to script location)
+
 Runs on Unraid via cron (e.g., daily at 6am AEST):
-    0 6 * * * /usr/bin/python3 /path/to/forex_calendar_scraper.py --output /path/to/calendar.json
+    0 6 * * * /usr/bin/python3 /path/to/forex_calendar_scraper.py
 """
 
 import argparse
@@ -228,8 +230,8 @@ def main():
     )
     parser.add_argument(
         "--output", "-o",
-        default="calendar.json",
-        help="Output JSON file path (default: calendar.json)"
+        default="../src/data/calendar.json",
+        help="Output JSON file path (default: ../src/data/calendar.json)"
     )
     parser.add_argument(
         "--print", "-p",

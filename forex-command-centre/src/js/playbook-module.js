@@ -649,6 +649,83 @@
             return;
         }
 
+        // ============================================
+        // NEWS GATE CHECK (v4.1.0)
+        // ============================================
+        var armedPair = null;
+        if (window.ArmedPanel && typeof window.ArmedPanel.getArmedPair === 'function') {
+            armedPair = window.ArmedPanel.getArmedPair();
+        }
+        
+        if (armedPair && typeof isNewsSafeToTrade === 'function') {
+            var newsGate = isNewsSafeToTrade(armedPair, 4);
+            
+            // RED status = force STAND_DOWN (fail-closed)
+            if (newsGate.status === 'RED') {
+                var minutesStr = newsGate.minutesUntil ? 
+                    (newsGate.minutesUntil < 60 ? 
+                        newsGate.minutesUntil + 'min' : 
+                        Math.floor(newsGate.minutesUntil / 60) + 'h') 
+                    : 'TBD';
+                
+                container.innerHTML =
+                    '<div class="playbook-gate-lockout" style="background: #dc3545; border-left: 5px solid #a02830; padding: 16px; margin: 12px 0; border-radius: 4px; color: white;">' +
+                        '<div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 8px;">&#x26A0; NEWS GATE LOCKED</div>' +
+                        '<div style="margin-bottom: 8px;">' + newsGate.reason + '</div>' +
+                        '<div style="font-size: 0.9rem; opacity: 0.9;">Playbook selection blocked. Resume after event passes.</div>' +
+                    '</div>' +
+                    '<div class="playbook-card-selected" style="opacity: 0.6; pointer-events: none;">' +
+                        '<div class="playbook-card-header">' +
+                            '<span class="playbook-icon">&#x1F6D1;</span>' +
+                            '<span class="playbook-name">Stand Down</span>' +
+                        '</div>' +
+                        '<div class="playbook-card-body" style="font-size: 0.9rem;">' +
+                            '<strong>Temporarily Locked:</strong> System is blocking all playbooks due to an upcoming high-impact news event. ' +
+                            'No trades until the buffer window passes.' +
+                        '</div>' +
+                    '</div>';
+                return;
+            }
+            
+            // YELLOW status = warning banner but allow selection
+            if (newsGate.status === 'YELLOW') {
+                var warningHtml = '<div class="news-gate-warning-banner" style="background: #fff3cd; border: 1px solid #ffeaa7; border-left: 5px solid #ff9f43; padding: 12px 16px; margin-bottom: 16px; border-radius: 4px; color: #856404;">' +
+                    '<div style="font-weight: bold; margin-bottom: 4px;">&#x26A0; News Event Approaching</div>' +
+                    '<div style="font-size: 0.9rem;">' + newsGate.reason + '</div>' +
+                '</div>';
+                
+                // Will be prepended to playbook cards below
+                var state = loadState();
+                var regimeKey = regime.toLowerCase();
+                var availableIds = getAvailablePlaybooks(regime, permission);
+                
+                if (availableIds.length === 0) {
+                    container.innerHTML = warningHtml +
+                        '<div class="playbook-gate-warning">' +
+                            '<span class="gate-icon">&#x26A0;</span>' +
+                            '<div class="gate-content">' +
+                                '<div class="gate-title">Nothing Available</div>' +
+                                '<div class="gate-message">The current market conditions (' + regime.toUpperCase() + ') don\'t support any active plans.</div>' +
+                            '</div>' +
+                        '</div>';
+                    return;
+                }
+                
+                // Continue with normal playbook display, but add warning at top
+                var cardsHtml = warningHtml;
+                availableIds.forEach(function(pbId) {
+                    var pb = PLAYBOOKS[pbId];
+                    cardsHtml += renderPlaybookCard(pb, state, permission);
+                });
+                
+                container.innerHTML = cardsHtml;
+                return;
+            }
+        }
+        // ============================================
+        // END NEWS GATE CHECK
+        // ============================================
+
         var regimeKey = regime.toLowerCase();
         var availableIds = getAvailablePlaybooks(regime, permission);
 
