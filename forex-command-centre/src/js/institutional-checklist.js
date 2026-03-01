@@ -12,6 +12,15 @@ function updateInstitutionalChecklist() {
     const rsiOverride = document.getElementById('rsi-override-confirm')?.checked || false;
     
     // ============================================
+    // DAILY REFRESH GATE CHECK (Staleness)
+    // ============================================
+    if (typeof window.DailyRefreshGate !== 'undefined') {
+        setTimeout(function() {
+            window.DailyRefreshGate.updateFreshnessUI();
+        }, 100);
+    }
+    
+    // ============================================
     // NEWS GATE ASSESSMENT (VETO LAYER)
     // ============================================
     if (pair && typeof window.NewsGateModule !== 'undefined') {

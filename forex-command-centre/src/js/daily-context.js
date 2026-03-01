@@ -287,6 +287,8 @@ window.DailyContext = (function () {
 
     function save(data) {
         _data = data;
+        // Add timestamp for Daily Refresh Gate
+        data.timestamp = new Date().toISOString();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         saveToServer(data);
     }

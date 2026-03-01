@@ -397,6 +397,8 @@
 
     function saveState(state) {
         try {
+            // Add timestamp for Daily Refresh Gate
+            state.timestamp = new Date().toISOString();
             localStorage.setItem(PLAYBOOK_STORAGE_KEY, JSON.stringify(state));
             return true;
         } catch (e) {
