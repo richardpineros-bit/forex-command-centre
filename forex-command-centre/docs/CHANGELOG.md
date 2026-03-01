@@ -3,6 +3,141 @@
 All notable changes to the Forex Command Centre are documented here.
 Format follows [Semantic Versioning](https://semver.org/).
 
+## [v4.4.0] - 2026-03-01
+
+### MINOR - Gold Nugget Framework + Dashboard Widgets + Daily Reminder System
+
+**Purpose:** Embed institutional mindset through spaced repetition, display next critical news event, and lock in daily decisions.
+
+### Added
+
+- **gold-nugget-principles.js (v1.0.0):** Comprehensive institutional principles framework
+  - 40+ principles organized by category: Core Mindset (4), Risk Audit (4), Kill-Switches (4), Behavioural (4), Capital Governors (4), Execution (3), Institutional-Grade (4), Implementation (10), Trading Execution (15)
+  - Categories: CRITICAL priority, HIGH priority, MEDIUM priority
+  - Utility functions: `getRandomPrinciple()`, `getPrinciplesByCategory()`, `getPrinciplesByCritical()`, `formatPrincipleForDisplay()`
+  - Core principles: "UTCC is filter not generator", "Protect capital from trader", "Decision denial over decision support", "Discipline is design problem"
+  - Implementation principles: "Policy before code", "Risk controls separable", "Fail-closed always", "No ambiguous rules"
+  - Trading principles: "Location > score", "Process > prediction", "Quality > quantity", "Patience is weapon", "Asymmetric setups"
+
+- **gold-nugget-reminder.js (v1.0.0):** Daily spaced repetition modal
+  - Triggers on dashboard load with 30% probability (max once per day)
+  - Shows random institutional principle in modal with title, category, priority, and detailed explanation
+  - Buttons: [Got It] [Another One] [Dismiss]
+  - Purpose: Embed 40+ institutional rules through repetition, not willpower
+  - localStorage tracking: `ftcc_nugget_reminder_shown_today` ensures once-per-day limit
+
+- **dashboard-event-widget.js (v1.0.0):** Next CRITICAL event display
+  - Shows on main dashboard at top
+  - Displays: Event title, currency, day/time (AEST), "In Xh Ym" countdown
+  - Colour-coded: RED if <4h, YELLOW if <24h, GREY if later
+  - Updates every 30 minutes automatically
+  - Graceful fallback: "No CRITICAL events in next 7 days" if clear
+  - Depends on: LIVE_CALENDAR_DATA from news-impact.js
+
+- **dashboard-decision-widget.js (v1.0.0):** Your Decision Today selector
+  - Shows on main dashboard below event widget
+  - Four options: Trade Normally (✓ GREEN) / Reduce Size (1%) (⚡ YELLOW) / Skip Affected Pairs (⏸ BLUE) / Stand Down (🛑 RED)
+  - User selects once per day; decision persists across session (localStorage)
+  - Shows selected decision prominently with timestamp
+  - Purpose: Lock in news day prep decision before trading starts
+  - Persists to: localStorage key `ftcc_decision_today`
+
+- **core-ui.js (v4.4.0):** Dashboard integration hook
+  - Added `GoldNuggetReminder.showReminder()` call in dashboard case of `showTab()` switch
+  - Reminder fires 1 second after dashboard tab opens (allows UI to render first)
+
+- **index.html (v4.4.0):** Imports + containers
+  - Added 4 module imports: gold-nugget-principles.js, gold-nugget-reminder.js, dashboard-event-widget.js, dashboard-decision-widget.js
+  - Added 2 dashboard containers: `dashboard-next-event-container`, `dashboard-decision-container`
+  - Container placement: After playbook briefing card, before discipline dashboard card
+
+### Integration Points
+1. Dashboard load → GoldNuggetReminder.showReminder() fired automatically
+2. Pre-Trade load → DailyRefreshGate.updateFreshnessUI() + NewsGateModule checks (existing)
+3. Daily Context save → timestamp added automatically (v4.3.0)
+4. Playbook save → timestamp added automatically (v4.3.0)
+
+### Institutional Principles Included (Sample)
+
+**Core Mindset:**
+- "UTCC is a filter, not a signal generator; if you can't name the playbook before seeing UTCC, you don't trade"
+- "Build a system that protects capital from the trader, not a system that assumes the trader stays rational"
+- "Move from decision support → decision denial (hard vetoes, not soft warnings)"
+
+**Risk & Discipline:**
+- "The system assumes you'll act irrationally; the system stops you"
+- "Risk controls must be independently inspectable; separate risk logic from trading logic (veto layer)"
+- "Fail-closed always; if regime/session/context is missing or ambiguous → no trade"
+- "Breakeven is neutral; it should not reset loss streaks or failure counters"
+- "Revenge behaviour must trigger action (block + risk reduction + mandatory review gate)"
+
+**Trading Execution:**
+- "Location matters more than score: never buy into resistance, never short into support"
+- "Process over prediction; your job is execution + risk control, not being 'right'"
+- "Quality > quantity: 5-10 high-quality trades per week beats 50 marginal setups"
+- "Patience is a weapon; wait for your conditions, even if it means fewer trades"
+- "If you can't state your edge in one sentence, you don't have one yet"
+
+---
+
+## [v4.3.0] - 2026-03-01
+
+### MINOR - Daily Refresh Gate (Staleness Checker for Briefing + Game Plan)
+
+**Purpose:** Ensure Daily Context and Game Plan are reassessed every trading day, preventing stale conditions from guiding trades.
+
+### Added
+
+- **daily-refresh-gate.js (v1.0.0):** Staleness monitoring system for briefing and game plan
+  - Checks if Daily Context was updated today (compares ISO timestamp to current date)
+  - Checks if Game Plan was updated today
+  - Returns structured verdict for UI: `{ briefingFresh: bool, playbookFresh: bool, briefingTimestamp: string, playbookTimestamp: string }`
+  - Renders freshness status on Pre-Trade tab: GREEN checkmark if fresh, YELLOW warning if stale
+  - Two buttons per stale item: [Confirm] (updates timestamp without re-entering) and [Refresh]/[Change] (navigates to tab)
+  - Audit logging: tracks all freshness checks (last 50 entries to localStorage)
+  - Utility functions: `refreshBriefing()`, `confirmBriefing()`, `refreshGamePlan()`, `confirmGamePlan()`, `getAuditLog()`
+
+- **daily-context.js (v4.3.0):** Timestamp tracking on briefing save
+  - Added line: `data.timestamp = new Date().toISOString();` in save() function
+  - Timestamp added automatically whenever Daily Context is saved
+  - No user interaction required; timestamp persists to both localStorage and server storage
+
+- **playbook-module.js (v4.3.0):** Timestamp tracking on game plan save
+  - Added line: `state.timestamp = new Date().toISOString();` in saveState() function
+  - Timestamp added automatically whenever Game Plan is saved
+  - Persists to localStorage, survives page reload
+
+- **institutional-checklist.js (v4.3.0):** Freshness gate integration
+  - Added 8 lines: `DailyRefreshGate.updateFreshnessUI()` called when institutional checklist loads
+  - Displays freshness status on Pre-Trade tab before 7-check validation
+  - Runs asynchronously with 100ms delay (allows DOM to settle first)
+
+- **index.html (v4.3.0):** Containers and import
+  - Added 2 containers: `briefing-freshness-container` and `gameplan-freshness-container` in Pre-Trade tab
+  - Imported daily-refresh-gate.js after circuit-breaker modules, before news-gate-module.js
+  - Containers display YELLOW warning if stale (with "Last updated Xd ago") or GREEN checkmark if fresh
+
+### Behavior
+
+1. **Sunday night:** Run Daily Context + Game Plan → timestamps saved
+2. **Monday morning:** Open Pre-Trade tab → freshness check fires automatically
+3. **If fresh (today):** GREEN checkmark displayed, proceed normally
+4. **If stale (yesterday or earlier):** YELLOW warning displayed with [Confirm] and [Refresh] buttons
+   - [Confirm]: Just updates timestamp to today (reasserts same conditions still valid)
+   - [Refresh]/[Change]: Navigate to Daily Context or Game Plan tab for reassessment
+5. **After confirming/refreshing:** YELLOW warning disappears, GREEN checkmark appears
+
+### Design Rationale
+
+Market regime can shift overnight (Asia session trades while trader sleeps). System forces re-evaluation of:
+- Is the regime still what I assessed Sunday night? (EXPANSION → DISTRIBUTION?)
+- Is my permission level still correct? (YELLOW → RED due to losses?)
+- Is my playbook still the right one? (CONTINUATION → OBSERVATION if vol profile changed?)
+
+Instead of relying on trader memory ("Did I check if conditions changed?"), the system asks explicitly.
+
+---
+
 ## [v4.2.0] - 2026-03-01
 
 ### MINOR - News Gate Module (Veto Layer for News Events)
