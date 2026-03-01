@@ -1,0 +1,19 @@
+{
+    "date": "2026-02-24",
+    "lockedAt": "2026-02-24T01:48:45.922Z",
+    "locked": true,
+    "regime": "compression",
+    "volatility": "low",
+    "newsStatus": "clear",
+    "primaryRisk": "exhaustion",
+    "permission": "CONDITIONAL",
+    "sessions": [
+        "tokyo"
+    ],
+    "executionRules": [
+        "pullbacks_only",
+        "breakouts_only"
+    ],
+    "macroNote": "USD weak on tariff policy uncertainty; EUR edges up; JPY gains as traders seek safe havens; AUD falls after failing to rally.",
+    "unlockHistory": []
+}
