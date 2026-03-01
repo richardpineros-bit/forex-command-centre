@@ -1,4 +1,54 @@
-# Forex Command Centre - Changelog
+
+## [v4.4.1] - 2026-03-01
+
+### PATCH - Dashboard Layout Optimization + Calendar Scraper Automation + Bug Fixes
+
+**Purpose:** Fix widget bugs, streamline dashboard, ensure fresh calendar data daily.
+
+### Fixed
+
+- **dashboard-event-widget.js:** Fixed calendar data reference bug
+  - Was checking `window.LIVE_CALENDAR_DATA` (undefined)
+  - Now correctly references `LIVE_CALENDAR_DATA` in global scope
+  - Widget now displays next CRITICAL event instead of "Calendar offline"
+
+- **Calendar data staleness issue:**
+  - Scraper was not automated (last run: Jan 10)
+  - Two calendar.json files: /data/ (updated) and /src/ (served to browser)
+  - Fixed: Browser now serves fresh calendar from /src/
+  - Set up cron job: Runs daily at 23:30 (11:30pm)
+  - Command: `/usr/local/bin/update-forex-calendar.sh`
+
+### Removed
+
+- **dashboard-decision-widget.js:** Removed from dashboard
+  - Functionality: "Your Decision Today" selector
+  - Reason: Redundant. Event widget already shows next CRITICAL event
+  - User can see affected pairs and skip manually without extra widget
+
+### Changed
+
+- **Dashboard layout (index.html):**
+  - Moved `armed-panel` to top of dashboard
+  - Now positioned directly below `dashboard-next-event-container`
+  - User sees: [Next Event] → [Armed Instruments] → [Discipline Dashboard]
+  - Cleaner, more actionable workflow
+
+### Behavior
+
+1. Scraper runs automatically every day at 11:30pm
+2. Calendar updates on dashboard without manual intervention
+3. Event widget shows next CRITICAL event (RBA, FOMC, etc.) with countdown
+4. Armed instruments panel shows which pairs are ARMED (waiting for entry)
+5. User can skip affected pairs based on event + armed status
+
+### Technical Details
+
+- Cron job: `30 23 * * * /usr/local/bin/update-forex-calendar.sh`
+- Script copies calendar from /data/ to /src/ after scraper updates
+- No manual calendar.json management needed anymore
+- Widget correctly detects absence of future CRITICAL events: "No CRITICAL events in next 7 days"
+
 
 All notable changes to the Forex Command Centre are documented here.
 Format follows [Semantic Versioning](https://semver.org/).
