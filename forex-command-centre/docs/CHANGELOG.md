@@ -3,6 +3,55 @@
 All notable changes to the Forex Command Centre are documented here.
 Format follows [Semantic Versioning](https://semver.org/).
 
+## [v4.2.0] - 2026-03-01
+
+### MINOR - News Gate Module (Veto Layer for News Events)
+
+### Added
+- **news-gate-module.js (v1.0.0):** Standalone veto layer module for news event assessment
+  - Wraps existing `isNewsSafeToTrade()` function from news-impact.js
+  - Impact tiers: CRITICAL (4h buffer), HIGH (2h buffer), MEDIUM (1h buffer), LOW (30min buffer)
+  - Returns structured verdicts: RED (blocked), YELLOW (caution), GREEN (proceed), UNKNOWN (calendar offline)
+  - Audit logging: tracks all gate assessments (max 100 entries, persisted to localStorage)
+  - Utility functions: `getNextEventForPair()`, `isCalendarLoaded()`, `clearAuditLog()`
+
+- **institutional-checklist.js integration (v2.1.0):**
+  - Added `updateNewsGateWarning(pair)` function displays news verdicts before 7-check validation
+  - News warning container rendered at top of Pre-Trade tab (after leakage warnings)
+  - Colour-coded alerts: RED = stop sign icon + red banner, YELLOW = warning triangle + amber banner
+  - Shows event title, currency, time until release, and assessment reason
+
+- **pre-trade.js (v4.2.0):**
+  - News gate assessment triggered when pair is selected in validation tab
+  - No changes to core pre-trade logic; news assessment is independent veto layer
+
+- **index.html:**
+  - Added `news-gate-warning-container` div to Pre-Trade tab (line 405)
+  - Imported `news-gate-module.js` after circuit-breaker modules (line 3041)
+  - Import order: circuit-breaker → news-gate-module → other modules
+
+### Technical Details
+- Module uses IIFE pattern consistent with circuit-breaker-module.js
+- Depends on: LIVE_CALENDAR_DATA (from news-impact.js), CRITICAL_EVENTS_BY_PAIR lookup table
+- No localStorage parsing errors even if audit log is corrupted
+- Handles both 'High' and 'HIGH' impact string formats from calendar data
+
+### Behavior
+1. User selects pair in Pre-Trade tab → `updateInstitutionalChecklist()` fires
+2. News gate assessment runs via `NewsGateModule.assessTradability(pair, 4)`
+3. If GREEN: no warning displayed, proceed with checks
+4. If YELLOW: warning banner shown, checks proceed but trader alerted
+5. If RED: warning banner with stop icon shown, trader cannot proceed until buffer expires
+6. UNKNOWN (calendar offline): warning shown but trading allowed (with recommendation to check manually)
+
+### Audit Trail
+- Every assessment logged to localStorage under `ftcc_news_gate_audit`
+- Log entry includes: timestamp, pair, verdict, reason, nextEvent details, minutesUntil
+- Last 100 assessments retained (older entries discarded)
+- Accessible via `NewsGateModule.getAuditLog()` for compliance/debugging
+
+---
+
 ## ProZones v3.4.1 - 2026-02-22
 
 ### Fixed (v3.2.0)
