@@ -10,18 +10,20 @@
 // ============================================
 
 // Live calendar data loaded from JSON file
-let LIVE_CALENDAR_DATA = {
+window.LIVE_CALENDAR_DATA = {
     last_updated: null,
     events: []
 };
 
-// Calendar JSON file paths - try multiple locations (data folder primary)
+// Calendar JSON file paths - try in order (web root primary)
 const CALENDAR_PATHS = [
-    '../data/calendar.json',        // Primary: relative to src/index.html
-    './data/calendar.json',         // Root level (absolute)
-    '/data/calendar.json',          // Server root
-    './calendar.json'               // Fallback: legacy location
+    './calendar.json',              // Primary: web root (src/calendar.json)
+    '../data/calendar.json',        // Backup: data folder
+    '/data/calendar.json'           // Server root fallback
 ];
+
+// Staleness threshold - calendar older than this is unreliable
+const CALENDAR_STALE_HOURS = 48;
 
 // Auto-refresh interval (30 minutes)
 let calendarRefreshTimer = null;
@@ -37,12 +39,23 @@ async function loadEconomicCalendar() {
             const data = await response.json();
             if (!data.events || data.events.length === 0) continue;
             
-            LIVE_CALENDAR_DATA = {
+            window.LIVE_CALENDAR_DATA = {
                 last_updated: data.last_updated || new Date().toISOString(),
                 events: data.events,
                 loaded_from: path,
-                loaded_at: new Date().toISOString()
+                loaded_at: new Date().toISOString(),
+                is_stale: false
             };
+            
+            // Staleness check - if last_updated > CALENDAR_STALE_HOURS, flag it
+            if (data.last_updated) {
+                const updatedAt = new Date(data.last_updated);
+                const hoursOld = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60);
+                if (hoursOld > CALENDAR_STALE_HOURS) {
+                    LIVE_CALENDAR_DATA.is_stale = true;
+                    console.warn('Calendar: DATA IS STALE - last updated ' + Math.round(hoursOld) + 'h ago (' + data.last_updated + '). Events may be outdated.');
+                }
+            }
             
             console.log('Calendar loaded: ' + LIVE_CALENDAR_DATA.events.length + ' events from ' + path);
             updateCalendarStatusIndicator(true);
@@ -74,17 +87,26 @@ function updateCalendarStatusIndicator(isLoaded) {
     if (!indicator) return;
 
     if (isLoaded && LIVE_CALENDAR_DATA.events.length > 0) {
-        indicator.className = 'status-dot online';
-        var tipParts = ['Calendar: Loaded (' + LIVE_CALENDAR_DATA.events.length + ' events)'];
-        if (LIVE_CALENDAR_DATA.last_updated) {
-            var updDate = new Date(LIVE_CALENDAR_DATA.last_updated);
-            tipParts.push('Data: ' + updDate.toLocaleString('en-AU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }));
+        // Check staleness - stale data gets amber warning, not green
+        if (LIVE_CALENDAR_DATA.is_stale) {
+            indicator.className = 'status-dot warning';
+            indicator.style.backgroundColor = '#ffc107';
+            var hoursOld = Math.round((Date.now() - new Date(LIVE_CALENDAR_DATA.last_updated).getTime()) / (1000 * 60 * 60));
+            indicator.title = 'Calendar: STALE DATA (' + hoursOld + 'h old) - scraper may not be running. Verify events manually.';
+        } else {
+            indicator.className = 'status-dot online';
+            indicator.style.backgroundColor = '';
+            var tipParts = ['Calendar: Loaded (' + LIVE_CALENDAR_DATA.events.length + ' events)'];
+            if (LIVE_CALENDAR_DATA.last_updated) {
+                var updDate = new Date(LIVE_CALENDAR_DATA.last_updated);
+                tipParts.push('Data: ' + updDate.toLocaleString('en-AU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }));
+            }
+            if (LIVE_CALENDAR_DATA.loaded_at) {
+                var loadDate = new Date(LIVE_CALENDAR_DATA.loaded_at);
+                tipParts.push('Fetched: ' + loadDate.toLocaleString('en-AU', { hour:'2-digit', minute:'2-digit' }));
+            }
+            indicator.title = tipParts.join(' | ');
         }
-        if (LIVE_CALENDAR_DATA.loaded_at) {
-            var loadDate = new Date(LIVE_CALENDAR_DATA.loaded_at);
-            tipParts.push('Fetched: ' + loadDate.toLocaleString('en-AU', { hour:'2-digit', minute:'2-digit' }));
-        }
-        indicator.title = tipParts.join(' | ');
     } else {
         indicator.className = 'status-dot offline';
         indicator.title = 'Calendar: Offline - check scraper cron job';

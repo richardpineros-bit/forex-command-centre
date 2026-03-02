@@ -6,10 +6,13 @@ Fetches weekly calendar data and saves as JSON for Command Center integration.
 Usage:
     python forex_calendar_scraper.py [--output /path/to/calendar.json]
 
-Default output: ../src/data/calendar.json (relative to script location)
+Default output: <project_root>/src/calendar.json (resolved from script location)
+Also writes to: <project_root>/data/calendar.json (server-side backup)
 
-Runs on Unraid via cron (e.g., daily at 6am AEST):
-    0 6 * * * /usr/bin/python3 /path/to/forex_calendar_scraper.py
+Runs on Unraid via User Scripts plugin (every 6 hours):
+    0 */6 * * * /usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/forex_calendar_scraper.py
+
+Paths resolve from script location, not CWD — safe to run from anywhere.
 """
 
 import argparse
@@ -225,13 +228,24 @@ def save_calendar(events: list, output_path: str) -> None:
 
 
 def main():
+    # Resolve paths relative to script location, not CWD
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..'))
+    DEFAULT_OUTPUT = os.path.join(PROJECT_ROOT, 'src', 'calendar.json')
+    DEFAULT_BACKUP = os.path.join(PROJECT_ROOT, 'data', 'calendar.json')
+
     parser = argparse.ArgumentParser(
         description="Fetch ForexFactory economic calendar and save as JSON"
     )
     parser.add_argument(
         "--output", "-o",
-        default="../src/data/calendar.json",
-        help="Output JSON file path (default: ../src/data/calendar.json)"
+        default=DEFAULT_OUTPUT,
+        help=f"Output JSON file path (default: {DEFAULT_OUTPUT})"
+    )
+    parser.add_argument(
+        "--backup-path",
+        default=DEFAULT_BACKUP,
+        help=f"Secondary backup path (default: {DEFAULT_BACKUP})"
     )
     parser.add_argument(
         "--print", "-p",
@@ -260,6 +274,11 @@ def main():
         print(json.dumps(events, indent=2))
     else:
         save_calendar(events, args.output)
+        # Also write to backup location
+        try:
+            save_calendar(events, args.backup_path)
+        except Exception as e:
+            print(f"Warning: Could not write backup to {args.backup_path}: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

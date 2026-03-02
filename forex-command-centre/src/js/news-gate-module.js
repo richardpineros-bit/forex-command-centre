@@ -1,6 +1,7 @@
 // ============================================
-// NEWS GATE MODULE v1.0.0
+// NEWS GATE MODULE v1.1.0
 // Supervisory News Event Veto Layer
+// v1.1.0: Fail-closed on stale/missing calendar data
 // ============================================
 // ROLE: Veto layer - disqualifies pairs before pre-trade validation
 // AUTHORITY: Fail-closed, no override mechanism
@@ -14,8 +15,9 @@
     // CONSTANTS & CONFIGURATION
     // ============================================
 
-    const MODULE_VERSION = '1.0.0';
+    const MODULE_VERSION = '1.1.0';
     const STORAGE_KEY = 'ftcc_news_gate_audit';
+    const STALE_THRESHOLD_HOURS = 48;
 
     // Impact Tier Buffers (hours before event when pair is RED)
     const IMPACT_BUFFERS = {
@@ -94,11 +96,25 @@
         // Check if calendar is loaded
         if (!LIVE_CALENDAR_DATA || !LIVE_CALENDAR_DATA.events || LIVE_CALENDAR_DATA.events.length === 0) {
             return {
-                verdict: 'UNKNOWN',
-                reason: 'Economic calendar offline - verify manually before trading',
+                verdict: 'RED',
+                reason: 'Economic calendar offline - cannot verify news safety. Manual check required.',
                 nextEvent: null,
                 minutesUntil: null,
-                safe: true // Allow trading but with warning
+                safe: false
+            };
+        }
+
+        // STALENESS CHECK - stale data = fail-closed
+        if (LIVE_CALENDAR_DATA.is_stale || isCalendarStale()) {
+            const hoursOld = LIVE_CALENDAR_DATA.last_updated
+                ? Math.round((Date.now() - new Date(LIVE_CALENDAR_DATA.last_updated).getTime()) / (1000 * 60 * 60))
+                : '?';
+            return {
+                verdict: 'RED',
+                reason: 'Calendar data is ' + hoursOld + 'h old (stale). Cannot verify news safety. Run scraper or check ForexFactory manually.',
+                nextEvent: null,
+                minutesUntil: null,
+                safe: false
             };
         }
 
@@ -216,6 +232,16 @@
     // ============================================
 
     /**
+     * Check if calendar data is stale (older than threshold)
+     */
+    function isCalendarStale() {
+        if (!LIVE_CALENDAR_DATA || !LIVE_CALENDAR_DATA.last_updated) return true;
+        const updatedAt = new Date(LIVE_CALENDAR_DATA.last_updated);
+        const hoursOld = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60);
+        return hoursOld > STALE_THRESHOLD_HOURS;
+    }
+
+    /**
      * Normalise impact string from calendar (High → HIGH, etc)
      */
     function normaliseImpact(impact) {
@@ -317,4 +343,4 @@
 
 })();
 
-// MODULE COMPLETE - News Gate Module v1.0.0
+// MODULE COMPLETE - News Gate Module v1.1.0

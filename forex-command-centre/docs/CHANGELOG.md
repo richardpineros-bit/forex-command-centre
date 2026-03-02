@@ -1,4 +1,67 @@
 
+## [v4.4.4] - 2026-03-02
+
+### MINOR - Dashboard Event Widget v2.1.0
+
+**Purpose:** Full CRITICAL event visibility with context data for pre-trade news assessment.
+
+### Changed
+
+- **dashboard-event-widget.js v2.1.0:** Complete rewrite
+  - Shows ALL CRITICAL events for the week (was: only next single event)
+  - Collapsible list: next 3 events visible, expand toggle for rest
+  - Each row shows: currency badge, title, day/time AEST, forecast, previous, countdown
+  - Click any event to expand: Measures, Usual Effect, threshold notes
+  - 49 event reference entries covering all major releases across 8 currencies
+  - Colour-coded urgency: red (< 4h), amber (< 24h), grey (> 24h)
+  - Update interval reduced from 30min to 15min
+
+---
+
+## [v4.4.3] - 2026-03-02
+
+### PATCH - CRITICAL: News Calendar Pipeline Fix
+
+**Problem:** News Gate Module was fail-OPEN. Stale calendar data (Jan 10) loaded
+silently, showed "No CRITICAL events in next 7 days" during NFP week. All pairs
+passed news safety with zero protection.
+
+### Root Cause
+
+Three cascading failures:
+1. Scraper wrote to non-existent `src/data/` directory (silently failing since Jan)
+2. `news-impact.js` found stale Jan file as last fallback path, loaded successfully
+3. Dashboard filtered `eventTime > now` on Jan dates = zero matches = false "all clear"
+
+### Fixed
+
+- **forex_calendar_scraper.py:** Path resolution now uses `os.path.abspath(__file__)`
+  relative to script location, not CWD. Default output: `<project>/src/calendar.json`.
+  Dual-write to `<project>/data/calendar.json` as backup. Safe to run from anywhere.
+
+- **news-impact.js:** `LIVE_CALENDAR_DATA` changed from `let` to `window.` property
+  (other modules were checking `window.LIVE_CALENDAR_DATA` which was undefined).
+  Path order fixed: `./calendar.json` primary (was last fallback). Staleness detection
+  added with 48h threshold. Status indicator shows amber when stale.
+
+- **dashboard-event-widget.js v1.1.0:** Staleness check before display. Stale data
+  shows amber warning instead of false "all clear". Calendar offline shows red warning.
+
+- **news-gate-module.js v1.1.0:** Changed from fail-OPEN to fail-CLOSED.
+  Missing calendar: `safe: false` (was `safe: true`).
+  Stale calendar (>48h): `safe: false` with explicit reason.
+
+- **User Scripts (Unraid):** Scraper cron path updated from old `forex-tools/` to
+  `forex-command-centre/backend/scripts/`. Schedule: `0 */6 * * *` (every 6h).
+
+### Security Impact
+
+- **Before:** Stale/missing calendar = trades allowed (fail-open)
+- **After:** Stale/missing calendar = all pairs blocked (fail-closed)
+- Consistent with Risk Committee: "Fail-closed; missing context = no trade"
+
+---
+
 ## [v4.4.2] - 2026-03-01
 
 ### PATCH - Gold Nugget Simplification + News Protocol Guide + Bug Fixes
