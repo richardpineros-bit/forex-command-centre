@@ -1,4 +1,50 @@
 
+## [v4.4.2] - 2026-03-01
+
+### PATCH - Gold Nugget Simplification + News Protocol Guide + Bug Fixes
+
+**Purpose:** Simplify institutional principles to plain language, add news day protocol to trading guide, fix remaining widget bugs.
+
+### Changed
+
+- **gold-nugget-principles.js:** Complete rewrite for simplicity
+  - Old: Formal institutional language
+  - New: Simple, direct, everyday language anyone can understand
+  - Example: "If you cannot name the playbook before seeing UTCC, you do not trade" instead of formal jargon
+  - All 40+ principles now plain English, actionable, memorable
+  - Removed technical jargon, use "do not" instead of "cannot"
+
+- **trading-guide.js:** Added "News Day Protocol" section
+  - Step 1: Map Your Week (identify CRITICAL events)
+  - Step 2: Run Daily Context + Game Plan
+  - Step 3: Pre-Event Day Protocol (3h before, close at breakeven)
+  - Step 4: During Event (hands off, no watching)
+  - Step 5: Post-Event Assessment (check structure, reassess)
+  - Three options: Reduce Size (1%), Skip Pairs, Stand Down
+  - Key principle: "Pre-decide everything, execute with no emotion"
+
+### Fixed
+
+- **gold-nugget-principles.js emoji corruption:**
+  - Original file had raw emoji characters (⚠️, ⚡, 💡) causing UTF-8 encoding errors
+  - Browser would not parse file due to syntax errors
+  - Fixed: Converted all emoji to Unicode escape sequences (\u26A0, \u26A1, \u1F4A1)
+  - File now loads without errors
+
+### User-Facing Changes
+
+1. **Dashboard:** Event widget correctly shows "No CRITICAL events in next 7 days" when clear
+2. **Trading Guide:** New "News Day Protocol" tab accessible from guide button
+3. **Gold Nuggets:** All 40+ principles now in simple, direct language
+4. **Reminder Modal:** Shows simplified principles that are easy to remember under stress
+
+### Behavior
+
+- Open Trading Guide → Click "News Day Protocol" tab
+- See 5-step framework for high-impact news days
+- Open dashboard → Reminder shows plain English principle (when 30% fires)
+- All principles formatted as "what to do" statements, not warnings
+
 ## [v4.4.1] - 2026-03-01
 
 ### PATCH - Dashboard Layout Optimization + Calendar Scraper Automation + Bug Fixes
