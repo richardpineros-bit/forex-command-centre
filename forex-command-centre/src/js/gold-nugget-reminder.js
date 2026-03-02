@@ -1,5 +1,5 @@
 // ============================================
-// GOLD NUGGET REMINDER v1.0.0
+// GOLD NUGGET REMINDER v1.2.0
 // Daily Spaced Repetition Modal
 // ============================================
 // Shows random principle on dashboard load (30% chance, max once per day)
@@ -9,9 +9,10 @@
 (function() {
     'use strict';
 
-    const MODULE_VERSION = '1.0.0';
-    const STORAGE_KEY = 'ftcc_nugget_reminder_shown_today';
-    const SHOW_PROBABILITY = 0.30; // 30% chance on dashboard load
+    const MODULE_VERSION = '1.2.0';
+    const STORAGE_KEY = 'ftcc_nugget_reminder_today';
+    const MAX_DAILY_SHOWS = 4;
+    const SHOW_PROBABILITY = 0.50; // 30% chance on dashboard load
 
     window.GoldNuggetReminder = {
         init: init,
@@ -30,9 +31,10 @@
      */
     function showReminder() {
         // Check if already shown today
-        const shownToday = localStorage.getItem(STORAGE_KEY);
-        if (shownToday) {
-            return; // Already shown, don't show again
+        const today = new Date().toDateString();
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        if (stored.date === today && stored.count >= MAX_DAILY_SHOWS) {
+            return; // Hit daily max
         }
 
         // 30% probability check
@@ -52,6 +54,10 @@
             console.warn('GoldNuggetReminder: GoldNuggetPrinciples not loaded');
             return;
         }
+
+        // Remove existing modal before showing new one
+        var existingContainer = document.getElementById('gold-nugget-reminder-container');
+        if (existingContainer) existingContainer.remove();
 
         const principle = window.GoldNuggetPrinciples.getRandomPrinciple();
         const formatted = window.GoldNuggetPrinciples.formatPrincipleForDisplay(principle);
@@ -184,9 +190,11 @@
         container.innerHTML = html;
         document.body.appendChild(container);
 
-        // Mark as shown today
-        const today = new Date().toDateString();
-        localStorage.setItem(STORAGE_KEY, today);
+        // Track daily show count
+        var todayStr = new Date().toDateString();
+        var current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        var showCount = (current.date === todayStr) ? current.count + 1 : 1;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ date: todayStr, count: showCount }));
 
         console.log('GoldNuggetReminder: Showed principle - ' + principle.principle);
     }
@@ -221,4 +229,4 @@
 
 })();
 
-// MODULE COMPLETE - Gold Nugget Reminder v1.0.0
+// MODULE COMPLETE - Gold Nugget Reminder v1.2.0

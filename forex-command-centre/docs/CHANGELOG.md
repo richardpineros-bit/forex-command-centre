@@ -1,4 +1,23 @@
 
+## [v4.4.5] - 2026-03-02
+
+### PATCH - Gold Nugget Reminder Fixes
+
+**Problem:** Gold Nugget popup never showed after first trigger. Three bugs:
+
+### Fixed
+
+- **gold-nugget-reminder.js v1.2.0:**
+  - localStorage date check was broken: checked if ANY value existed (permanent block after first show). Now correctly compares stored date to today's date
+  - "Another One" button stacked modals without removing existing one. Now cleans up before creating new modal
+  - Changed from once-per-day to max 4 shows per day with 50% probability (was 30%)
+  - Tracks show count per day via JSON object in localStorage
+
+- **gold-nugget-principles.js v1.1.0:**
+  - Raw emoji characters in formatPrincipleForDisplay replaced with Unicode escapes to prevent UTF-8 encoding corruption
+
+---
+
 ## [v4.4.4] - 2026-03-02
 
 ### MINOR - Dashboard Event Widget v2.1.0

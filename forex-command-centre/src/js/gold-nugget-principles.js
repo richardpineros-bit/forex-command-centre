@@ -1,5 +1,5 @@
 // ============================================
-// GOLD NUGGET PRINCIPLES v1.0.0
+// GOLD NUGGET PRINCIPLES v1.1.0
 // Institutional Risk Framework + Mindset Shifts
 // ============================================
 // Complete reference for all trading principles embedded in FCC
@@ -420,7 +420,7 @@ window.GoldNuggetPrinciples = {
             detail: principle.detail,
             category: principle.category,
             priority: principle.priority,
-            icon: principle.priority === 'CRITICAL' ? '⚠️' : principle.priority === 'HIGH' ? '⚡' : '💡'
+            icon: principle.priority === 'CRITICAL' ? '\u26A0\uFE0F' : principle.priority === 'HIGH' ? '\u26A1' : '\uD83D\uDCA1'
         };
     }
 };
