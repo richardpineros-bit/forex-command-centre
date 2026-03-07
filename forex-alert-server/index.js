@@ -6,12 +6,17 @@ const PORT = process.env.PORT || 3847;
 const STATE_FILE = process.env.STATE_FILE || '/app/armed.json';
 const UTCC_FILE = process.env.UTCC_FILE || '/app/utcc-alerts.json';
 const CANDIDATE_FILE = process.env.CANDIDATE_FILE || '/app/candidates.json';
+const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/app/structure.json';
+const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/app/arm-history.json';
 
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.1.0';
+const VERSION = '2.4.0';
 const CHANGES = [
+    '2.4.0 - Arm History expansion: capture full UTCC context (playbook, mtf, criteria, volBehaviour, volLevel, rsi, riskMult, riskState, maxRisk, dayOfWeek, hour, weekNumber)',
+    '2.3.0 - Arm History: append every ARMED event to arm-history.json; GET /arm-history endpoint for heatmap dashboard',
+    '2.2.0 - Structure Gate: POST /webhook/structure + GET /structure endpoints; ProZones proximity data stored per pair with 4h TTL',
     '2.1.0 - Parse JSON body from webhooks: store direction, entryZone, mtf, criteria, volState, volBehaviour, volLevel, riskMult, rsi, playbook in armed/candidate state',
     '2.0.0 - Institutional alert format: new parseAlert(), CANDIDATE storage, BLOCKED/INFO types, backward compat',
     '1.1.0 - Added UTCC alert queue for trade capture system',
@@ -25,7 +30,8 @@ const CONFIG = {
     UTCC_ALERT_TTL_HOURS: 4,        // Alerts expire after 4 hours
     UTCC_MAX_ALERTS_PER_PAIR: 10,   // Keep last 10 alerts per pair
     UTCC_CLEANUP_INTERVAL_MS: 300000, // Cleanup every 5 minutes
-    CANDIDATE_TTL_HOURS: 4          // Candidates expire after 4 hours
+    CANDIDATE_TTL_HOURS: 4,         // Candidates expire after 4 hours
+    STRUCTURE_TTL_HOURS: 4          // Structure alerts expire after 4 hours
 };
 
 // ============================================================================
@@ -89,6 +95,119 @@ function cleanupExpiredCandidates() {
 }
 
 // ============================================================================
+// STATE MANAGEMENT - ARM HISTORY (append-only log)
+// ============================================================================
+
+function loadArmHistory() {
+    try {
+        if (fs.existsSync(ARM_HISTORY_FILE)) {
+            return JSON.parse(fs.readFileSync(ARM_HISTORY_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading arm history:', e.message);
+    }
+    return { events: [], lastUpdate: null };
+}
+
+function appendArmEvent(alert, timestamp) {
+    try {
+        var data = loadArmHistory();
+        var dt = new Date(timestamp);
+
+        // Day of week: 0=Sun, 1=Mon ... 6=Sat
+        var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var dayOfWeek = days[dt.getUTCDay()];
+
+        // ISO week number
+        var startOfYear = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+        var weekNumber = Math.ceil(((dt - startOfYear) / 86400000 + startOfYear.getUTCDay() + 1) / 7);
+
+        data.events.push({
+            // ── Identity ──────────────────────────────────────────
+            pair:         alert.pair,
+            timestamp:    timestamp,
+
+            // ── Time context (derived) ────────────────────────────
+            dayOfWeek:    dayOfWeek,
+            hourUTC:      dt.getUTCHours(),
+            weekNumber:   weekNumber,
+            month:        dt.getUTCMonth() + 1,
+
+            // ── Setup quality ─────────────────────────────────────
+            score:        alert.score        || 0,
+            criteria:     alert.criteria     || 0,
+            mtf:          alert.mtf          || 0,
+            direction:    alert.direction    || '',
+            entryZone:    alert.entryZone    || '',
+
+            // ── Volatility context ────────────────────────────────
+            volState:     alert.volState     || '',
+            volBehaviour: alert.volBehaviour || '',
+            volLevel:     alert.volLevel     || 0,
+
+            // ── Momentum ──────────────────────────────────────────
+            rsi:          alert.rsi          || 0,
+
+            // ── Session & regime ──────────────────────────────────
+            session:      alert.session      || '',
+            primary:      alert.primary      || '',
+            playbook:     alert.playbook     || alert._playbook || '',
+
+            // ── Risk state at arm time ────────────────────────────
+            riskState:    alert.riskState    || 'K-NORMAL',
+            riskMult:     alert.riskMult     || 1.0,
+            maxRisk:      alert.maxRisk      || '1.0R',
+            permission:   alert.permission   || 'FULL'
+        });
+
+        data.lastUpdate = new Date().toISOString();
+        fs.writeFileSync(ARM_HISTORY_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error('Error appending arm history:', e.message);
+    }
+}
+
+// ============================================================================
+// STATE MANAGEMENT - STRUCTURE (ProZones proximity data)
+// ============================================================================
+
+function loadStructure() {
+    try {
+        if (fs.existsSync(STRUCTURE_FILE)) {
+            return JSON.parse(fs.readFileSync(STRUCTURE_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading structure:', e.message);
+    }
+    return { pairs: {}, lastUpdate: null };
+}
+
+function saveStructure(data) {
+    data.lastUpdate = new Date().toISOString();
+    fs.writeFileSync(STRUCTURE_FILE, JSON.stringify(data, null, 2));
+}
+
+function cleanupExpiredStructure() {
+    const data = loadStructure();
+    const now = Date.now();
+    const ttlMs = CONFIG.STRUCTURE_TTL_HOURS * 60 * 60 * 1000;
+    let cleaned = 0;
+
+    for (const pair of Object.keys(data.pairs)) {
+        const ts = new Date(data.pairs[pair].timestamp).getTime();
+        if (now - ts > ttlMs) {
+            delete data.pairs[pair];
+            cleaned++;
+        }
+    }
+
+    if (cleaned > 0) {
+        saveStructure(data);
+        console.log('[Cleanup] Removed ' + cleaned + ' expired structure entries');
+    }
+}
+
+// ============================================================================
 // STATE MANAGEMENT - UTCC ALERTS (existing)
 // ============================================================================
 
@@ -136,6 +255,7 @@ function cleanupExpiredAlerts() {
 // Start periodic cleanup
 setInterval(cleanupExpiredAlerts, CONFIG.UTCC_CLEANUP_INTERVAL_MS);
 setInterval(cleanupExpiredCandidates, CONFIG.UTCC_CLEANUP_INTERVAL_MS);
+setInterval(cleanupExpiredStructure, CONFIG.UTCC_CLEANUP_INTERVAL_MS);
 
 // ============================================================================
 // ALERT PARSING - BACKWARD COMPATIBILITY (old format detection)
@@ -609,6 +729,7 @@ var server = http.createServer(function(req, res) {
                     playbook: alert.playbook || alert._playbook || ''
                 };
                 saveState(state);
+                appendArmEvent(alert, timestamp);
 
                 // If pair was a candidate, remove from candidates
                 var cands = loadCandidates();
@@ -937,6 +1058,271 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
+    // ========================================================================
+    // STRUCTURE GATE ENDPOINTS (v2.2.0)
+    // ========================================================================
+
+    // POST /webhook/structure - Receive ProZones proximity alerts from TradingView
+    if (req.method === 'POST' && req.url === '/webhook/structure') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var payload = JSON.parse(body);
+
+                // Validate required fields
+                if (!payload.pair || !payload.zone || !payload.strength || !payload.verdict) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required fields: pair, zone, strength, verdict' }));
+                    return;
+                }
+
+                var data = loadStructure();
+                var now = new Date();
+                var expiry = new Date(now.getTime() + CONFIG.STRUCTURE_TTL_HOURS * 60 * 60 * 1000);
+
+                data.pairs[payload.pair] = {
+                    pair:      payload.pair,
+                    zone:      payload.zone,
+                    strength:  payload.strength,
+                    dist_atr:  payload.dist_atr !== undefined ? payload.dist_atr : null,
+                    tr:        payload.tr || '',
+                    verdict:   payload.verdict,
+                    timestamp: now.toISOString(),
+                    expiresAt: expiry.toISOString()
+                };
+
+                saveStructure(data);
+                console.log('[Structure] ' + payload.pair + ' | ' + payload.verdict + ' | ' + payload.zone + ' (' + payload.strength + ') dist=' + payload.dist_atr);
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, pair: payload.pair, verdict: payload.verdict }));
+            } catch (e) {
+                console.error('[Structure] Parse error:', e.message);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON: ' + e.message }));
+            }
+        });
+        return;
+    }
+
+    // GET /structure - Get structure state for a pair (or all pairs)
+    // Usage: /structure?pair=CADJPY
+    if (req.method === 'GET' && req.url.startsWith('/structure')) {
+        var urlParts = req.url.split('?');
+        var queryStr = urlParts[1] || '';
+        var params = {};
+        queryStr.split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+
+        var data = loadStructure();
+        var now = Date.now();
+        var ttlMs = CONFIG.STRUCTURE_TTL_HOURS * 60 * 60 * 1000;
+
+        if (params.pair) {
+            var entry = data.pairs[params.pair];
+            if (!entry) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ found: false, pair: params.pair, verdict: 'NO_DATA' }));
+                return;
+            }
+            var age = now - new Date(entry.timestamp).getTime();
+            var expired = age > ttlMs;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                found: !expired,
+                pair: entry.pair,
+                zone: entry.zone,
+                strength: entry.strength,
+                dist_atr: entry.dist_atr,
+                tr: entry.tr,
+                verdict: expired ? 'EXPIRED' : entry.verdict,
+                timestamp: entry.timestamp,
+                ageMinutes: Math.floor(age / 60000),
+                expiresAt: entry.expiresAt
+            }));
+        } else {
+            // Return all non-expired entries
+            var active = [];
+            for (var p in data.pairs) {
+                var e = data.pairs[p];
+                var a = now - new Date(e.timestamp).getTime();
+                if (a <= ttlMs) {
+                    active.push({
+                        pair: e.pair,
+                        zone: e.zone,
+                        strength: e.strength,
+                        dist_atr: e.dist_atr,
+                        tr: e.tr,
+                        verdict: e.verdict,
+                        timestamp: e.timestamp,
+                        ageMinutes: Math.floor(a / 60000)
+                    });
+                }
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ count: active.length, pairs: active, lastUpdate: data.lastUpdate }));
+        }
+        return;
+    }
+
+    // ========================================================================
+    // ARM HISTORY ENDPOINT (v2.3.0)
+    // ========================================================================
+
+    // GET /arm-history - Return full arm event log (optionally filtered)
+    // Usage: /arm-history?days=30&pair=CADJPY
+    if (req.method === 'GET' && req.url.startsWith('/arm-history')) {
+        var urlParts = req.url.split('?');
+        var queryStr = urlParts[1] || '';
+        var params = {};
+        queryStr.split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+
+        var data = loadArmHistory();
+        var events = data.events || [];
+
+        // Filter by days
+        var days = parseInt(params.days) || 0;
+        if (days > 0) {
+            var cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+            events = events.filter(function(e) {
+                return new Date(e.timestamp).getTime() >= cutoff;
+            });
+        }
+
+        // Filter by pair
+        if (params.pair) {
+            events = events.filter(function(e) {
+                return e.pair === params.pair;
+            });
+        }
+
+        // Build frequency tally
+        var tally = {};
+        events.forEach(function(e) {
+            if (!tally[e.pair]) {
+                tally[e.pair] = {
+                    total: 0, long: 0, short: 0,
+                    sessions: {}, scores: [], zones: {},
+                    playbooks: {}, volStates: {}, volBehaviours: {},
+                    days: {}, hours: [], rsiValues: [],
+                    riskMults: [], criteria5: 0, mtf3: 0,
+                    impaired: 0  // arms where riskMult < 1.0
+                };
+            }
+            var t = tally[e.pair];
+            t.total++;
+
+            // Direction
+            if (e.direction === 'LONG' || e.direction === 'BULL') t.long++;
+            if (e.direction === 'SHORT' || e.direction === 'BEAR') t.short++;
+
+            // Score
+            if (e.score) t.scores.push(e.score);
+
+            // Session
+            if (e.session) t.sessions[e.session] = (t.sessions[e.session] || 0) + 1;
+
+            // Entry zone
+            if (e.entryZone) t.zones[e.entryZone] = (t.zones[e.entryZone] || 0) + 1;
+
+            // Playbook
+            if (e.playbook) t.playbooks[e.playbook] = (t.playbooks[e.playbook] || 0) + 1;
+
+            // Volatility
+            if (e.volState)     t.volStates[e.volState]         = (t.volStates[e.volState] || 0) + 1;
+            if (e.volBehaviour) t.volBehaviours[e.volBehaviour] = (t.volBehaviours[e.volBehaviour] || 0) + 1;
+
+            // Day of week
+            if (e.dayOfWeek) t.days[e.dayOfWeek] = (t.days[e.dayOfWeek] || 0) + 1;
+
+            // Hour distribution
+            if (e.hourUTC !== undefined) t.hours.push(e.hourUTC);
+
+            // RSI
+            if (e.rsi) t.rsiValues.push(e.rsi);
+
+            // Risk mult
+            if (e.riskMult !== undefined) t.riskMults.push(e.riskMult);
+
+            // Quality flags
+            if (e.criteria >= 5) t.criteria5++;
+            if (e.mtf >= 3)      t.mtf3++;
+            if (e.riskMult < 1.0) t.impaired++;
+        });
+
+        // Summarise per pair
+        Object.keys(tally).forEach(function(pair) {
+            var t = tally[pair];
+
+            // Avg score
+            t.avgScore = t.scores.length
+                ? Math.round(t.scores.reduce(function(a,b){return a+b;},0) / t.scores.length)
+                : 0;
+
+            // Avg RSI
+            t.avgRsi = t.rsiValues.length
+                ? Math.round(t.rsiValues.reduce(function(a,b){return a+b;},0) / t.rsiValues.length)
+                : 0;
+
+            // Avg risk mult
+            t.avgRiskMult = t.riskMults.length
+                ? Math.round((t.riskMults.reduce(function(a,b){return a+b;},0) / t.riskMults.length) * 100) / 100
+                : 1.0;
+
+            // Peak hour (most common)
+            var hourCounts = {};
+            t.hours.forEach(function(h) { hourCounts[h] = (hourCounts[h] || 0) + 1; });
+            var peakHour = Object.keys(hourCounts).sort(function(a,b){ return hourCounts[b]-hourCounts[a]; })[0];
+            t.peakHourUTC = peakHour !== undefined ? parseInt(peakHour) : null;
+
+            // Top playbook
+            var pbKeys = Object.keys(t.playbooks);
+            t.topPlaybook = pbKeys.length
+                ? pbKeys.sort(function(a,b){ return t.playbooks[b]-t.playbooks[a]; })[0]
+                : '';
+
+            // Top vol state
+            var vsKeys = Object.keys(t.volStates);
+            t.topVolState = vsKeys.length
+                ? vsKeys.sort(function(a,b){ return t.volStates[b]-t.volStates[a]; })[0]
+                : '';
+
+            // Quality rate: criteria5 + mtf3 / total
+            t.qualityRate = t.total > 0 ? Math.round((t.criteria5 / t.total) * 100) : 0;
+
+            // Impaired rate
+            t.impairedRate = t.total > 0 ? Math.round((t.impaired / t.total) * 100) : 0;
+
+            // Clean up raw arrays (keep data lean for transport)
+            delete t.scores;
+            delete t.rsiValues;
+            delete t.riskMults;
+            delete t.hours;
+        });
+
+        // Sort tally by total descending
+        var tallyArr = Object.keys(tally).map(function(p) {
+            return Object.assign({ pair: p }, tally[p]);
+        }).sort(function(a, b) { return b.total - a.total; });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            totalEvents: events.length,
+            daysFilter: days || 'all',
+            pairFilter: params.pair || 'all',
+            tally: tallyArr,
+            events: events,
+            lastUpdate: data.lastUpdate
+        }));
+        return;
+    }
+
     // 404
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -950,8 +1336,11 @@ server.listen(PORT, function() {
     console.log('State file:     ' + STATE_FILE);
     console.log('UTCC file:      ' + UTCC_FILE);
     console.log('Candidate file: ' + CANDIDATE_FILE);
+    console.log('Structure file: ' + STRUCTURE_FILE);
+    console.log('Arm history:    ' + ARM_HISTORY_FILE);
     console.log('Alert TTL:      ' + CONFIG.UTCC_ALERT_TTL_HOURS + ' hours');
     console.log('Candidate TTL:  ' + CONFIG.CANDIDATE_TTL_HOURS + ' hours');
+    console.log('Structure TTL:  ' + CONFIG.STRUCTURE_TTL_HOURS + ' hours');
     console.log('');
     console.log('Armed Pairs Endpoints:');
     console.log('  POST /webhook       - Receive alerts (old + new format)');
@@ -963,6 +1352,13 @@ server.listen(PORT, function() {
     console.log('  GET  /utcc/find     - Find matching alert (?pair=X&direction=Y)');
     console.log('  POST /utcc/match    - Mark alert as matched');
     console.log('  GET  /utcc/stats    - Get queue statistics');
+    console.log('');
+    console.log('Structure Gate Endpoints (v2.2.0):');
+    console.log('  POST /webhook/structure - Receive ProZones proximity alerts');
+    console.log('  GET  /structure         - Get structure state (?pair=X)');
+    console.log('');
+    console.log('Arm History Endpoints (v2.3.0):');
+    console.log('  GET  /arm-history       - Get arm event log (?days=30&pair=X)');
     console.log('');
     console.log('Utility:');
     console.log('  GET  /health        - Health check');

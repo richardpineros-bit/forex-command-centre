@@ -1,4 +1,106 @@
 
+## [v4.5.0] - 2026-03-07
+
+### MINOR - Structure Gate + Arm History Intelligence
+
+Two major additions this session: a hard location veto gate in the Pre-Trade workflow,
+and a full pair intelligence dashboard built on expanded arm event data.
+
+---
+
+### Structure Gate (New Feature)
+
+**Problem:** UTCC score 87, all 5 criteria pass — trade taken straight into unmarked
+resistance. Location check was entirely discretionary. Zero enforcement.
+
+**Fix:** ProZones now fires dynamic JSON alert payloads to the alert server whenever
+price enters the danger zone of a STRONG structure level. Alert server stores the
+data per pair with 4h TTL. FCC Pre-Trade tab reads it and renders a hard veto banner
+before the institutional checklist runs.
+
+**Gate decisions:**
+- LONG + AT RESISTANCE → **BLOCK** (red, execution disabled)
+- SHORT + AT SUPPORT   → **BLOCK** (red, execution disabled)
+- Approaching strong zone (LONG + wrong direction) → **WARN** (amber)
+- MID-RANGE → **WARN** (grey, no structural edge)
+- NO_DATA / API error  → **WARN** (amber, fail-closed — never silent pass)
+
+**New files:**
+- `forex-command-centre/src/js/structure-gate.js` v1.0.0
+  - `window.structureGate.checkPair(pair, direction)` — fetches `/structure?pair=X`
+  - Evaluates verdict + direction → renders banner in `#structure-gate-banner`
+  - 60-second client-side cache
+  - Exposes `window._structureGateResult` for checklist integration
+  - Fail-closed: API error → WARN (never silent pass)
+
+**Modified files:**
+- `forex-command-centre/src/index.html`
+  - Added `<div id="structure-gate-banner">` after news-gate-warning-container
+  - Added `<script src="js/structure-gate.js">` import
+- `forex-command-centre/src/js/institutional-checklist.js` v2.2.0
+  - Structure gate check fires before Check 1 if `window.structureGate` is defined
+  - Normalises direction from dropdown value
+- `utcc-indicators/multi-touch-zones.pine` v3.5.0
+  - Replaced static `alertcondition()` calls with dynamic `alert()` firing on
+    `barstate.isconfirmed` when price enters alert range of STRONG zone
+  - JSON payload: `{"type":"structure","pair":"...","zone":"...","strength":"STRONG","dist_atr":...,"tr":"...","verdict":"..."}`
+  - Zone label accounts for broken zone role-flip (BROKEN_SUP / BROKEN_RES)
+  - TradingView alert setup: "Any alert() function call" → `https://api.pineros.club/webhook/structure`
+
+---
+
+### Alert Server v2.2.0 → v2.4.0
+
+**v2.2.0** — Structure Gate backend:
+- `POST /webhook/structure` — receives ProZones payload, stores per pair with 4h TTL
+- `GET /structure?pair=X` — returns verdict; `NO_DATA` if not found, `EXPIRED` if stale
+- `structure.json` state file, cleanup interval
+
+**v2.3.0** — Arm History:
+- Every ARMED event now permanently appended to `arm-history.json`
+- `appendArmEvent()` captures: pair, direction, score, session, entryZone, volState, permission, timestamp
+- `GET /arm-history?days=30&pair=X` — returns events + frequency tally with avgScore, direction counts, session breakdown
+
+**v2.4.0** — Arm History expanded capture (this session):
+- `appendArmEvent()` now captures full institutional context per arm event:
+  - **Time context (derived):** dayOfWeek, hourUTC, weekNumber, month
+  - **Setup quality:** score, criteria count (5/5), MTF alignment (3/3), direction, entryZone
+  - **Volatility:** volState, volBehaviour, volLevel percentile
+  - **Momentum:** RSI at arm time
+  - **Session/regime:** session, primary, playbook
+  - **Risk state:** riskState, riskMult, maxRisk, permission
+- Tally aggregation expanded: avgRsi, avgRiskMult, peakHourUTC, topPlaybook, topVolState,
+  qualityRate (5/5 criteria %), impairedRate (arms where riskMult < 1.0), day-of-week counts
+
+**Modified file:**
+- `forex-alert-server/index.js` v2.4.0
+
+---
+
+### Arm History Dashboard v1.0.0 → v1.2.0
+
+**New file:** `forex-command-centre/src/arm-history-dashboard.html`
+
+Full pair intelligence dashboard with five tabs:
+
+1. **Overview** — 6 stat cards (total arms, top pair, avg score, long bias, 5/5 quality %, impaired arms %) + ranked frequency table + session heatmap
+2. **Pair Breakdown** — per-pair deep dive: summary stats, playbook distribution, sessions + vol state, direction/risk split
+3. **Timing** — day-of-week grid, UTC hour distribution (all pairs), session breakdown
+4. **Setup Quality** — playbook distribution, vol state at arm, entry zone quality (HOT/OPTIMAL/ACCEPTABLE/EXTENDED), risk state breakdown (1.0R / 0.75R / 0.5R), direction bias per pair
+5. **Raw Events** — last 100 arm events with all captured fields
+
+**v1.1.0:** Expanded tally fields to match v2.4.0 server capture (RSI, risk mult, playbook, vol, day, hour)
+
+**v1.2.0:** Full FCC theme parity
+- Replaced custom dark aesthetic with exact FCC CSS variables: `--bg-primary/secondary/tertiary`, `--text-primary/secondary/muted`, `--border-primary`
+- Fonts: `JetBrains Mono` (headings/mono) + `Inter` (body) — matches FCC exactly
+- Status colours: `--color-pass/fail/warning/info/perfect` — identical to FCC
+- `data-theme="dark"` / `data-theme="light"` toggle in header (☽/☀)
+- Theme preference saved to localStorage
+- Demo mode renders on API unavailable so layout is always visible
+
+---
+
 ## [v4.4.5] - 2026-03-02
 
 ### PATCH - Gold Nugget Reminder Fixes
