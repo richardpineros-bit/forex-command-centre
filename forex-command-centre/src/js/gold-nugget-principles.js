@@ -33,7 +33,7 @@ window.GoldNuggetPrinciples = {
         },
         {
             category: 'Core Mindset',
-            principle: 'The system stops you; don't rely on willpower',
+            principle: "The system stops you; don't rely on willpower",
             detail: 'Discipline is a design problem, not a willpower issue. Build guardrails that make bad decisions impossible.',
             priority: 'CRITICAL'
         }
@@ -226,7 +226,7 @@ window.GoldNuggetPrinciples = {
     implementation: [
         {
             category: 'Implementation',
-            principle: 'Don't bury risk logic inside playbooks',
+            principle: "Don't bury risk logic inside playbooks",
             detail: "Keep dedicated circuit-breaker module with veto authority separate. Risk decisions shouldn't be scattered across 10 files.",
             priority: 'HIGH'
         },
@@ -262,7 +262,7 @@ window.GoldNuggetPrinciples = {
         },
         {
             category: 'Implementation',
-            principle: 'If you can't state your edge in one sentence, you don't have one',
+            principle: "If you can't state your edge in one sentence, you don't have one",
             detail: "\"My edge is UTCC + ProZones structure + news gates + circuit breaker discipline.\" Clear. If it takes 5 minutes to explain, it's not an edge yet.",
             priority: 'HIGH'
         },
@@ -311,7 +311,7 @@ window.GoldNuggetPrinciples = {
         },
         {
             category: 'Trading Execution',
-            principle: 'If price doesn't react as expected, you're wrong',
+            principle: "If price doesn't react as expected, you're wrong",
             detail: "Accept it fast. Cut it immediately. Don't wait for \"the retest\". Wrong is wrong. Cut and move on.",
             priority: 'CRITICAL'
         },
@@ -335,7 +335,7 @@ window.GoldNuggetPrinciples = {
         },
         {
             category: 'Trading Execution',
-            principle: 'Don't outsource conviction',
+            principle: "Don't outsource conviction",
             detail: "Other people's opinions are not your risk. If you don't personally believe in the setup, don't trade it.",
             priority: 'HIGH'
         },
