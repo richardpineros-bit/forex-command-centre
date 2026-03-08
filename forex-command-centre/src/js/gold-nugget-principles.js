@@ -16,13 +16,13 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Core Mindset',
             principle: 'UTCC is a filter, not a signal generator',
-            detail: 'If you can't name the playbook before seeing UTCC, you don't trade. UTCC validates, it doesn't initiate.',
+            detail: "If you can't name the playbook before seeing UTCC, you don't trade. UTCC validates, it doesn't initiate.",
             priority: 'CRITICAL'
         },
         {
             category: 'Core Mindset',
             principle: 'Protect capital from the trader, not assume rationality',
-            detail: 'Build a system that stops you when you're likely to act irrationally. Assume you will act emotionally under stress.',
+            detail: "Build a system that stops you when you're likely to act irrationally. Assume you will act emotionally under stress.",
             priority: 'CRITICAL'
         },
         {
@@ -59,13 +59,13 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Risk Audit',
             principle: 'Fail-closed always',
-            detail: 'If regime/session/context data is missing or ambiguous → no trade. Ambiguity blocks, it doesn't allow.',
+            detail: "If regime/session/context data is missing or ambiguous → no trade. Ambiguity blocks, it doesn't allow.",
             priority: 'CRITICAL'
         },
         {
             category: 'Risk Audit',
             principle: 'Avoid ambiguous rules',
-            detail: 'No conflicting thresholds. No silent spec drift. One rule set per threshold. If you can't state it in 10 words, it's not clear enough.',
+            detail: "No conflicting thresholds. No silent spec drift. One rule set per threshold. If you can't state it in 10 words, it's not clear enough.",
             priority: 'HIGH'
         }
     ],
@@ -78,7 +78,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Kill-Switches',
             principle: 'Prefer pre-emptive disqualifiers',
-            detail: 'Disable playbooks after repeated failure. Don't wait for losses to mount. Prevent the problem, don't warn about it.',
+            detail: "Disable playbooks after repeated failure. Don't wait for losses to mount. Prevent the problem, don't warn about it.",
             priority: 'HIGH'
         },
         {
@@ -96,7 +96,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Kill-Switches',
             principle: 'No override mechanism for kill-switches',
-            detail: 'Overrides become escape hatches. RED verdict can't be bypassed. If you keep finding workarounds, the gate failed.',
+            detail: "Overrides become escape hatches. RED verdict can't be bypassed. If you keep finding workarounds, the gate failed.",
             priority: 'CRITICAL'
         }
     ],
@@ -115,7 +115,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Behavioural',
             principle: 'Revenge behaviour must trigger action',
-            detail: 'Block + risk reduction + mandatory review gate. Logging alone doesn't stop revenge. Action must have consequences.',
+            detail: "Block + risk reduction + mandatory review gate. Logging alone doesn't stop revenge. Action must have consequences.",
             priority: 'CRITICAL'
         },
         {
@@ -152,7 +152,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Capital Governors',
             principle: 'Tiered daily loss thresholds',
-            detail: '-3% = risk cap (trading continues, reduced); -5% = 24h stand-down; -10% = 48h emergency. Levels don't recover intraday.',
+            detail: "-3% = risk cap (trading continues, reduced); -5% = 24h stand-down; -10% = 48h emergency. Levels don't recover intraday.",
             priority: 'HIGH'
         },
         {
@@ -177,13 +177,13 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Execution',
             principle: 'Structural invalidation definitions required',
-            detail: 'If price breaks the invalidation level, the setup is WRONG. No "maybe it'll recover". Cut it. Move on.',
+            detail: "If price breaks the invalidation level, the setup is WRONG. No \"maybe it'll recover\". Cut it. Move on.",
             priority: 'HIGH'
         },
         {
             category: 'Execution',
             principle: 'Track and log non-trades explicitly',
-            detail: 'Missed discipline is invisible unless logged. Timeout/block/pass decisions must be auditable. Shows where you're weakest.',
+            detail: "Missed discipline is invisible unless logged. Timeout/block/pass decisions must be auditable. Shows where you're weakest.",
             priority: 'HIGH'
         }
     ],
@@ -214,7 +214,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Institutional-Grade',
             principle: 'UI must be emotionally unignorable',
-            detail: 'Full-width lockout banners. RED stop signs. Reasons. Timers. The system must scream when something's wrong.',
+            detail: "Full-width lockout banners. RED stop signs. Reasons. Timers. The system must scream when something's wrong.",
             priority: 'HIGH'
         }
     ],
@@ -227,7 +227,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Implementation',
             principle: 'Don't bury risk logic inside playbooks',
-            detail: 'Keep dedicated circuit-breaker module with veto authority separate. Risk decisions shouldn't be scattered across 10 files.',
+            detail: "Keep dedicated circuit-breaker module with veto authority separate. Risk decisions shouldn't be scattered across 10 files.",
             priority: 'HIGH'
         },
         {
@@ -251,7 +251,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Implementation',
             principle: 'Discipline is the edge; follow rules exactly',
-            detail: 'Especially when you don't feel like it. Especially when "this one time" seems different. Rules apply to all trades, all days.',
+            detail: "Especially when you don't feel like it. Especially when \"this one time\" seems different. Rules apply to all trades, all days.",
             priority: 'CRITICAL'
         },
         {
@@ -263,13 +263,13 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Implementation',
             principle: 'If you can't state your edge in one sentence, you don't have one',
-            detail: '"My edge is UTCC + ProZones structure + news gates + circuit breaker discipline." Clear. If it takes 5 minutes to explain, it's not an edge yet.',
+            detail: "\"My edge is UTCC + ProZones structure + news gates + circuit breaker discipline.\" Clear. If it takes 5 minutes to explain, it's not an edge yet.",
             priority: 'HIGH'
         },
         {
             category: 'Implementation',
             principle: 'Trade your personality',
-            detail: 'Pick a style you can execute calmly and consistently. If day trading makes you anxious, don't day trade. Swing trade instead.',
+            detail: "Pick a style you can execute calmly and consistently. If day trading makes you anxious, don't day trade. Swing trade instead.",
             priority: 'HIGH'
         },
         {
@@ -300,7 +300,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Trading Execution',
             principle: 'Every trade needs a defined plan',
-            detail: 'Entry, stop, target, invalidation level. All defined BEFORE you enter. No "I'll decide when I get there".',
+            detail: "Entry, stop, target, invalidation level. All defined BEFORE you enter. No \"I'll decide when I get there\".",
             priority: 'CRITICAL'
         },
         {
@@ -312,7 +312,7 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Trading Execution',
             principle: 'If price doesn't react as expected, you're wrong',
-            detail: 'Accept it fast. Cut it immediately. Don't wait for "the retest". Wrong is wrong. Cut and move on.',
+            detail: "Accept it fast. Cut it immediately. Don't wait for \"the retest\". Wrong is wrong. Cut and move on.",
             priority: 'CRITICAL'
         },
         {
@@ -324,19 +324,19 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Trading Execution',
             principle: 'Focus on asymmetric setups',
-            detail: 'Low risk, high upside is where careers are made. 1.5:1+ R:R. Don't take 0.8:1 "high conviction" setups. They kill accounts.',
+            detail: "Low risk, high upside is where careers are made. 1.5:1+ R:R. Don't take 0.8:1 \"high conviction\" setups. They kill accounts.",
             priority: 'CRITICAL'
         },
         {
             category: 'Trading Execution',
             principle: 'Opportunity cost is real',
-            detail: 'Capital should sit in the best idea, not the "okay" idea. If AUDUSD is better than EURUSD, trade AUDUSD. Don't split capital.',
+            detail: "Capital should sit in the best idea, not the \"okay\" idea. If AUDUSD is better than EURUSD, trade AUDUSD. Don't split capital.",
             priority: 'HIGH'
         },
         {
             category: 'Trading Execution',
             principle: 'Don't outsource conviction',
-            detail: 'Other people's opinions are not your risk. If you don't personally believe in the setup, don't trade it.',
+            detail: "Other people's opinions are not your risk. If you don't personally believe in the setup, don't trade it.",
             priority: 'HIGH'
         },
         {
@@ -360,13 +360,13 @@ window.GoldNuggetPrinciples = {
         {
             category: 'Trading Execution',
             principle: 'Confidence is earned through work',
-            detail: 'Preparation creates calm execution. No shortcuts. If you haven't backtested your setup, don't trade it live.',
+            detail: "Preparation creates calm execution. No shortcuts. If you haven't backtested your setup, don't trade it live.",
             priority: 'HIGH'
         },
         {
             category: 'Trading Execution',
             principle: 'Keep evolving; refine without breaking core rules',
-            detail: 'Market changes. Your system must evolve. But don't abandon proven rules for shiny new ideas. Test before deploying.',
+            detail: "Market changes. Your system must evolve. But don't abandon proven rules for shiny new ideas. Test before deploying.",
             priority: 'MEDIUM'
         },
         {
