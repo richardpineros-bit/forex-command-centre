@@ -1,4 +1,33 @@
 
+## [v4.5.1] - 2026-03-08
+
+### PATCH - Alert Server Deployment Fix + Data Persistence Bug
+
+**Deployment issue:** Alert server was reading from `/mnt/user/appdata/trading-state/`
+(original container mount), not the newer `forex-alert-server/` folder. File had to be
+copied to the correct path before `docker restart trading-state` took effect.
+
+**Critical persistence bug fixed:**
+All five data files in `forex-alert-server/index.js` were writing to `/app/` inside
+the container instead of `/data/` (the mounted volume). This meant arm-history.json,
+structure.json, armed.json, utcc-alerts.json, and candidates.json were all lost on
+every container restart. Weeks of arm history would have been silently wiped.
+
+### Fixed
+- `forex-alert-server/index.js` v2.4.1:
+  - `STATE_FILE`: `/app/armed.json` → `/data/armed.json`
+  - `UTCC_FILE`: `/app/utcc-alerts.json` → `/data/utcc-alerts.json`
+  - `CANDIDATE_FILE`: `/app/candidates.json` → `/data/candidates.json`
+  - `STRUCTURE_FILE`: `/app/structure.json` → `/data/structure.json`
+  - `ARM_HISTORY_FILE`: `/app/arm-history.json` → `/data/arm-history.json`
+
+### Deployment note
+After deploying v2.4.1: copy the new `index.js` to
+`/mnt/user/appdata/trading-state/index.js` then `docker restart trading-state`.
+Verify with `curl https://api.pineros.club/arm-history`.
+
+---
+
 ## [v4.5.0] - 2026-03-07
 
 ### MINOR - Structure Gate + Arm History Intelligence

@@ -3,17 +3,18 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3847;
-const STATE_FILE = process.env.STATE_FILE || '/app/armed.json';
-const UTCC_FILE = process.env.UTCC_FILE || '/app/utcc-alerts.json';
-const CANDIDATE_FILE = process.env.CANDIDATE_FILE || '/app/candidates.json';
-const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/app/structure.json';
-const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/app/arm-history.json';
+const STATE_FILE = process.env.STATE_FILE || '/data/armed.json';
+const UTCC_FILE = process.env.UTCC_FILE || '/data/utcc-alerts.json';
+const CANDIDATE_FILE = process.env.CANDIDATE_FILE || '/data/candidates.json';
+const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/data/structure.json';
+const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json';
 
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.4.0';
+const VERSION = '2.4.1';
 const CHANGES = [
+    '2.4.1 - CRITICAL: All data file paths moved from /app/ to /data/ (mounted volume) — arm-history.json, structure.json, armed.json, utcc-alerts.json, candidates.json now survive container restarts',
     '2.4.0 - Arm History expansion: capture full UTCC context (playbook, mtf, criteria, volBehaviour, volLevel, rsi, riskMult, riskState, maxRisk, dayOfWeek, hour, weekNumber)',
     '2.3.0 - Arm History: append every ARMED event to arm-history.json; GET /arm-history endpoint for heatmap dashboard',
     '2.2.0 - Structure Gate: POST /webhook/structure + GET /structure endpoints; ProZones proximity data stored per pair with 4h TTL',
