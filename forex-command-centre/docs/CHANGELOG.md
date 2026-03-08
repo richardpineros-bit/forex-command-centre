@@ -28,6 +28,24 @@ Verify with `curl https://api.pineros.club/arm-history`.
 
 ---
 
+## [v4.5.1] - 2026-03-08
+
+### PATCH - Alert Server data path fix
+
+**Problem:** `arm-history.json` and `structure.json` were writing to `/app/` inside
+the container — wiped on every restart. No arm history would have survived.
+
+**Fix:** Both file paths corrected to `/data/` (the mounted volume at
+`/mnt/user/appdata/trading-state/data/`). Data now persists across restarts.
+
+- `forex-alert-server/index.js` v2.4.1
+  - `STRUCTURE_FILE` → `/data/structure.json`
+  - `ARM_HISTORY_FILE` → `/data/arm-history.json`
+
+Fix applied via `sed` on live server then version bumped in repo to stay in sync.
+
+---
+
 ## [v4.5.0] - 2026-03-07
 
 ### MINOR - Structure Gate + Arm History Intelligence
