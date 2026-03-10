@@ -1,4 +1,20 @@
 
+## [v4.5.3] - 2026-03-10
+
+### PATCH - Armed Panel: Clickable rows + native TradingView app link
+
+- Entire armed/watchlist row is now a clickable button - click anywhere to open chart
+- Subtle slide-right hover effect for visual feedback
+- On mobile: attempts to open TradingView native app first, falls back to web browser after 600ms
+- On desktop: opens TradingView web chart directly (OANDA:PAIR, 4H)
+- Removed standalone TV icon column - row itself is the link
+
+### Files changed
+- `forex-command-centre/src/js/armed-panel.js`
+- `forex-command-centre/src/css/dashboard.css`
+
+---
+
 ## [v4.5.2] - 2026-03-10
 
 ### PATCH - Armed Panel: ATR column + TradingView chart link
