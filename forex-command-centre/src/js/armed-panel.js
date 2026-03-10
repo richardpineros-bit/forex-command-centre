@@ -22,6 +22,26 @@
         return 'var(--text-muted)';
     }
 
+    // ATR behaviour colour helper
+    function atrColour(behaviour) {
+        if (!behaviour) return 'var(--text-muted)';
+        var b = behaviour.toUpperCase();
+        if (b === 'TREND') return 'var(--color-pass)';
+        if (b === 'EXHAUSTED') return 'var(--color-fail)';
+        if (b === 'SPIKE') return '#f97316';
+        if (b === 'EXPANDING_FAST') return '#eab308';
+        if (b === 'EXPANDING_SLOW') return '#86efac';
+        if (b === 'CONTRACTING') return 'var(--text-muted)';
+        return 'var(--text-secondary)';
+    }
+
+    // Build TradingView chart URL for a pair
+    function tvUrl(pair) {
+        // Normalise: strip slashes, uppercase
+        var sym = (pair || '').replace('/', '').toUpperCase();
+        return 'https://www.tradingview.com/chart/?symbol=OANDA:' + sym + '&interval=240';
+    }
+
     // Permission CSS class
     function permClass(perm) {
         if (!perm) return 'permission-legacy';
@@ -99,6 +119,15 @@
             statusHtml = '<span class="armed-ttl-status armed-ttl-expired" title="TTL expired, auto-removed">EXPIRED</span>';
         }
 
+        var atrBehav = (p.volBehaviour || '').toUpperCase();
+        var atrLvl = p.volLevel ? Math.round(Number(p.volLevel)) + '%' : '';
+        var atrHtml = atrBehav
+            ? '<span style="color:' + atrColour(atrBehav) + ';font-size:0.7rem;font-weight:700;display:block;line-height:1.2">' + atrBehav + '</span>' +
+              (atrLvl ? '<span style="color:var(--text-muted);font-size:0.65rem">' + atrLvl + '</span>' : '')
+            : '<span style="color:var(--text-muted)">&#x2014;</span>';
+
+        var tvLink = '<a href="' + tvUrl(p.pair) + '" target="_blank" rel="noopener" class="armed-tv-link" title="Open ' + (p.pair || '') + ' on TradingView 4H">&#x1F4C8;</a>';
+
         return '<div class="' + rowClass + '">' +
             '<span class="armed-emoji">' + emoji + '</span>' +
             '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
@@ -106,7 +135,9 @@
             '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
             '<span class="armed-maxrisk">' + (p.maxRisk || '\u2014') + '</span>' +
             '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
+            '<span class="armed-atr">' + atrHtml + '</span>' +
             '<span class="armed-age">' + statusHtml + '</span>' +
+            '<span class="armed-tv">' + tvLink + '</span>' +
         '</div>';
     }
 
@@ -120,7 +151,9 @@
             '<span>Perm</span>' +
             '<span>Risk</span>' +
             '<span>Sc</span>' +
+            '<span>ATR</span>' +
             '<span style="text-align:right">Age</span>' +
+            '<span></span>' +
         '</div>';
     }
     
