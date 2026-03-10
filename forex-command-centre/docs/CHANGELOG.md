@@ -1,4 +1,22 @@
 
+## [v4.5.2] - 2026-03-10
+
+### PATCH - Armed Panel: ATR column + TradingView chart link
+
+**Changes:**
+- Added ATR column to Armed Instruments panel showing volBehaviour state (colour-coded)
+  and volLevel percentage at time of alert - TREND (green), EXHAUSTED (red), SPIKE (orange),
+  EXPANDING_FAST (yellow), EXPANDING_SLOW (light green), CONTRACTING (muted)
+- Added TradingView chart link per row - opens OANDA:PAIR on 4H chart in new tab
+- Updated grid column template (9 columns) across all responsive breakpoints
+- ATR and TV columns hidden on screens below 450px
+
+### Files changed
+- `forex-command-centre/src/js/armed-panel.js`
+- `forex-command-centre/src/css/dashboard.css`
+
+---
+
 ## [v4.5.1] - 2026-03-08
 
 ### PATCH - Alert Server Deployment Fix + Data Persistence Bug
