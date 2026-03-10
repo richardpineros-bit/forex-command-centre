@@ -35,11 +35,29 @@
         return 'var(--text-secondary)';
     }
 
-    // Build TradingView chart URL for a pair
-    function tvUrl(pair) {
-        // Normalise: strip slashes, uppercase
+    // Build TradingView URLs for a pair
+    function tvWebUrl(pair) {
         var sym = (pair || '').replace('/', '').toUpperCase();
         return 'https://www.tradingview.com/chart/?symbol=OANDA:' + sym + '&interval=240';
+    }
+    function tvNativeUrl(pair) {
+        var sym = (pair || '').replace('/', '').toUpperCase();
+        return 'tradingview://chart?symbol=OANDA:' + sym + '&interval=240';
+    }
+    // Try native app, fallback to web
+    function openTV(pair) {
+        var native = tvNativeUrl(pair);
+        var web = tvWebUrl(pair);
+        var iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        iframe.src = native;
+        setTimeout(function() {
+            document.body.removeChild(iframe);
+        }, 500);
+        setTimeout(function() {
+            window.open(web, '_blank');
+        }, 600);
     }
 
     // Permission CSS class
@@ -126,9 +144,9 @@
               (atrLvl ? '<span style="color:var(--text-muted);font-size:0.65rem">' + atrLvl + '</span>' : '')
             : '<span style="color:var(--text-muted)">&#x2014;</span>';
 
-        var tvLink = '<a href="' + tvUrl(p.pair) + '" target="_blank" rel="noopener" class="armed-tv-link" title="Open ' + (p.pair || '') + ' on TradingView 4H">&#x1F4C8;</a>';
+        var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
-        return '<div class="' + rowClass + '">' +
+        return '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
             '<span class="armed-emoji">' + emoji + '</span>' +
             '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
             '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
@@ -137,8 +155,7 @@
             '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
             '<span class="armed-atr">' + atrHtml + '</span>' +
             '<span class="armed-age">' + statusHtml + '</span>' +
-            '<span class="armed-tv">' + tvLink + '</span>' +
-        '</div>';
+        '</a>';
     }
 
 
@@ -245,6 +262,8 @@
     
     // Expose manual refresh globally
     window.refreshArmedPanel = fetchArmedState;
+    // Expose openTV globally for row onclick handlers
+    window.openTV = openTV;
     
     // Show/hide Clear Expired button after each render
     function updateClearExpiredButton() {
