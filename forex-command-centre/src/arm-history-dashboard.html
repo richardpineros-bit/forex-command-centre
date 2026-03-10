@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pair Intelligence &#x2014; FCC Arm History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+/* ── THEME VARIABLES (matches FCC exactly) ─────────────────────────────── */
+[data-theme="dark"] {
+    --bg-primary:    #0a0a0f;
+    --bg-secondary:  #111118;
+    --bg-tertiary:   #1a1a24;
+    --text-primary:  #f4f4f5;
+    --text-secondary:#a1a1aa;
+    --text-muted:    #71717a;
+    --border-primary:#27272a;
+    --border-secondary:#3f3f46;
+    --heat-0:  rgba(39,39,42,0.7);
+    --heat-1:  #1e3a5f;
+    --heat-2:  #1d4ed8;
+    --heat-3:  #3b82f6;
+    --heat-4:  #60a5fa;
+    --heat-5:  #93c5fd;
+}
+[data-theme="light"] {
+    --bg-primary:    #f8f9fa;
+    --bg-secondary:  #ffffff;
+    --bg-tertiary:   #f1f5f9;
+    --text-primary:  #0f172a;
+    --text-secondary:#475569;
+    --text-muted:    #94a3b8;
+    --border-primary:#e2e8f0;
+    --border-secondary:#cbd5e1;
+    --heat-0:  #e2e8f0;
+    --heat-1:  #bfdbfe;
+    --heat-2:  #93c5fd;
+    --heat-3:  #60a5fa;
+    --heat-4:  #3b82f6;
+    --heat-5:  #1d4ed8;
+}
+
+/* ── STATUS COLOURS (same both themes, matches FCC) ───────────────────── */
+:root {
+    --color-pass:    #22c55e;
+    --color-fail:    #ef4444;
+    --color-warning: #eab308;
+    --color-info:    #3b82f6;
+    --color-perfect: #a855f7;
+    --color-amber:   #f59e0b;
+    --font-heading:  'JetBrains Mono', monospace;
+    --font-body:     'Inter', sans-serif;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --transition: 150ms ease;
+}
+
+/* ── RESET ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 13px;
+    min-height: 100vh;
+    line-height: 1.5;
+    transition: background var(--transition), color var(--transition);
+}
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+.header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    transition: background var(--transition), border-color var(--transition);
+}
+.header-title {
+    font-family: var(--font-heading);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+}
+.header-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+.header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ── BUTTONS ─────────────────────────────────────────────────────────────── */
+.btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    color: var(--text-secondary);
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+.btn:hover { background: var(--border-primary); color: var(--text-primary); }
+.btn.active { background: var(--color-info); border-color: var(--color-info); color: #fff; }
+
+/* Theme toggle */
+.theme-toggle {
+    display: flex;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.theme-btn {
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    border: none;
+    background: transparent;
+    transition: all var(--transition);
+}
+.theme-btn:hover { color: var(--text-primary); }
+.theme-btn.active { background: var(--color-info); color: #fff; }
+
+/* Separator */
+.sep { width: 1px; height: 18px; background: var(--border-primary); }
+
+/* Status */
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); display: inline-block; transition: all 0.3s; }
+.status-dot.live { background: var(--color-pass); box-shadow: 0 0 5px var(--color-pass); }
+.status-dot.err  { background: var(--color-fail); }
+
+/* ── TABS ────────────────────────────────────────────────────────────────── */
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-primary);
+    padding: 0 24px;
+    background: var(--bg-secondary);
+    overflow-x: auto;
+    transition: background var(--transition), border-color var(--transition);
+}
+.tabs::-webkit-scrollbar { height: 0; }
+.tab {
+    padding: 10px 14px;
+    font-family: var(--font-heading);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--color-info); border-bottom-color: var(--color-info); }
+
+/* ── LAYOUT ──────────────────────────────────────────────────────────────── */
+.page { display: none; padding: 20px 24px; }
+.page.active { display: block; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.grid6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.span2 { grid-column: 1 / -1; }
+.mb { margin-bottom: 16px; }
+
+/* ── CARD ─────────────────────────────────────────────────────────────────── */
+.card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: background var(--transition), border-color var(--transition);
+}
+.card-header {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.card-title {
+    font-family: var(--font-heading);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.card-meta { font-size: 0.65rem; color: var(--text-muted); }
+.card-body { padding: 14px 16px; }
+
+/* ── STAT CARD ───────────────────────────────────────────────────────────── */
+.stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    transition: background var(--transition), border-color var(--transition);
+}
+.stat-label { font-family: var(--font-heading); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.stat-value { font-family: var(--font-heading); font-size: 1.6rem; font-weight: 700; line-height: 1; color: var(--text-primary); }
+.stat-value.green  { color: var(--color-pass); }
+.stat-value.blue   { color: var(--color-info); }
+.stat-value.amber  { color: var(--color-amber); }
+.stat-value.purple { color: var(--color-perfect); }
+.stat-value.red    { color: var(--color-fail); }
+.stat-sub { font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; }
+
+/* ── DATA TABLE ──────────────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+    font-family: var(--font-heading);
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0 8px 9px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-primary);
+    white-space: nowrap;
+}
+.data-table th.r { text-align: right; }
+.data-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-primary);
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    vertical-align: middle;
+    transition: background var(--transition);
+}
+.data-table td.r { text-align: right; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--bg-tertiary); }
+
+/* ── BADGES ──────────────────────────────────────────────────────────────── */
+.badge { display: inline-block; padding: 2px 7px; border-radius: var(--radius-sm); font-family: var(--font-heading); font-size: 0.65rem; font-weight: 700; }
+.badge-green  { background: rgba(34,197,94,0.12);  color: var(--color-pass);    }
+.badge-blue   { background: rgba(59,130,246,0.12);  color: var(--color-info);    }
+.badge-amber  { background: rgba(245,158,11,0.12);  color: var(--color-amber);   }
+.badge-red    { background: rgba(239,68,68,0.12);   color: var(--color-fail);    }
+.badge-purple { background: rgba(168,85,247,0.12);  color: var(--color-perfect); }
+.badge-muted  { background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* ── BAR ─────────────────────────────────────────────────────────────────── */
+.bar-wrap { display: flex; align-items: center; gap: 7px; }
+.bar { height: 5px; border-radius: 3px; min-width: 2px; transition: width 0.4s ease; }
+
+/* ── MINI BARS ───────────────────────────────────────────────────────────── */
+.mini-bars { display: flex; flex-direction: column; gap: 7px; }
+.mini-bar-row { display: flex; align-items: center; gap: 8px; }
+.mini-bar-label { font-size: 0.68rem; color: var(--text-muted); min-width: 90px; font-family: var(--font-heading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-bar-track { flex: 1; height: 7px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+.mini-bar-fill  { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.mini-bar-val   { font-family: var(--font-heading); font-size: 0.68rem; font-weight: 600; color: var(--text-primary); min-width: 28px; text-align: right; }
+
+/* ── DIR BARS ────────────────────────────────────────────────────────────── */
+.dir-bar-wrap { flex: 1; display: flex; height: 10px; border-radius: 3px; overflow: hidden; min-width: 60px; }
+.dir-bar-l { background: var(--color-pass); transition: width 0.4s; }
+.dir-bar-s { background: var(--color-fail); transition: width 0.4s; }
+
+/* ── HEATMAP ─────────────────────────────────────────────────────────────── */
+.hm-grid { display: grid; gap: 3px; }
+.hm-row  { display: grid; gap: 3px; align-items: center; }
+.hm-cell { height: 26px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 0.65rem; font-weight: 600; color: rgba(255,255,255,0.9); cursor: default; transition: opacity 0.2s; }
+[data-theme="light"] .hm-cell { color: #0f172a; }
+.hm-cell:hover { opacity: 0.8; }
+.hm-hdr { display: grid; gap: 3px; margin-bottom: 6px; }
+.hm-hdr span { font-family: var(--font-heading); font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; text-align: center; }
+
+/* ── DOW GRID ────────────────────────────────────────────────────────────── */
+.dow-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.dow-cell { background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 12px 8px; text-align: center; transition: background var(--transition), border-color var(--transition); }
+.dow-day  { font-family: var(--font-heading); font-size: 0.6rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.dow-val  { font-family: var(--font-heading); font-size: 1.3rem; font-weight: 700; }
+
+/* ── PAIR CHIPS ──────────────────────────────────────────────────────────── */
+.pair-filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.pair-chip {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border-primary);
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    transition: all var(--transition);
+}
+.pair-chip:hover { border-color: var(--color-info); color: var(--text-primary); }
+.pair-chip.active { background: var(--color-info); border-color: var(--color-info); color: #fff; }
+
+/* ── EVENT LIST ──────────────────────────────────────────────────────────── */
+.event-list { max-height: 380px; overflow-y: auto; }
+.event-list::-webkit-scrollbar { width: 4px; }
+.event-list::-webkit-scrollbar-thumb { background: var(--border-secondary); border-radius: 2px; }
+.event-row { display: grid; gap: 8px; padding: 7px 4px; border-bottom: 1px solid var(--border-primary); align-items: center; font-size: 0.7rem; }
+.event-row:last-child { border-bottom: none; }
+.event-row:hover { background: var(--bg-tertiary); }
+
+/* ── LOADING / EMPTY ─────────────────────────────────────────────────────── */
+.loading { text-align: center; padding: 36px; color: var(--text-muted); font-size: 0.75rem; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+.empty-state { text-align: center; padding: 36px 20px; color: var(--text-muted); }
+.empty-state .ico { font-size: 2rem; margin-bottom: 8px; }
+.empty-state .msg { font-size: 0.72rem; line-height: 1.7; }
+
+/* ── MISC ────────────────────────────────────────────────────────────────── */
+.text-muted { color: var(--text-muted); }
+.text-pass   { color: var(--color-pass); }
+.text-fail   { color: var(--color-fail); }
+.text-info   { color: var(--color-info); }
+.text-amber  { color: var(--color-amber); }
+.text-purple { color: var(--color-perfect); }
+.mono { font-family: var(--font-heading); }
+
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <div>
+        <div class="header-title">&#x26A1; Pair Intelligence</div>
+        <div class="header-sub" id="header-sub">Arm history analytics &#x2014; building your edge from data</div>
+    </div>
+    <div class="header-right">
+        <span id="sdot" class="status-dot"></span>
+        <span id="stxt" style="font-size:0.68rem;color:var(--text-muted);">Loading&#x2026;</span>
+        <div class="sep"></div>
+        <span style="font-family:var(--font-heading);font-size:0.62rem;color:var(--text-muted);letter-spacing:0.06em;">PERIOD</span>
+        <button class="btn" onclick="setDays(0)"  id="b0">ALL</button>
+        <button class="btn active" onclick="setDays(30)" id="b30">30D</button>
+        <button class="btn" onclick="setDays(90)" id="b90">90D</button>
+        <div class="sep"></div>
+        <div class="theme-toggle">
+            <button class="theme-btn active" id="tbtn-dark"  onclick="setTheme('dark')" title="Dark">&#x263D;</button>
+            <button class="theme-btn"        id="tbtn-light" onclick="setTheme('light')" title="Light">&#x2600;</button>
+        </div>
+        <button class="btn" onclick="loadData()">&#x21BB;</button>
+    </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+    <div class="tab active" onclick="showTab('overview',this)">Overview</div>
+    <div class="tab" onclick="showTab('pairs',this)">Pair Breakdown</div>
+    <div class="tab" onclick="showTab('timing',this)">Timing</div>
+    <div class="tab" onclick="showTab('quality',this)">Setup Quality</div>
+    <div class="tab" onclick="showTab('events',this)">Raw Events</div>
+</div>
+
+<!-- OVERVIEW -->
+<div class="page active" id="tab-overview">
+    <div class="grid6 mb" id="stats-row"><div class="loading" style="grid-column:1/-1">Fetching arm history&#x2026;</div></div>
+    <div class="grid2">
+        <div class="card">
+            <div class="card-header"><span class="card-title">&#x1F4CA; Pairs Ranked by Arms</span><span class="card-meta" id="freq-meta"></span></div>
+            <div class="card-body" id="freq-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+        <div class="card">
+            <div class="card-header"><span class="card-title">&#x1F305; Session Heatmap</span><span class="card-meta">Arms per session</span></div>
+            <div class="card-body" id="heatmap-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- PAIR BREAKDOWN -->
+<div class="page" id="tab-pairs">
+    <div class="pair-filter" id="pair-chips"></div>
+    <div id="pair-detail-grid"><div class="loading">&#x23F3;</div></div>
+</div>
+
+<!-- TIMING -->
+<div class="page" id="tab-timing">
+    <div class="grid2">
+        <div class="card mb">
+            <div class="card-header"><span class="card-title">&#x1F4C5; Day of Week</span><span class="card-meta">All pairs combined</span></div>
+            <div class="card-body" id="dow-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+        <div class="card mb">
+            <div class="card-header"><span class="card-title">&#x23F0; Hour UTC</span><span class="card-meta">When pairs arm through the day</span></div>
+            <div class="card-body" id="hour-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><span class="card-title">&#x1F310; Session Distribution</span></div>
+        <div class="card-body" id="session-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+</div>
+
+<!-- SETUP QUALITY -->
+<div class="page" id="tab-quality">
+    <div class="grid2">
+        <div class="card mb">
+            <div class="card-header"><span class="card-title">&#x1F4A1; Playbook Distribution</span></div>
+            <div class="card-body" id="playbook-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+        <div class="card mb">
+            <div class="card-header"><span class="card-title">&#x26A1; Volatility State at Arm</span></div>
+            <div class="card-body" id="vol-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+    </div>
+    <div class="grid2">
+        <div class="card mb">
+            <div class="card-header"><span class="card-title">&#x1F3AF; Entry Zone Quality</span></div>
+            <div class="card-body" id="zone-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+        <div class="card mb">
+            <div class="card-header"><span class="card-title">&#x26A0; Risk State at Arm</span><span class="card-meta">Was capital impaired?</span></div>
+            <div class="card-body" id="risk-body"><div class="loading">&#x23F3;</div></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><span class="card-title">&#x2195; Direction Bias per Pair</span></div>
+        <div class="card-body" id="dir-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+</div>
+
+<!-- RAW EVENTS -->
+<div class="page" id="tab-events">
+    <div class="card">
+        <div class="card-header"><span class="card-title">&#x1F4DC; All Arm Events</span><span class="card-meta" id="evcount"></span></div>
+        <div class="card-body" id="events-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+</div>
+
+<script>
+var API_BASE    = 'https://api.pineros.club';
+var currentDays = 30;
+var lastData    = null;
+var selectedPair = null;
+
+// ── THEME ────────────────────────────────────────────────────────────────────
+function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    document.getElementById('tbtn-dark').classList.toggle('active',  t === 'dark');
+    document.getElementById('tbtn-light').classList.toggle('active', t === 'light');
+    try { localStorage.setItem('fcc-dashboard-theme', t); } catch(e){}
+}
+(function(){
+    try {
+        var saved = localStorage.getItem('fcc-dashboard-theme');
+        if (saved) setTheme(saved);
+    } catch(e){}
+})();
+
+// ── TABS ─────────────────────────────────────────────────────────────────────
+function showTab(name, el) {
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+    document.getElementById('tab-' + name).classList.add('active');
+    if (el) el.classList.add('active');
+}
+
+// ── PERIOD ───────────────────────────────────────────────────────────────────
+function setDays(d) {
+    currentDays = d;
+    ['b0','b30','b90'].forEach(function(id){ document.getElementById(id).classList.remove('active'); });
+    var map = {0:'b0',30:'b30',90:'b90'};
+    if (map[d]) document.getElementById(map[d]).classList.add('active');
+    loadData();
+}
+
+// ── HELPERS ──────────────────────────────────────────────────────────────────
+function scoreBadge(s) {
+    if (!s) return '<span class="badge badge-muted">--</span>';
+    var c = s >= 85 ? 'badge-green' : s >= 80 ? 'badge-blue' : 'badge-amber';
+    return '<span class="badge '+c+'">'+s+'</span>';
+}
+function fmtTime(ts) {
+    if (!ts) return '---';
+    var d = new Date(ts);
+    return d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'}) + ' ' +
+           d.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+}
+function topKey(obj) {
+    if (!obj) return '---';
+    var keys = Object.keys(obj);
+    return keys.length ? keys.sort(function(a,b){ return obj[b]-obj[a]; })[0] : '---';
+}
+function heatBg(v, max) {
+    if (!max || !v) return 'var(--heat-0)';
+    var p = v / max;
+    if (p < 0.2) return 'var(--heat-1)';
+    if (p < 0.4) return 'var(--heat-2)';
+    if (p < 0.6) return 'var(--heat-3)';
+    if (p < 0.8) return 'var(--heat-4)';
+    return 'var(--heat-5)';
+}
+function miniBar(label, val, max, colour) {
+    var w = max > 0 ? Math.round((val/max)*100) : 0;
+    return '<div class="mini-bar-row">' +
+        '<span class="mini-bar-label" title="'+label+'">'+label+'</span>' +
+        '<div class="mini-bar-track"><div class="mini-bar-fill" style="width:'+w+'%;background:'+colour+';"></div></div>' +
+        '<span class="mini-bar-val">'+val+'</span>' +
+        '</div>';
+}
+function card(title, meta, body) {
+    return '<div class="card mb">' +
+        '<div class="card-header"><span class="card-title">'+title+'</span>' +
+        (meta?'<span class="card-meta">'+meta+'</span>':'')+
+        '</div><div class="card-body">'+body+'</div></div>';
+}
+function empty(msg) {
+    return '<div class="empty-state"><div class="ico">&#x1F4CA;</div><div class="msg">'+msg+'</div></div>';
+}
+
+// ── STATS ROW ─────────────────────────────────────────────────────────────────
+function renderStats(data) {
+    var events  = data.events || [];
+    var tally   = data.tally  || [];
+    var total   = data.totalEvents || 0;
+    var topPair = tally[0] ? tally[0].pair : '---';
+    var topCnt  = tally[0] ? tally[0].total : 0;
+    var sc  = events.filter(function(e){return e.score>0;}).map(function(e){return e.score;});
+    var avg = sc.length ? Math.round(sc.reduce(function(a,b){return a+b;},0)/sc.length) : 0;
+    var longs   = events.filter(function(e){return e.direction==='LONG'||e.direction==='BULL';}).length;
+    var longPct = total > 0 ? Math.round((longs/total)*100) : 0;
+    var full5   = events.filter(function(e){return e.criteria>=5;}).length;
+    var qPct    = total > 0 ? Math.round((full5/total)*100) : 0;
+    var imp     = events.filter(function(e){return e.riskMult && e.riskMult<1.0;}).length;
+    var iPct    = total > 0 ? Math.round((imp/total)*100) : 0;
+
+    document.getElementById('stats-row').innerHTML =
+        sc3('Total Arms',   total,         data.daysFilter==='all'?'All time':'Last '+data.daysFilter+'d', '') +
+        sc3('Top Pair',     topPair,       topCnt+' arms',                                                 'blue') +
+        sc3('Avg Score',    avg||'--',     'Across all arms',                                              avg>=83?'green':avg>=80?'blue':'amber') +
+        sc3('Long Bias',    longPct+'%',   longs+' of '+total,                                             'green') +
+        sc3('5/5 Quality',  qPct+'%',      full5+' full setups',                                           'purple') +
+        sc3('Impaired Arms',iPct+'%',      imp+' arms with reduced risk',                                  iPct>20?'red':'');
+}
+function sc3(label, val, sub, cls) {
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div>' +
+           '<div class="stat-value '+(cls||'")>'+val+'</div>') +
+           '<div class="stat-sub">'+sub+'</div></div>';
+}
+// Fix the template string issue
+function sc3(label, val, sub, cls) {
+    return '<div class="stat-card">' +
+        '<div class="stat-label">'+label+'</div>' +
+        '<div class="stat-value'+(cls?' '+cls:'')+'">'+val+'</div>' +
+        '<div class="stat-sub">'+sub+'</div>' +
+        '</div>';
+}
+
+// ── FREQUENCY TABLE ──────────────────────────────────────────────────────────
+function renderFreq(data) {
+    var tally = data.tally || [];
+    if (!tally.length) { document.getElementById('freq-body').innerHTML = empty('No arm events yet'); return; }
+    var maxC = tally[0].total;
+    var rows = tally.map(function(t, i) {
+        var bw  = Math.round((t.total/maxC)*140);
+        var bgC = t.total/maxC >= 0.6 ? 'var(--color-info)' : t.total/maxC >= 0.3 ? '#1d4ed8' : 'var(--text-muted)';
+        var lp  = t.total>0 ? Math.round((t.long/t.total)*100) : 0;
+        return '<tr>' +
+            '<td><span style="color:var(--text-muted);font-size:0.62rem;margin-right:5px;">'+(i+1)+'</span>' +
+            '<strong class="mono">'+t.pair+'</strong></td>' +
+            '<td><div class="bar-wrap"><div class="bar" style="width:'+bw+'px;background:'+bgC+';height:5px;"></div>' +
+            '<span class="mono">'+t.total+'</span></div></td>' +
+            '<td>'+scoreBadge(t.avgScore)+'</td>' +
+            '<td><span class="text-pass mono" style="font-size:0.68rem;">'+lp+'%L</span> ' +
+            '<span class="text-fail mono" style="font-size:0.68rem;">'+(100-lp)+'%S</span></td>' +
+            '<td class="text-muted mono" style="font-size:0.65rem;">'+topKey(t.sessions)+'</td>' +
+            '<td><span class="badge badge-purple" style="font-size:0.6rem;">'+( t.topPlaybook||'---' )+'</span></td>' +
+            '</tr>';
+    }).join('');
+    document.getElementById('freq-body').innerHTML =
+        '<table class="data-table"><thead><tr>' +
+        '<th>Pair</th><th>Arms</th><th>Avg SC</th><th>Direction</th><th>Top Session</th><th>Top Playbook</th>' +
+        '</tr></thead><tbody>'+rows+'</tbody></table>';
+    var period = data.daysFilter==='all' ? 'All time' : 'Last '+data.daysFilter+'d';
+    document.getElementById('freq-meta').textContent = data.totalEvents+' events \u2014 '+period;
+}
+
+// ── HEATMAP ───────────────────────────────────────────────────────────────────
+function renderHeatmap(data) {
+    var tally    = (data.tally||[]).slice(0,14);
+    var sessions = ['TOKYO','LONDON','NEW_YORK'];
+    var labels   = ['Tokyo','London','NY'];
+    if (!tally.length) { document.getElementById('heatmap-body').innerHTML = empty('No data'); return; }
+    var gmax = 0;
+    tally.forEach(function(t){ sessions.forEach(function(s){ var v=(t.sessions&&t.sessions[s])||0; if(v>gmax)gmax=v; }); });
+    var header = '<div class="hm-hdr" style="grid-template-columns:64px repeat(3,1fr);">' +
+        '<span></span>' + labels.map(function(l){ return '<span>'+l+'</span>'; }).join('') + '</div>';
+    var rows = tally.map(function(t){
+        var cells = sessions.map(function(s){
+            var v = (t.sessions&&t.sessions[s])||0;
+            return '<div class="hm-cell" style="background:'+heatBg(v,gmax)+';" title="'+t.pair+'/'+s+': '+v+' arms">'+( v||'' )+'</div>';
+        }).join('');
+        return '<div class="hm-row" style="grid-template-columns:64px repeat(3,1fr);">' +
+            '<span class="mono" style="font-size:0.68rem;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+t.pair+'</span>' +
+            cells + '</div>';
+    }).join('');
+    document.getElementById('heatmap-body').innerHTML = header + '<div class="hm-grid">'+rows+'</div>';
+}
+
+// ── PAIR BREAKDOWN ────────────────────────────────────────────────────────────
+function renderPairChips(data) {
+    var tally = data.tally || [];
+    document.getElementById('pair-chips').innerHTML = tally.map(function(t){
+        var cls = selectedPair === t.pair ? ' active' : '';
+        return '<div class="pair-chip'+cls+'" onclick="selectPair(\''+t.pair+'\')">' +
+               '<span class="mono">'+t.pair+'</span> <span style="opacity:0.6;font-size:0.6rem;">'+t.total+'</span></div>';
+    }).join('');
+    if (!selectedPair && tally.length) selectPair(tally[0].pair);
+    else if (selectedPair) renderPairDetail(data);
+}
+function selectPair(pair) {
+    selectedPair = pair;
+    document.querySelectorAll('.pair-chip').forEach(function(c){
+        c.classList.toggle('active', c.textContent.trim().startsWith(pair));
+    });
+    if (lastData) renderPairDetail(lastData);
+}
+function renderPairDetail(data) {
+    var t = (data.tally||[]).find(function(x){ return x.pair===selectedPair; });
+    if (!t) { document.getElementById('pair-detail-grid').innerHTML = empty('No data for '+selectedPair); return; }
+    var lp = t.total>0 ? Math.round((t.long/t.total)*100) : 0;
+
+    // Summary stats
+    var sumHtml = '<div class="grid4" style="gap:10px;margin-bottom:0;">' +
+        sc3('Total Arms',   t.total,              '', 'blue') +
+        sc3('Avg Score',    t.avgScore||'--',      '', t.avgScore>=83?'green':'amber') +
+        sc3('Avg RSI',      t.avgRsi||'--',        'At arm time', '') +
+        sc3('Quality Rate', (t.qualityRate||0)+'%','5/5 criteria', t.qualityRate>=80?'green':'amber') +
+        '</div>';
+
+    // Playbooks
+    var pbKeys = Object.keys(t.playbooks||{}).sort(function(a,b){ return t.playbooks[b]-t.playbooks[a]; });
+    var pbMax  = pbKeys.length ? t.playbooks[pbKeys[0]] : 0;
+    var pbHtml = pbKeys.length ? '<div class="mini-bars">'+pbKeys.map(function(k){ return miniBar(k,t.playbooks[k],pbMax,'var(--color-perfect)'); }).join('')+'</div>' : empty('No playbook data');
+
+    // Sessions + vol
+    var skKeys = Object.keys(t.sessions||{}).sort(function(a,b){ return t.sessions[b]-t.sessions[a]; });
+    var skMax  = skKeys.length ? t.sessions[skKeys[0]] : 0;
+    var vsKeys = Object.keys(t.volStates||{}).sort(function(a,b){ return t.volStates[b]-t.volStates[a]; });
+    var vsMax  = vsKeys.length ? t.volStates[vsKeys[0]] : 0;
+    var svHtml = '<div style="margin-bottom:12px;"><div class="card-title" style="margin-bottom:8px;">Sessions</div>' +
+        '<div class="mini-bars">'+skKeys.map(function(k){ return miniBar(k,t.sessions[k],skMax,'var(--color-info)'); }).join('')+'</div></div>' +
+        '<div><div class="card-title" style="margin-bottom:8px;">Volatility State</div>' +
+        '<div class="mini-bars">'+vsKeys.map(function(k){ return miniBar(k,t.volStates[k],vsMax,'var(--color-warning)'); }).join('')+'</div></div>';
+
+    // Direction + risk
+    var drHtml = '<div style="margin-bottom:14px;">' +
+        '<div class="card-title" style="margin-bottom:8px;">Long / Short Split</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div class="dir-bar-wrap" style="height:14px;"><div class="dir-bar-l" style="width:'+lp+'%;"></div><div class="dir-bar-s" style="width:'+(100-lp)+'%;"></div></div>' +
+        '<span class="mono text-pass" style="font-size:0.72rem;">'+lp+'%L</span> <span class="mono text-fail" style="font-size:0.72rem;">'+(100-lp)+'%S</span>' +
+        '</div></div>' +
+        '<div class="card-title" style="margin-bottom:8px;">Risk Mult at Arm</div>' +
+        '<div class="mini-bars">' +
+        miniBar('Full 1.0R', t.total-(t.impaired||0), t.total, 'var(--color-pass)') +
+        miniBar('Impaired',  t.impaired||0,            t.total, 'var(--color-fail)') +
+        '</div>' +
+        '<div class="text-muted mono" style="font-size:0.68rem;margin-top:10px;">Avg risk mult: <span style="color:var(--text-primary);">'+(t.avgRiskMult||1.0)+'</span></div>';
+
+    document.getElementById('pair-detail-grid').innerHTML =
+        card('&#x1F4CB; Summary &#x2014; '+t.pair, '', sumHtml) +
+        '<div class="grid2">' +
+        card('&#x1F4A1; Playbooks', '', pbHtml) +
+        card('&#x1F305; Sessions + Vol State', '', svHtml) +
+        card('&#x2195; Direction + Risk State', '', drHtml) +
+        '</div>';
+}
+
+// ── TIMING ────────────────────────────────────────────────────────────────────
+function renderTiming(data) {
+    var events = data.events || [];
+
+    // DOW
+    var dayOrder = ['Mon','Tue','Wed','Thu','Fri'];
+    var dayCounts = {};
+    events.forEach(function(e){ if(e.dayOfWeek) dayCounts[e.dayOfWeek]=(dayCounts[e.dayOfWeek]||0)+1; });
+    var dowMax = Math.max.apply(null, dayOrder.map(function(d){ return dayCounts[d]||0; }).concat([1]));
+    document.getElementById('dow-body').innerHTML = '<div class="dow-grid">' +
+        dayOrder.map(function(d){
+            var v = dayCounts[d]||0;
+            var p = v/dowMax;
+            var col = p>0.7?'var(--color-pass)':p>0.4?'var(--color-info)':'var(--text-muted)';
+            return '<div class="dow-cell"><div class="dow-day">'+d+'</div><div class="dow-val" style="color:'+col+';">'+v+'</div></div>';
+        }).join('') + '</div>';
+
+    // Hours
+    var hourCounts = {};
+    events.forEach(function(e){ if(e.hourUTC!==undefined) hourCounts[e.hourUTC]=(hourCounts[e.hourUTC]||0)+1; });
+    var hMax = Math.max.apply(null, Object.values(hourCounts).concat([1]));
+    var hourHtml = '';
+    for (var h = 0; h < 24; h++) {
+        var v = hourCounts[h]||0;
+        if (!v) continue;
+        hourHtml += miniBar(String(h).padStart(2,'0')+':00 UTC', v, hMax, 'var(--color-info)');
+    }
+    document.getElementById('hour-body').innerHTML = hourHtml
+        ? '<div class="mini-bars">'+hourHtml+'</div>'
+        : empty('Not enough data yet');
+
+    // Sessions
+    var sesCounts = {};
+    events.forEach(function(e){ if(e.session) sesCounts[e.session]=(sesCounts[e.session]||0)+1; });
+    var sesMax = Math.max.apply(null, Object.values(sesCounts).concat([1]));
+    var sesKeys = Object.keys(sesCounts).sort(function(a,b){ return sesCounts[b]-sesCounts[a]; });
+    document.getElementById('session-body').innerHTML = sesKeys.length
+        ? '<div class="mini-bars">'+sesKeys.map(function(k){ return miniBar(k,sesCounts[k],sesMax,'var(--color-info)'); }).join('')+'</div>'
+        : empty('No session data yet');
+}
+
+// ── QUALITY ───────────────────────────────────────────────────────────────────
+function renderQuality(data) {
+    var events = data.events||[];
+    var tally  = data.tally||[];
+
+    // Playbooks
+    var pbAll = {};
+    events.forEach(function(e){ if(e.playbook) pbAll[e.playbook]=(pbAll[e.playbook]||0)+1; });
+    var pbK = Object.keys(pbAll).sort(function(a,b){ return pbAll[b]-pbAll[a]; });
+    var pbM = pbK.length ? pbAll[pbK[0]] : 0;
+    document.getElementById('playbook-body').innerHTML = pbK.length
+        ? '<div class="mini-bars">'+pbK.map(function(k){ return miniBar(k,pbAll[k],pbM,'var(--color-perfect)'); }).join('')+'</div>'
+        : empty('No playbook data yet');
+
+    // Vol state
+    var vsAll = {};
+    events.forEach(function(e){ if(e.volState) vsAll[e.volState]=(vsAll[e.volState]||0)+1; });
+    var vsK = Object.keys(vsAll).sort(function(a,b){ return vsAll[b]-vsAll[a]; });
+    var vsM = vsK.length ? vsAll[vsK[0]] : 0;
+    document.getElementById('vol-body').innerHTML = vsK.length
+        ? '<div class="mini-bars">'+vsK.map(function(k){ return miniBar(k,vsAll[k],vsM,'var(--color-warning)'); }).join('')+'</div>'
+        : empty('No volatility data yet');
+
+    // Entry zones
+    var znAll = {};
+    events.forEach(function(e){ if(e.entryZone) znAll[e.entryZone]=(znAll[e.entryZone]||0)+1; });
+    var znK = Object.keys(znAll).sort(function(a,b){ return znAll[b]-znAll[a]; });
+    var znM = znK.length ? znAll[znK[0]] : 0;
+    var zC  = {HOT:'var(--color-pass)',OPTIMAL:'var(--color-info)',ACCEPTABLE:'var(--color-warning)',EXTENDED:'var(--color-fail)'};
+    document.getElementById('zone-body').innerHTML = znK.length
+        ? '<div class="mini-bars">'+znK.map(function(k){ return miniBar(k,znAll[k],znM,zC[k]||'var(--color-info)'); }).join('')+'</div>'
+        : empty('No zone data yet');
+
+    // Risk state
+    var full   = events.filter(function(e){ return !e.riskMult || e.riskMult>=1.0; }).length;
+    var r75    = events.filter(function(e){ return e.riskMult===0.75; }).length;
+    var r50    = events.filter(function(e){ return e.riskMult===0.5; }).length;
+    var rOther = events.filter(function(e){ return e.riskMult && e.riskMult<0.5; }).length;
+    var rMax   = Math.max(full,r75,r50,rOther,1);
+    document.getElementById('risk-body').innerHTML = '<div class="mini-bars">' +
+        miniBar('Full 1.0R', full,   rMax, 'var(--color-pass)') +
+        miniBar('0.75R',     r75,    rMax, 'var(--color-warning)') +
+        miniBar('0.5R',      r50,    rMax, 'var(--color-fail)') +
+        miniBar('Below 0.5R',rOther, rMax, 'var(--text-muted)') +
+        '</div>';
+
+    // Direction per pair
+    var top = tally.slice(0,12);
+    document.getElementById('dir-body').innerHTML = top.length
+        ? top.map(function(t){
+            var lp = t.total>0 ? Math.round((t.long/t.total)*100) : 50;
+            return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-primary);">' +
+                '<span class="mono" style="font-weight:700;font-size:0.75rem;min-width:72px;">'+t.pair+'</span>' +
+                '<div class="dir-bar-wrap"><div class="dir-bar-l" style="width:'+lp+'%;"></div><div class="dir-bar-s" style="width:'+(100-lp)+'%;"></div></div>' +
+                '<span class="mono text-pass" style="font-size:0.68rem;min-width:32px;">'+lp+'%L</span>' +
+                '<span class="mono text-fail" style="font-size:0.68rem;min-width:32px;">'+(100-lp)+'%S</span>' +
+                '</div>';
+          }).join('')
+        : empty('No direction data yet');
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+function renderEvents(data) {
+    var events = (data.events||[]).slice().reverse().slice(0,100);
+    document.getElementById('evcount').textContent = events.length+' most recent';
+    if (!events.length) { document.getElementById('events-body').innerHTML = empty('No events recorded yet'); return; }
+    var cols = '100px 72px 56px 52px 64px 80px 80px 56px 60px';
+    var hdr  = '<div class="event-row" style="grid-template-columns:'+cols+';border-bottom:1px solid var(--border-secondary);padding-bottom:8px;">' +
+        ['Time','Pair','Dir','Score','Zone','Session','Playbook','Vol','Risk'].map(function(h){
+            return '<span class="card-title">'+h+'</span>';
+        }).join('') + '</div>';
+    var rows = events.map(function(e){
+        var dc = (e.direction==='LONG'||e.direction==='BULL') ? 'var(--color-pass)' : 'var(--color-fail)';
+        var rm = e.riskMult && e.riskMult<1.0
+            ? '<span class="badge badge-amber">'+e.riskMult+'R</span>'
+            : '<span class="text-muted mono" style="font-size:0.65rem;">'+(e.maxRisk||'1.0R')+'</span>';
+        return '<div class="event-row" style="grid-template-columns:'+cols+';">' +
+            '<span class="text-muted mono" style="font-size:0.65rem;">'+fmtTime(e.timestamp)+'</span>' +
+            '<strong class="mono">'+e.pair+'</strong>' +
+            '<span class="mono" style="color:'+dc+';font-size:0.7rem;">'+(e.direction||'---')+'</span>' +
+            scoreBadge(e.score) +
+            '<span class="text-muted mono" style="font-size:0.65rem;">'+(e.entryZone||'---')+'</span>' +
+            '<span class="text-muted mono" style="font-size:0.62rem;">'+(e.session||'---')+'</span>' +
+            '<span class="mono text-purple" style="font-size:0.62rem;">'+(e.playbook||'---')+'</span>' +
+            '<span class="text-amber mono" style="font-size:0.62rem;">'+(e.volState||'---')+'</span>' +
+            rm +
+            '</div>';
+    }).join('');
+    document.getElementById('events-body').innerHTML = '<div class="event-list">'+hdr+rows+'</div>';
+}
+
+// ── LOAD ──────────────────────────────────────────────────────────────────────
+function loadData() {
+    var dot = document.getElementById('sdot');
+    var txt = document.getElementById('stxt');
+    dot.className = 'status-dot';
+    txt.textContent = 'Loading\u2026';
+    txt.style.color = 'var(--text-muted)';
+
+    var url = API_BASE + '/arm-history' + (currentDays>0 ? '?days='+currentDays : '');
+    fetch(url)
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(function(data){
+            lastData = data;
+            dot.className = 'status-dot live';
+            txt.textContent = 'Live \u2014 ' + new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+            document.getElementById('header-sub').textContent =
+                (data.totalEvents||0) + ' arm events recorded \u2014 ' +
+                (data.daysFilter==='all'?'all time':'last '+data.daysFilter+' days');
+            renderStats(data); renderFreq(data); renderHeatmap(data);
+            renderPairChips(data); renderTiming(data);
+            renderQuality(data); renderEvents(data);
+        })
+        .catch(function(err){
+            dot.className = 'status-dot err';
+            txt.textContent = 'API unavailable';
+            txt.style.color = 'var(--color-fail)';
+            if (!lastData) {
+                // Demo data so layout is visible
+                var demo = {
+                    totalEvents:142, daysFilter:30, pairFilter:'all',
+                    tally:[
+                        {pair:'CADJPY', total:28,long:18,short:10,avgScore:83,avgRsi:62,avgRiskMult:0.92,qualityRate:82,impaired:4,
+                         sessions:{TOKYO:16,LONDON:8,NEW_YORK:4}, playbooks:{CONTINUATION:16,DEEP_PULLBACK:8,RANGE_BREAKOUT:4},
+                         volStates:{TREND:20,EXPLODE:6,QUIET:2}, topPlaybook:'CONTINUATION', topVolState:'TREND'},
+                        {pair:'USDJPY', total:22,long:14,short:8,avgScore:81,avgRsi:58,avgRiskMult:1.0,qualityRate:77,impaired:2,
+                         sessions:{TOKYO:12,LONDON:6,NEW_YORK:4}, playbooks:{CONTINUATION:14,DEEP_PULLBACK:8},
+                         volStates:{TREND:16,EXPLODE:6}, topPlaybook:'CONTINUATION', topVolState:'TREND'},
+                        {pair:'AUDUSD', total:20,long:12,short:8,avgScore:84,avgRsi:61,avgRiskMult:1.0,qualityRate:90,impaired:1,
+                         sessions:{TOKYO:14,LONDON:4,NEW_YORK:2}, playbooks:{CONTINUATION:14,DEEP_PULLBACK:6},
+                         volStates:{TREND:15,EXPLODE:5}, topPlaybook:'CONTINUATION', topVolState:'TREND'},
+                        {pair:'EURUSD', total:18,long:8,short:10,avgScore:82,avgRsi:49,avgRiskMult:0.85,qualityRate:72,impaired:5,
+                         sessions:{LONDON:12,NEW_YORK:4,TOKYO:2}, playbooks:{DEEP_PULLBACK:10,CONTINUATION:8},
+                         volStates:{TREND:12,EXPLODE:4,QUIET:2}, topPlaybook:'DEEP_PULLBACK', topVolState:'TREND'},
+                    ],
+                    events:[]
+                };
+                lastData = demo;
+                renderStats(demo); renderFreq(demo); renderHeatmap(demo);
+                renderPairChips(demo); renderTiming(demo); renderQuality(demo);
+                document.getElementById('events-body').innerHTML =
+                    empty('API unreachable \u2014 demo layout only.<br>Deploy alert server v2.4.0 to collect live data.');
+            }
+        });
+}
+
+loadData();
+setInterval(loadData, 120000);
+</script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 // pre-trade.js - FCC Phase 3 extraction
 // Pre-trade validation & entry strategy
+// v4.2.0: News Gate Module integration - adds veto layer for news events before pre-trade checks
 // v4.1.0: Removed dead 5-criteria system (checkCriterion1-5, updateCriteria,
 //         old updateValidationVerdict, calculateRR, calculateValidationPosition).
 //         Active validation now lives in institutional-checklist.js (7-check system)

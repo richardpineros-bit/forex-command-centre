@@ -50,7 +50,7 @@
 
 .armed-col-headers {
     display: grid;
-    grid-template-columns: 28px 72px 1fr 70px 52px 36px 90px;
+    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 90px 28px;
     gap: var(--spacing-sm);
     padding: 2px var(--spacing-md);
     font-size: 0.65rem;
@@ -62,7 +62,7 @@
 
 .armed-pair-row {
     display: grid;
-    grid-template-columns: 28px 72px 1fr 70px 52px 36px 90px;
+    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 90px 28px;
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);
@@ -150,6 +150,31 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
+}
+
+.armed-atr {
+    font-size: 0.75rem;
+    text-align: left;
+    line-height: 1.3;
+}
+
+.armed-tv {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.armed-tv-link {
+    font-size: 1rem;
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+    line-height: 1;
+}
+
+.armed-tv-link:hover {
+    opacity: 1;
 }
 
 .armed-empty {
@@ -579,7 +604,7 @@
 @media (max-width: 768px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 24px 60px 1fr 50px 40px 30px 80px;
+        grid-template-columns: 24px 60px 1fr 50px 40px 30px 70px 80px 24px;
         gap: 4px;
         padding: var(--spacing-xs) var(--spacing-sm);
         font-size: 0.75rem;
@@ -592,7 +617,7 @@
 @media (max-width: 600px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 22px 55px 1fr 40px 32px 28px 72px;
+        grid-template-columns: 22px 55px 1fr 40px 32px 28px 24px 72px;
         gap: 3px;
         padding: var(--spacing-xs) 6px;
         font-size: 0.7rem;
@@ -609,7 +634,7 @@
     .armed-pair-row {
         grid-template-columns: 55px 40px 32px 28px 68px;
     }
-    .armed-emoji, .armed-primary { display: none; }
+    .armed-emoji, .armed-primary, .armed-atr, .armed-tv { display: none; }
     .armed-col-headers span:nth-child(1),
     .armed-col-headers span:nth-child(3) { display: none; }
 }

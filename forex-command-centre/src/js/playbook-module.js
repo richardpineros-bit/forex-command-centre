@@ -397,6 +397,8 @@
 
     function saveState(state) {
         try {
+            // Add timestamp for Daily Refresh Gate
+            state.timestamp = new Date().toISOString();
             localStorage.setItem(PLAYBOOK_STORAGE_KEY, JSON.stringify(state));
             return true;
         } catch (e) {
@@ -705,7 +707,7 @@
                             '<span class="gate-icon">&#x26A0;</span>' +
                             '<div class="gate-content">' +
                                 '<div class="gate-title">Nothing Available</div>' +
-                                '<div class="gate-message">The current market conditions (' + regime.toUpperCase() + ') don't support any active plans.</div>' +
+                                '<div class="gate-message">The current market conditions (' + regime.toUpperCase() + ') don\'t support any active plans.</div>' +
                             '</div>' +
                         '</div>';
                     return;
@@ -726,7 +728,7 @@
         // END NEWS GATE CHECK
         // ============================================
 
-                var regimeKey = regime.toLowerCase();
+        var regimeKey = regime.toLowerCase();
         var availableIds = getAvailablePlaybooks(regime, permission);
 
         if (availableIds.length === 0) {

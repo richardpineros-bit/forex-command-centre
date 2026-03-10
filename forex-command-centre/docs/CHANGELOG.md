@@ -1,7 +1,518 @@
-# Forex Command Centre - Changelog
+
+## [v4.5.1] - 2026-03-08
+
+### PATCH - Alert Server Deployment Fix + Data Persistence Bug
+
+**Deployment issue:** Alert server was reading from `/mnt/user/appdata/trading-state/`
+(original container mount), not the newer `forex-alert-server/` folder. File had to be
+copied to the correct path before `docker restart trading-state` took effect.
+
+**Critical persistence bug fixed:**
+All five data files in `forex-alert-server/index.js` were writing to `/app/` inside
+the container instead of `/data/` (the mounted volume). This meant arm-history.json,
+structure.json, armed.json, utcc-alerts.json, and candidates.json were all lost on
+every container restart. Weeks of arm history would have been silently wiped.
+
+### Fixed
+- `forex-alert-server/index.js` v2.4.1:
+  - `STATE_FILE`: `/app/armed.json` → `/data/armed.json`
+  - `UTCC_FILE`: `/app/utcc-alerts.json` → `/data/utcc-alerts.json`
+  - `CANDIDATE_FILE`: `/app/candidates.json` → `/data/candidates.json`
+  - `STRUCTURE_FILE`: `/app/structure.json` → `/data/structure.json`
+  - `ARM_HISTORY_FILE`: `/app/arm-history.json` → `/data/arm-history.json`
+
+### Deployment note
+After deploying v2.4.1: copy the new `index.js` to
+`/mnt/user/appdata/trading-state/index.js` then `docker restart trading-state`.
+Verify with `curl https://api.pineros.club/arm-history`.
+
+---
+
+## [v4.5.1] - 2026-03-08
+
+### PATCH - Alert Server data path fix
+
+**Problem:** `arm-history.json` and `structure.json` were writing to `/app/` inside
+the container — wiped on every restart. No arm history would have survived.
+
+**Fix:** Both file paths corrected to `/data/` (the mounted volume at
+`/mnt/user/appdata/trading-state/data/`). Data now persists across restarts.
+
+- `forex-alert-server/index.js` v2.4.1
+  - `STRUCTURE_FILE` → `/data/structure.json`
+  - `ARM_HISTORY_FILE` → `/data/arm-history.json`
+
+Fix applied via `sed` on live server then version bumped in repo to stay in sync.
+
+---
+
+## [v4.5.0] - 2026-03-07
+
+### MINOR - Structure Gate + Arm History Intelligence
+
+Two major additions this session: a hard location veto gate in the Pre-Trade workflow,
+and a full pair intelligence dashboard built on expanded arm event data.
+
+---
+
+### Structure Gate (New Feature)
+
+**Problem:** UTCC score 87, all 5 criteria pass — trade taken straight into unmarked
+resistance. Location check was entirely discretionary. Zero enforcement.
+
+**Fix:** ProZones now fires dynamic JSON alert payloads to the alert server whenever
+price enters the danger zone of a STRONG structure level. Alert server stores the
+data per pair with 4h TTL. FCC Pre-Trade tab reads it and renders a hard veto banner
+before the institutional checklist runs.
+
+**Gate decisions:**
+- LONG + AT RESISTANCE → **BLOCK** (red, execution disabled)
+- SHORT + AT SUPPORT   → **BLOCK** (red, execution disabled)
+- Approaching strong zone (LONG + wrong direction) → **WARN** (amber)
+- MID-RANGE → **WARN** (grey, no structural edge)
+- NO_DATA / API error  → **WARN** (amber, fail-closed — never silent pass)
+
+**New files:**
+- `forex-command-centre/src/js/structure-gate.js` v1.0.0
+  - `window.structureGate.checkPair(pair, direction)` — fetches `/structure?pair=X`
+  - Evaluates verdict + direction → renders banner in `#structure-gate-banner`
+  - 60-second client-side cache
+  - Exposes `window._structureGateResult` for checklist integration
+  - Fail-closed: API error → WARN (never silent pass)
+
+**Modified files:**
+- `forex-command-centre/src/index.html`
+  - Added `<div id="structure-gate-banner">` after news-gate-warning-container
+  - Added `<script src="js/structure-gate.js">` import
+- `forex-command-centre/src/js/institutional-checklist.js` v2.2.0
+  - Structure gate check fires before Check 1 if `window.structureGate` is defined
+  - Normalises direction from dropdown value
+- `utcc-indicators/multi-touch-zones.pine` v3.5.0
+  - Replaced static `alertcondition()` calls with dynamic `alert()` firing on
+    `barstate.isconfirmed` when price enters alert range of STRONG zone
+  - JSON payload: `{"type":"structure","pair":"...","zone":"...","strength":"STRONG","dist_atr":...,"tr":"...","verdict":"..."}`
+  - Zone label accounts for broken zone role-flip (BROKEN_SUP / BROKEN_RES)
+  - TradingView alert setup: "Any alert() function call" → `https://api.pineros.club/webhook/structure`
+
+---
+
+### Alert Server v2.2.0 → v2.4.0
+
+**v2.2.0** — Structure Gate backend:
+- `POST /webhook/structure` — receives ProZones payload, stores per pair with 4h TTL
+- `GET /structure?pair=X` — returns verdict; `NO_DATA` if not found, `EXPIRED` if stale
+- `structure.json` state file, cleanup interval
+
+**v2.3.0** — Arm History:
+- Every ARMED event now permanently appended to `arm-history.json`
+- `appendArmEvent()` captures: pair, direction, score, session, entryZone, volState, permission, timestamp
+- `GET /arm-history?days=30&pair=X` — returns events + frequency tally with avgScore, direction counts, session breakdown
+
+**v2.4.0** — Arm History expanded capture (this session):
+- `appendArmEvent()` now captures full institutional context per arm event:
+  - **Time context (derived):** dayOfWeek, hourUTC, weekNumber, month
+  - **Setup quality:** score, criteria count (5/5), MTF alignment (3/3), direction, entryZone
+  - **Volatility:** volState, volBehaviour, volLevel percentile
+  - **Momentum:** RSI at arm time
+  - **Session/regime:** session, primary, playbook
+  - **Risk state:** riskState, riskMult, maxRisk, permission
+- Tally aggregation expanded: avgRsi, avgRiskMult, peakHourUTC, topPlaybook, topVolState,
+  qualityRate (5/5 criteria %), impairedRate (arms where riskMult < 1.0), day-of-week counts
+
+**Modified file:**
+- `forex-alert-server/index.js` v2.4.0
+
+---
+
+### Arm History Dashboard v1.0.0 → v1.2.0
+
+**New file:** `forex-command-centre/src/arm-history-dashboard.html`
+
+Full pair intelligence dashboard with five tabs:
+
+1. **Overview** — 6 stat cards (total arms, top pair, avg score, long bias, 5/5 quality %, impaired arms %) + ranked frequency table + session heatmap
+2. **Pair Breakdown** — per-pair deep dive: summary stats, playbook distribution, sessions + vol state, direction/risk split
+3. **Timing** — day-of-week grid, UTC hour distribution (all pairs), session breakdown
+4. **Setup Quality** — playbook distribution, vol state at arm, entry zone quality (HOT/OPTIMAL/ACCEPTABLE/EXTENDED), risk state breakdown (1.0R / 0.75R / 0.5R), direction bias per pair
+5. **Raw Events** — last 100 arm events with all captured fields
+
+**v1.1.0:** Expanded tally fields to match v2.4.0 server capture (RSI, risk mult, playbook, vol, day, hour)
+
+**v1.2.0:** Full FCC theme parity
+- Replaced custom dark aesthetic with exact FCC CSS variables: `--bg-primary/secondary/tertiary`, `--text-primary/secondary/muted`, `--border-primary`
+- Fonts: `JetBrains Mono` (headings/mono) + `Inter` (body) — matches FCC exactly
+- Status colours: `--color-pass/fail/warning/info/perfect` — identical to FCC
+- `data-theme="dark"` / `data-theme="light"` toggle in header (☽/☀)
+- Theme preference saved to localStorage
+- Demo mode renders on API unavailable so layout is always visible
+
+---
+
+## [v4.4.5] - 2026-03-02
+
+### PATCH - Gold Nugget Reminder Fixes
+
+**Problem:** Gold Nugget popup never showed after first trigger. Three bugs:
+
+### Fixed
+
+- **gold-nugget-reminder.js v1.2.0:**
+  - localStorage date check was broken: checked if ANY value existed (permanent block after first show). Now correctly compares stored date to today's date
+  - "Another One" button stacked modals without removing existing one. Now cleans up before creating new modal
+  - Changed from once-per-day to max 4 shows per day with 50% probability (was 30%)
+  - Tracks show count per day via JSON object in localStorage
+
+- **gold-nugget-principles.js v1.1.0:**
+  - Raw emoji characters in formatPrincipleForDisplay replaced with Unicode escapes to prevent UTF-8 encoding corruption
+
+---
+
+## [v4.4.4] - 2026-03-02
+
+### MINOR - Dashboard Event Widget v2.1.0
+
+**Purpose:** Full CRITICAL event visibility with context data for pre-trade news assessment.
+
+### Changed
+
+- **dashboard-event-widget.js v2.1.0:** Complete rewrite
+  - Shows ALL CRITICAL events for the week (was: only next single event)
+  - Collapsible list: next 3 events visible, expand toggle for rest
+  - Each row shows: currency badge, title, day/time AEST, forecast, previous, countdown
+  - Click any event to expand: Measures, Usual Effect, threshold notes
+  - 49 event reference entries covering all major releases across 8 currencies
+  - Colour-coded urgency: red (< 4h), amber (< 24h), grey (> 24h)
+  - Update interval reduced from 30min to 15min
+
+---
+
+## [v4.4.3] - 2026-03-02
+
+### PATCH - CRITICAL: News Calendar Pipeline Fix
+
+**Problem:** News Gate Module was fail-OPEN. Stale calendar data (Jan 10) loaded
+silently, showed "No CRITICAL events in next 7 days" during NFP week. All pairs
+passed news safety with zero protection.
+
+### Root Cause
+
+Three cascading failures:
+1. Scraper wrote to non-existent `src/data/` directory (silently failing since Jan)
+2. `news-impact.js` found stale Jan file as last fallback path, loaded successfully
+3. Dashboard filtered `eventTime > now` on Jan dates = zero matches = false "all clear"
+
+### Fixed
+
+- **forex_calendar_scraper.py:** Path resolution now uses `os.path.abspath(__file__)`
+  relative to script location, not CWD. Default output: `<project>/src/calendar.json`.
+  Dual-write to `<project>/data/calendar.json` as backup. Safe to run from anywhere.
+
+- **news-impact.js:** `LIVE_CALENDAR_DATA` changed from `let` to `window.` property
+  (other modules were checking `window.LIVE_CALENDAR_DATA` which was undefined).
+  Path order fixed: `./calendar.json` primary (was last fallback). Staleness detection
+  added with 48h threshold. Status indicator shows amber when stale.
+
+- **dashboard-event-widget.js v1.1.0:** Staleness check before display. Stale data
+  shows amber warning instead of false "all clear". Calendar offline shows red warning.
+
+- **news-gate-module.js v1.1.0:** Changed from fail-OPEN to fail-CLOSED.
+  Missing calendar: `safe: false` (was `safe: true`).
+  Stale calendar (>48h): `safe: false` with explicit reason.
+
+- **User Scripts (Unraid):** Scraper cron path updated from old `forex-tools/` to
+  `forex-command-centre/backend/scripts/`. Schedule: `0 */6 * * *` (every 6h).
+
+### Security Impact
+
+- **Before:** Stale/missing calendar = trades allowed (fail-open)
+- **After:** Stale/missing calendar = all pairs blocked (fail-closed)
+- Consistent with Risk Committee: "Fail-closed; missing context = no trade"
+
+---
+
+## [v4.4.2] - 2026-03-01
+
+### PATCH - Gold Nugget Simplification + News Protocol Guide + Bug Fixes
+
+**Purpose:** Simplify institutional principles to plain language, add news day protocol to trading guide, fix remaining widget bugs.
+
+### Changed
+
+- **gold-nugget-principles.js:** Complete rewrite for simplicity
+  - Old: Formal institutional language
+  - New: Simple, direct, everyday language anyone can understand
+  - Example: "If you cannot name the playbook before seeing UTCC, you do not trade" instead of formal jargon
+  - All 40+ principles now plain English, actionable, memorable
+  - Removed technical jargon, use "do not" instead of "cannot"
+
+- **trading-guide.js:** Added "News Day Protocol" section
+  - Step 1: Map Your Week (identify CRITICAL events)
+  - Step 2: Run Daily Context + Game Plan
+  - Step 3: Pre-Event Day Protocol (3h before, close at breakeven)
+  - Step 4: During Event (hands off, no watching)
+  - Step 5: Post-Event Assessment (check structure, reassess)
+  - Three options: Reduce Size (1%), Skip Pairs, Stand Down
+  - Key principle: "Pre-decide everything, execute with no emotion"
+
+### Fixed
+
+- **gold-nugget-principles.js emoji corruption:**
+  - Original file had raw emoji characters (⚠️, ⚡, 💡) causing UTF-8 encoding errors
+  - Browser would not parse file due to syntax errors
+  - Fixed: Converted all emoji to Unicode escape sequences (\u26A0, \u26A1, \u1F4A1)
+  - File now loads without errors
+
+### User-Facing Changes
+
+1. **Dashboard:** Event widget correctly shows "No CRITICAL events in next 7 days" when clear
+2. **Trading Guide:** New "News Day Protocol" tab accessible from guide button
+3. **Gold Nuggets:** All 40+ principles now in simple, direct language
+4. **Reminder Modal:** Shows simplified principles that are easy to remember under stress
+
+### Behavior
+
+- Open Trading Guide → Click "News Day Protocol" tab
+- See 5-step framework for high-impact news days
+- Open dashboard → Reminder shows plain English principle (when 30% fires)
+- All principles formatted as "what to do" statements, not warnings
+
+## [v4.4.1] - 2026-03-01
+
+### PATCH - Dashboard Layout Optimization + Calendar Scraper Automation + Bug Fixes
+
+**Purpose:** Fix widget bugs, streamline dashboard, ensure fresh calendar data daily.
+
+### Fixed
+
+- **dashboard-event-widget.js:** Fixed calendar data reference bug
+  - Was checking `window.LIVE_CALENDAR_DATA` (undefined)
+  - Now correctly references `LIVE_CALENDAR_DATA` in global scope
+  - Widget now displays next CRITICAL event instead of "Calendar offline"
+
+- **Calendar data staleness issue:**
+  - Scraper was not automated (last run: Jan 10)
+  - Two calendar.json files: /data/ (updated) and /src/ (served to browser)
+  - Fixed: Browser now serves fresh calendar from /src/
+  - Set up cron job: Runs daily at 23:30 (11:30pm)
+  - Command: `/usr/local/bin/update-forex-calendar.sh`
+
+### Removed
+
+- **dashboard-decision-widget.js:** Removed from dashboard
+  - Functionality: "Your Decision Today" selector
+  - Reason: Redundant. Event widget already shows next CRITICAL event
+  - User can see affected pairs and skip manually without extra widget
+
+### Changed
+
+- **Dashboard layout (index.html):**
+  - Moved `armed-panel` to top of dashboard
+  - Now positioned directly below `dashboard-next-event-container`
+  - User sees: [Next Event] → [Armed Instruments] → [Discipline Dashboard]
+  - Cleaner, more actionable workflow
+
+### Behavior
+
+1. Scraper runs automatically every day at 11:30pm
+2. Calendar updates on dashboard without manual intervention
+3. Event widget shows next CRITICAL event (RBA, FOMC, etc.) with countdown
+4. Armed instruments panel shows which pairs are ARMED (waiting for entry)
+5. User can skip affected pairs based on event + armed status
+
+### Technical Details
+
+- Cron job: `30 23 * * * /usr/local/bin/update-forex-calendar.sh`
+- Script copies calendar from /data/ to /src/ after scraper updates
+- No manual calendar.json management needed anymore
+- Widget correctly detects absence of future CRITICAL events: "No CRITICAL events in next 7 days"
+
 
 All notable changes to the Forex Command Centre are documented here.
 Format follows [Semantic Versioning](https://semver.org/).
+
+## [v4.4.0] - 2026-03-01
+
+### MINOR - Gold Nugget Framework + Dashboard Widgets + Daily Reminder System
+
+**Purpose:** Embed institutional mindset through spaced repetition, display next critical news event, and lock in daily decisions.
+
+### Added
+
+- **gold-nugget-principles.js (v1.0.0):** Comprehensive institutional principles framework
+  - 40+ principles organized by category: Core Mindset (4), Risk Audit (4), Kill-Switches (4), Behavioural (4), Capital Governors (4), Execution (3), Institutional-Grade (4), Implementation (10), Trading Execution (15)
+  - Categories: CRITICAL priority, HIGH priority, MEDIUM priority
+  - Utility functions: `getRandomPrinciple()`, `getPrinciplesByCategory()`, `getPrinciplesByCritical()`, `formatPrincipleForDisplay()`
+  - Core principles: "UTCC is filter not generator", "Protect capital from trader", "Decision denial over decision support", "Discipline is design problem"
+  - Implementation principles: "Policy before code", "Risk controls separable", "Fail-closed always", "No ambiguous rules"
+  - Trading principles: "Location > score", "Process > prediction", "Quality > quantity", "Patience is weapon", "Asymmetric setups"
+
+- **gold-nugget-reminder.js (v1.0.0):** Daily spaced repetition modal
+  - Triggers on dashboard load with 30% probability (max once per day)
+  - Shows random institutional principle in modal with title, category, priority, and detailed explanation
+  - Buttons: [Got It] [Another One] [Dismiss]
+  - Purpose: Embed 40+ institutional rules through repetition, not willpower
+  - localStorage tracking: `ftcc_nugget_reminder_shown_today` ensures once-per-day limit
+
+- **dashboard-event-widget.js (v1.0.0):** Next CRITICAL event display
+  - Shows on main dashboard at top
+  - Displays: Event title, currency, day/time (AEST), "In Xh Ym" countdown
+  - Colour-coded: RED if <4h, YELLOW if <24h, GREY if later
+  - Updates every 30 minutes automatically
+  - Graceful fallback: "No CRITICAL events in next 7 days" if clear
+  - Depends on: LIVE_CALENDAR_DATA from news-impact.js
+
+- **dashboard-decision-widget.js (v1.0.0):** Your Decision Today selector
+  - Shows on main dashboard below event widget
+  - Four options: Trade Normally (✓ GREEN) / Reduce Size (1%) (⚡ YELLOW) / Skip Affected Pairs (⏸ BLUE) / Stand Down (🛑 RED)
+  - User selects once per day; decision persists across session (localStorage)
+  - Shows selected decision prominently with timestamp
+  - Purpose: Lock in news day prep decision before trading starts
+  - Persists to: localStorage key `ftcc_decision_today`
+
+- **core-ui.js (v4.4.0):** Dashboard integration hook
+  - Added `GoldNuggetReminder.showReminder()` call in dashboard case of `showTab()` switch
+  - Reminder fires 1 second after dashboard tab opens (allows UI to render first)
+
+- **index.html (v4.4.0):** Imports + containers
+  - Added 4 module imports: gold-nugget-principles.js, gold-nugget-reminder.js, dashboard-event-widget.js, dashboard-decision-widget.js
+  - Added 2 dashboard containers: `dashboard-next-event-container`, `dashboard-decision-container`
+  - Container placement: After playbook briefing card, before discipline dashboard card
+
+### Integration Points
+1. Dashboard load → GoldNuggetReminder.showReminder() fired automatically
+2. Pre-Trade load → DailyRefreshGate.updateFreshnessUI() + NewsGateModule checks (existing)
+3. Daily Context save → timestamp added automatically (v4.3.0)
+4. Playbook save → timestamp added automatically (v4.3.0)
+
+### Institutional Principles Included (Sample)
+
+**Core Mindset:**
+- "UTCC is a filter, not a signal generator; if you can't name the playbook before seeing UTCC, you don't trade"
+- "Build a system that protects capital from the trader, not a system that assumes the trader stays rational"
+- "Move from decision support → decision denial (hard vetoes, not soft warnings)"
+
+**Risk & Discipline:**
+- "The system assumes you'll act irrationally; the system stops you"
+- "Risk controls must be independently inspectable; separate risk logic from trading logic (veto layer)"
+- "Fail-closed always; if regime/session/context is missing or ambiguous → no trade"
+- "Breakeven is neutral; it should not reset loss streaks or failure counters"
+- "Revenge behaviour must trigger action (block + risk reduction + mandatory review gate)"
+
+**Trading Execution:**
+- "Location matters more than score: never buy into resistance, never short into support"
+- "Process over prediction; your job is execution + risk control, not being 'right'"
+- "Quality > quantity: 5-10 high-quality trades per week beats 50 marginal setups"
+- "Patience is a weapon; wait for your conditions, even if it means fewer trades"
+- "If you can't state your edge in one sentence, you don't have one yet"
+
+---
+
+## [v4.3.0] - 2026-03-01
+
+### MINOR - Daily Refresh Gate (Staleness Checker for Briefing + Game Plan)
+
+**Purpose:** Ensure Daily Context and Game Plan are reassessed every trading day, preventing stale conditions from guiding trades.
+
+### Added
+
+- **daily-refresh-gate.js (v1.0.0):** Staleness monitoring system for briefing and game plan
+  - Checks if Daily Context was updated today (compares ISO timestamp to current date)
+  - Checks if Game Plan was updated today
+  - Returns structured verdict for UI: `{ briefingFresh: bool, playbookFresh: bool, briefingTimestamp: string, playbookTimestamp: string }`
+  - Renders freshness status on Pre-Trade tab: GREEN checkmark if fresh, YELLOW warning if stale
+  - Two buttons per stale item: [Confirm] (updates timestamp without re-entering) and [Refresh]/[Change] (navigates to tab)
+  - Audit logging: tracks all freshness checks (last 50 entries to localStorage)
+  - Utility functions: `refreshBriefing()`, `confirmBriefing()`, `refreshGamePlan()`, `confirmGamePlan()`, `getAuditLog()`
+
+- **daily-context.js (v4.3.0):** Timestamp tracking on briefing save
+  - Added line: `data.timestamp = new Date().toISOString();` in save() function
+  - Timestamp added automatically whenever Daily Context is saved
+  - No user interaction required; timestamp persists to both localStorage and server storage
+
+- **playbook-module.js (v4.3.0):** Timestamp tracking on game plan save
+  - Added line: `state.timestamp = new Date().toISOString();` in saveState() function
+  - Timestamp added automatically whenever Game Plan is saved
+  - Persists to localStorage, survives page reload
+
+- **institutional-checklist.js (v4.3.0):** Freshness gate integration
+  - Added 8 lines: `DailyRefreshGate.updateFreshnessUI()` called when institutional checklist loads
+  - Displays freshness status on Pre-Trade tab before 7-check validation
+  - Runs asynchronously with 100ms delay (allows DOM to settle first)
+
+- **index.html (v4.3.0):** Containers and import
+  - Added 2 containers: `briefing-freshness-container` and `gameplan-freshness-container` in Pre-Trade tab
+  - Imported daily-refresh-gate.js after circuit-breaker modules, before news-gate-module.js
+  - Containers display YELLOW warning if stale (with "Last updated Xd ago") or GREEN checkmark if fresh
+
+### Behavior
+
+1. **Sunday night:** Run Daily Context + Game Plan → timestamps saved
+2. **Monday morning:** Open Pre-Trade tab → freshness check fires automatically
+3. **If fresh (today):** GREEN checkmark displayed, proceed normally
+4. **If stale (yesterday or earlier):** YELLOW warning displayed with [Confirm] and [Refresh] buttons
+   - [Confirm]: Just updates timestamp to today (reasserts same conditions still valid)
+   - [Refresh]/[Change]: Navigate to Daily Context or Game Plan tab for reassessment
+5. **After confirming/refreshing:** YELLOW warning disappears, GREEN checkmark appears
+
+### Design Rationale
+
+Market regime can shift overnight (Asia session trades while trader sleeps). System forces re-evaluation of:
+- Is the regime still what I assessed Sunday night? (EXPANSION → DISTRIBUTION?)
+- Is my permission level still correct? (YELLOW → RED due to losses?)
+- Is my playbook still the right one? (CONTINUATION → OBSERVATION if vol profile changed?)
+
+Instead of relying on trader memory ("Did I check if conditions changed?"), the system asks explicitly.
+
+---
+
+## [v4.2.0] - 2026-03-01
+
+### MINOR - News Gate Module (Veto Layer for News Events)
+
+### Added
+- **news-gate-module.js (v1.0.0):** Standalone veto layer module for news event assessment
+  - Wraps existing `isNewsSafeToTrade()` function from news-impact.js
+  - Impact tiers: CRITICAL (4h buffer), HIGH (2h buffer), MEDIUM (1h buffer), LOW (30min buffer)
+  - Returns structured verdicts: RED (blocked), YELLOW (caution), GREEN (proceed), UNKNOWN (calendar offline)
+  - Audit logging: tracks all gate assessments (max 100 entries, persisted to localStorage)
+  - Utility functions: `getNextEventForPair()`, `isCalendarLoaded()`, `clearAuditLog()`
+
+- **institutional-checklist.js integration (v2.1.0):**
+  - Added `updateNewsGateWarning(pair)` function displays news verdicts before 7-check validation
+  - News warning container rendered at top of Pre-Trade tab (after leakage warnings)
+  - Colour-coded alerts: RED = stop sign icon + red banner, YELLOW = warning triangle + amber banner
+  - Shows event title, currency, time until release, and assessment reason
+
+- **pre-trade.js (v4.2.0):**
+  - News gate assessment triggered when pair is selected in validation tab
+  - No changes to core pre-trade logic; news assessment is independent veto layer
+
+- **index.html:**
+  - Added `news-gate-warning-container` div to Pre-Trade tab (line 405)
+  - Imported `news-gate-module.js` after circuit-breaker modules (line 3041)
+  - Import order: circuit-breaker → news-gate-module → other modules
+
+### Technical Details
+- Module uses IIFE pattern consistent with circuit-breaker-module.js
+- Depends on: LIVE_CALENDAR_DATA (from news-impact.js), CRITICAL_EVENTS_BY_PAIR lookup table
+- No localStorage parsing errors even if audit log is corrupted
+- Handles both 'High' and 'HIGH' impact string formats from calendar data
+
+### Behavior
+1. User selects pair in Pre-Trade tab → `updateInstitutionalChecklist()` fires
+2. News gate assessment runs via `NewsGateModule.assessTradability(pair, 4)`
+3. If GREEN: no warning displayed, proceed with checks
+4. If YELLOW: warning banner shown, checks proceed but trader alerted
+5. If RED: warning banner with stop icon shown, trader cannot proceed until buffer expires
+6. UNKNOWN (calendar offline): warning shown but trading allowed (with recommendation to check manually)
+
+### Audit Trail
+- Every assessment logged to localStorage under `ftcc_news_gate_audit`
+- Log entry includes: timestamp, pair, verdict, reason, nextEvent details, minutesUntil
+- Last 100 assessments retained (older entries discarded)
+- Accessible via `NewsGateModule.getAuditLog()` for compliance/debugging
+
+---
 
 ## ProZones v3.4.1 - 2026-02-22
 

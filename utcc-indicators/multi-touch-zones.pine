@@ -1,5 +1,5 @@
 //@version=6
-indicator("Pro S/R Zones v3.4.1 - Proximity", shorttitle="ProZones_V3", overlay=true, max_lines_count=500, max_labels_count=100, max_boxes_count=200)
+indicator("Pro S/R Zones v3.5.0 - Proximity + Structure Gate", shorttitle="ProZones_V3", overlay=true, max_lines_count=500, max_labels_count=100, max_boxes_count=200)
 
 //========================
 // CORE INPUTS
@@ -1029,3 +1029,36 @@ alertcondition(resistAlert, title="Approaching Strong Resistance",
      message="Price within proximity of STRONG resistance zone")
 alertcondition(supportAlert, title="Approaching Strong Support",
      message="Price within proximity of STRONG support zone")
+
+//========================
+// STRUCTURE GATE ALERTS (v3.5.0)
+// Sends structured JSON to FCC webhook for Pre-Trade gate
+// Set up in TradingView: Alert > ProZones_V3 > "Structure Gate - Resistance/Support"
+// Webhook URL: https://api.pineros.club/webhook/structure
+//========================
+
+// Determine zone role labels accounting for broken zone role-flip
+_resistZoneLabel = nearResistBroken ? "BROKEN_SUP" : "RESISTANCE"
+_supportZoneLabel = nearSupportBroken ? "BROKEN_RES" : "SUPPORT"
+
+// Build JSON payloads using str.tostring for dynamic values
+_resistPayload = '{"type":"structure","pair":"' + syminfo.ticker +
+     '","zone":"' + _resistZoneLabel +
+     '","strength":"' + resistStrength +
+     '","dist_atr":' + str.tostring(math.round(nearResistDistATR, 2)) +
+     ',"tr":"' + str.tostring(nearResistTch) + '/' + str.tostring(nearResistRej) +
+     '","verdict":"AT RESISTANCE"}'
+
+_supportPayload = '{"type":"structure","pair":"' + syminfo.ticker +
+     '","zone":"' + _supportZoneLabel +
+     '","strength":"' + supportStrength +
+     '","dist_atr":' + str.tostring(math.round(nearSupportDistATR, 2)) +
+     ',"tr":"' + str.tostring(nearSupportTch) + '/' + str.tostring(nearSupportRej) +
+     '","verdict":"AT SUPPORT"}'
+
+// Fire once per bar close when price enters alert range of STRONG zone
+if resistAlert and barstate.isconfirmed
+    alert(_resistPayload, alert.freq_once_per_bar_close)
+
+if supportAlert and barstate.isconfirmed
+    alert(_supportPayload, alert.freq_once_per_bar_close)
