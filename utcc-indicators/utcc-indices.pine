@@ -1398,7 +1398,8 @@ f_buildJson(string alertType, string pReason, string contribReasons, string perm
     p := p + ',"permission":"' + perm + '","execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
     p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(scoreVal)
     p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
-    p := p + ',"vol_state":"' + atrState + '","mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rCount
+    p := p + ',"vol_state":"' + atrState + '","vol_behaviour":"' + atrState + '","vol_level":' + str.tostring(math.round(atrPercentile))
+    p := p + ',"mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rCount
     p := p + ',"session":"' + currentSession + '","playbook":"' + playbookShort + '"'
     p := p + ',"regime":"' + atrState + '","risk_state":"' + rState + '"}}'
     p

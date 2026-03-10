@@ -416,14 +416,15 @@ f_alertBody(string pReason, string contribReasons, string permission, string exe
      "EXECUTION:\n" + execution
 
 // --- JSON Payload Builder (Machine-Parsable — for webhook receiver) ---
-f_buildJson(string aType, string symbol, string assetClass, string pReason, string contribReasons, string permission, string execMaxRisk, int execMaxTrades, string execAdds, string direction, int score, int criteria, string entry, string volState, int mtf, int rsi, string session, string playbook, string regime, string rState) =>
+f_buildJson(string aType, string symbol, string assetClass, string pReason, string contribReasons, string permission, string execMaxRisk, int execMaxTrades, string execAdds, string direction, int score, int criteria, string entry, string volState, string volBehav, int volLvl, int mtf, int rsi, string session, string playbook, string regime, string rState) =>
     string p = '{"type":"' + aType + '","pair":"' + symbol + '","asset_class":"' + assetClass + '"'
     p := p + ',"primary":"' + pReason + '","contributing":"' + contribReasons + '"'
     p := p + ',"permission":"' + permission + '"'
     p := p + ',"execution":{"max_risk":"' + execMaxRisk + '","max_trades":' + str.tostring(execMaxTrades) + ',"adds":"' + execAdds + '"}'
     p := p + ',"context":{"direction":"' + direction + '","score":' + str.tostring(score)
     p := p + ',"criteria":' + str.tostring(criteria) + ',"entry":"' + entry + '"'
-    p := p + ',"vol_state":"' + volState + '","mtf":' + str.tostring(mtf) + ',"rsi":' + str.tostring(rsi)
+    p := p + ',"vol_state":"' + volState + '","vol_behaviour":"' + volBehav + '","vol_level":' + str.tostring(volLvl)
+    p := p + ',"mtf":' + str.tostring(mtf) + ',"rsi":' + str.tostring(rsi)
     p := p + ',"session":"' + session + '","playbook":"' + playbook + '"'
     p := p + ',"regime":"' + regime + '","risk_state":"' + rState + '"}}'
     p
@@ -2649,7 +2650,7 @@ if useAlertPerBar or useAlertBarClose
         string candAlertType = finalPermission == "STAND_DOWN" ? ALERT_BLOCKED : ALERT_CANDIDATE
         string candExec = finalPermission == "STAND_DOWN" ? EXECUTION_NONE : EXECUTION_CONDITIONAL
         string candHeader = f_alertHeader(candAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string candJson = f_buildJson(candAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
+        string candJson = f_buildJson(candAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(candHeader + "\n" + candJson, alert.freq_once_per_bar)
     
     // --- CANDIDATE (Short) — intra-bar capable ---
@@ -2657,25 +2658,25 @@ if useAlertPerBar or useAlertBarClose
         string candSAlertType = finalPermission == "STAND_DOWN" ? ALERT_BLOCKED : ALERT_CANDIDATE
         string candSExec = finalPermission == "STAND_DOWN" ? EXECUTION_NONE : EXECUTION_CONDITIONAL
         string candSHeader = f_alertHeader(candSAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string candSJson = f_buildJson(candSAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
+        string candSJson = f_buildJson(candSAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(candSHeader + "\n" + candSJson, alert.freq_once_per_bar)
     
     // --- ARMED (Long) — confirmed bar only ---
     if enableContextArmed and contextJustArmedLong and barstate.isconfirmed
         string armLHeader = f_alertHeader(resolvedAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string armLJson = f_buildJson(resolvedAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
+        string armLJson = f_buildJson(resolvedAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(armLHeader + "\n" + armLJson, alertFreq)
     
     // --- ARMED (Short) — confirmed bar only ---
     if enableContextArmed and contextJustArmedShort and barstate.isconfirmed
         string armSHeader = f_alertHeader(resolvedAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string armSJson = f_buildJson(resolvedAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
+        string armSJson = f_buildJson(resolvedAlertType, syminfo.ticker, "FX", primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(armSHeader + "\n" + armSJson, alertFreq)
     
     // --- BLOCKED (was DISARMED) — confirmed bar only ---
     if enableContextDisarmed and contextJustDisarmed and barstate.isconfirmed
         string blkHeader = f_alertHeader(ALERT_BLOCKED, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string blkJson = f_buildJson(ALERT_BLOCKED, syminfo.ticker, "FX", primaryReason, contributingStr, "STAND_DOWN", "NONE", 0, "DISABLED", alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
+        string blkJson = f_buildJson(ALERT_BLOCKED, syminfo.ticker, "FX", primaryReason, contributingStr, "STAND_DOWN", "NONE", 0, "DISABLED", alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(blkHeader + "\n" + blkJson, alertFreq)
     
     // --- INFO: Session Reset — one-shot event ---

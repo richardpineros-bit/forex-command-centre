@@ -1,4 +1,30 @@
 
+## [v4.5.4] - 2026-03-11
+
+### MINOR - All 6 UTCC indicators: vol_behaviour + vol_level in webhook payload
+
+ATR state and percentile level were missing from webhook payloads in all 6 indicators.
+FCC armed panel showed -- for ATR column despite data being available in the indicator.
+
+**Changes per indicator:**
+- utcc-forex: Added vol_behaviour + vol_level params to f_buildJson signature and all 5 call sites
+- utcc-indices: Added vol_behaviour + vol_level to f_buildJson output
+- utcc-metals/energy/bonds/crypto: Added f_buildJson_context() function; all alert() calls
+  now append JSON context block after the text header
+
+**Result:** Armed panel ATR column now populates for all asset classes on new alerts.
+vol_behaviour = atrState (TREND/QUIET/EXPLODE/MIXED), vol_level = atrPercentile (0-100)
+
+### Files changed
+- `utcc-indicators/utcc-forex.pine`
+- `utcc-indicators/utcc-indices.pine`
+- `utcc-indicators/utcc-metals.pine`
+- `utcc-indicators/utcc-energy.pine`
+- `utcc-indicators/utcc-bonds.pine`
+- `utcc-indicators/utcc-crypto.pine`
+
+---
+
 ## [v4.5.3] - 2026-03-10
 
 ### PATCH - Armed Panel: Clickable rows + native TradingView app link
