@@ -175,13 +175,19 @@
     }
 
     .fab {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: var(--spacing-md);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px);
+        right: 16px;
     }
 
     .fab-calendar {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: calc(var(--spacing-md) + 70px);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px + 48px + 12px);
+        right: 16px;
     }
 
     h1 { font-size: 1.5rem; }
@@ -346,16 +352,24 @@
     }
 }
 
-/* --- Mobile: Armed instruments FAB positioning with Quick Access Bar --- */
+/* --- Mobile: FABs stacked vertically above Quick Access Bar --- */
 @media (max-width: 768px) {
+    /* Armed (target) — bottom bubble */
     .fab {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: var(--spacing-md);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px);   /* QAB height + gap */
+        right: 16px;
     }
 
+    /* Calendar — stacked above Armed */
     .fab-calendar {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: calc(var(--spacing-md) + 70px);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px + 48px + 12px);  /* QAB + gap + fab + gap */
+        right: 16px;
     }
 }
 

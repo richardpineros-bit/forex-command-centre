@@ -1,4 +1,28 @@
 
+## [v4.6.5] - 2026-03-11
+
+### MINOR - PWA Badge API + FAB mobile layout fix
+
+**Badge API (armed-panel.js):**
+- `navigator.setAppBadge(armedCount)` called after every poll cycle
+- Badge shows number of armed instruments on app icon (Android Chrome PWA)
+- Clears automatically when armed count returns to 0
+- Gracefully skipped on browsers that don't support the Badging API
+
+**FAB mobile layout fix (layout.css):**
+- FABs were overlapping at the same bottom position side-by-side
+- Fixed: stacked vertically on mobile (<=768px) — calendar above, target below
+- Both FABs shrunk to 48px on mobile (was 56px)
+- Calendar sits at QAB + 16px + 48px (armed) + 12px from bottom
+- Armed sits at QAB (48px) + 16px from bottom
+- Fixed in both 768px breakpoint blocks (were duplicated with same bug)
+
+### Files changed
+- `forex-command-centre/src/js/armed-panel.js`
+- `forex-command-centre/src/css/layout.css`
+
+---
+
 ## [v4.6.4] - 2026-03-11
 
 ### MINOR - Mobile hamburger menu replaces scrolling tab bar

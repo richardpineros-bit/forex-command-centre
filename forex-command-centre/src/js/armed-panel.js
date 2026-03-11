@@ -197,6 +197,15 @@
         // Update count badge (shows armed count only)
         countEl.textContent = armedCount;
         countEl.className = 'armed-panel-count' + (armedCount === 0 ? ' zero' : '');
+
+        // PWA Badge API — show armed count on app icon
+        if ('setAppBadge' in navigator) {
+            if (armedCount > 0) {
+                navigator.setAppBadge(armedCount).catch(function() {});
+            } else {
+                navigator.clearAppBadge().catch(function() {});
+            }
+        }
         
         // Update refresh time
         refreshEl.textContent = formatTime(new Date());
