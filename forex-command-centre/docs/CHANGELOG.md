@@ -1,4 +1,42 @@
 
+## [v4.6.1] - 2026-03-11
+
+### PATCH - PWA: News gate + circuit breaker push wiring, settings panel, FCCPushPrefs
+
+**News gate push (news-gate-module.js):**
+- Hook into logDecision() — fires NEWS_WARNING push whenever verdict transitions to RED
+- 15-minute per-pair cooldown prevents spam on 30-min calendar refresh cycles
+- Respects FCCPushPrefs.newsWarning toggle
+
+**Circuit breaker push (circuit-breaker-module.js):**
+- Hook at all three daily loss thresholds:
+  - -3% RISK CAP: push title 'Risk Cap Applied'
+  - -5% STAND-DOWN: push title 'Stand-Down Activated'
+  - -10% EMERGENCY: push title 'EMERGENCY STAND-DOWN' (louder vibrate pattern)
+- Respects FCCPushPrefs.circuitBreaker toggle
+
+**Alert server (index.js v2.5.0 → patch):**
+- pushCircuitBreaker() updated to use level field (EMERGENCY/STANDDOWN/CAP)
+- Level-specific titles and vibration patterns
+- Unique tags per level to prevent notifications overwriting each other
+
+**Push settings panel (index.html + pwa-notifications.js):**
+- New settings card in Settings tab: '&#x1F514; Push Notifications'
+- Status badge: Active / Not enabled / Blocked
+- Enable button + Test button (sends test push via /push/notify)
+- Four toggles: ARMED, FOMO Cleared, News Warning, Circuit Breaker
+- FCCPushPrefs global: get(), save(), loadIntoUI(), updateSettingsUI(), requestPermission(), sendTest()
+- Settings panel auto-updates when permission state changes
+
+### Files changed
+- `forex-command-centre/src/index.html`
+- `forex-command-centre/src/js/pwa-notifications.js`
+- `forex-command-centre/src/js/news-gate-module.js`
+- `forex-command-centre/src/js/circuit-breaker-module.js`
+- `forex-alert-server/index.js`
+
+---
+
 ## [v4.6.0] - 2026-03-11
 
 ### MINOR - PWA Push Notifications: ARMED, FOMO gate cleared, News warning, Circuit breaker

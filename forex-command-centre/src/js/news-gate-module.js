@@ -62,6 +62,10 @@
 
     let auditLog = [];
 
+    // Track last push sent per pair to avoid spamming on every 30-min refresh
+    const _newsPushSent = {};
+    const NEWS_PUSH_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes between pushes for same pair
+
     // ============================================
     // INITIALISATION
     // ============================================
@@ -301,6 +305,23 @@
         };
 
         auditLog.push(entry);
+
+        // Push notification when verdict is RED (news gate blocking trade)
+        if (verdict.verdict === 'RED' && verdict.nextEvent && window.FCCPush) {
+            var prefs = window.FCCPushPrefs ? window.FCCPushPrefs.get() : {};
+            if (prefs.newsWarning !== false) {
+                var now = Date.now();
+                var lastSent = _newsPushSent[pair] || 0;
+                if (now - lastSent > NEWS_PUSH_COOLDOWN_MS) {
+                    _newsPushSent[pair] = now;
+                    window.FCCPush.trigger('NEWS_WARNING', {
+                        event: verdict.nextEvent.title + ' (' + verdict.nextEvent.currency + ')',
+                        minutesAway: verdict.minutesUntil,
+                        pair: pair
+                    });
+                }
+            }
+        }
 
         // Keep only last 100 entries
         if (auditLog.length > 100) {

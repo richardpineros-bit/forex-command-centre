@@ -265,6 +265,10 @@
             btn.style.color = '#ef4444';
             btn.title = 'Notifications blocked in browser settings';
         }
+        // Keep settings panel in sync
+        setTimeout(function() {
+            if (window.FCCPushPrefs) window.FCCPushPrefs.updateSettingsUI();
+        }, 300);
     }
 
     function checkSubscriptionState() {
@@ -287,6 +291,116 @@
     }
 
     // -------------------------------------------------------------------------
+    // FCCPushPrefs — settings panel controller
+    // -------------------------------------------------------------------------
+    window.FCCPushPrefs = {
+        STORAGE_KEY: 'fcc-push-prefs',
+
+        get: function() {
+            try {
+                var raw = localStorage.getItem(this.STORAGE_KEY);
+                return raw ? JSON.parse(raw) : {
+                    armed: true,
+                    fomoCleared: true,
+                    newsWarning: true,
+                    circuitBreaker: true
+                };
+            } catch (e) {
+                return { armed: true, fomoCleared: true, newsWarning: true, circuitBreaker: true };
+            }
+        },
+
+        save: function() {
+            var prefs = {
+                armed:          document.getElementById('push-pref-armed')   ? document.getElementById('push-pref-armed').checked   : true,
+                fomoCleared:    document.getElementById('push-pref-fomo')    ? document.getElementById('push-pref-fomo').checked    : true,
+                newsWarning:    document.getElementById('push-pref-news')    ? document.getElementById('push-pref-news').checked    : true,
+                circuitBreaker: document.getElementById('push-pref-circuit') ? document.getElementById('push-pref-circuit').checked : true
+            };
+            try {
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(prefs));
+            } catch (e) {
+                console.warn('[PWA] Could not save prefs');
+            }
+        },
+
+        loadIntoUI: function() {
+            var prefs = this.get();
+            var el;
+            el = document.getElementById('push-pref-armed');   if (el) el.checked = prefs.armed         !== false;
+            el = document.getElementById('push-pref-fomo');    if (el) el.checked = prefs.fomoCleared   !== false;
+            el = document.getElementById('push-pref-news');    if (el) el.checked = prefs.newsWarning   !== false;
+            el = document.getElementById('push-pref-circuit'); if (el) el.checked = prefs.circuitBreaker!== false;
+        },
+
+        updateSettingsUI: function() {
+            var badge      = document.getElementById('push-status-badge');
+            var enableBtn  = document.getElementById('push-enable-btn');
+            var testBtn    = document.getElementById('push-test-btn');
+            var toggles    = document.getElementById('push-toggles');
+            var blockedMsg = document.getElementById('push-blocked-msg');
+
+            if (!badge) return;
+
+            var perm = ('Notification' in window) ? Notification.permission : 'denied';
+            var subscribed = !!localStorage.getItem('fcc-push-subscribed');
+
+            if (perm === 'granted' && subscribed) {
+                badge.textContent = 'Active';
+                badge.className = 'badge badge-success';
+                if (enableBtn) enableBtn.style.display = 'none';
+                if (testBtn)   testBtn.style.display   = 'inline-flex';
+                if (toggles)   toggles.style.display   = 'block';
+                if (blockedMsg) blockedMsg.style.display = 'none';
+                this.loadIntoUI();
+            } else if (perm === 'denied') {
+                badge.textContent = 'Blocked';
+                badge.className = 'badge badge-danger';
+                if (enableBtn)  enableBtn.style.display  = 'none';
+                if (testBtn)    testBtn.style.display    = 'none';
+                if (toggles)    toggles.style.display    = 'none';
+                if (blockedMsg) blockedMsg.style.display = 'block';
+            } else {
+                badge.textContent = 'Not enabled';
+                badge.className = 'badge';
+                if (enableBtn)  enableBtn.style.display  = 'inline-flex';
+                if (testBtn)    testBtn.style.display    = 'none';
+                if (toggles)    toggles.style.display    = 'none';
+                if (blockedMsg) blockedMsg.style.display = 'none';
+            }
+        },
+
+        requestPermission: function() {
+            requestPermissionAndSubscribe();
+            // Update settings UI after a short delay
+            setTimeout(function() {
+                window.FCCPushPrefs.updateSettingsUI();
+            }, 2000);
+        },
+
+        sendTest: function() {
+            fetch(API_BASE + '/push/notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'NEWS_WARNING',
+                    payload: { event: 'TEST ALERT — FCC push working', minutesAway: 999 }
+                })
+            })
+            .then(function(r) {
+                if (r.ok) {
+                    showToastIfAvailable('Test push sent — check your phone');
+                } else {
+                    showToastIfAvailable('Test failed — check alert server');
+                }
+            })
+            .catch(function() {
+                showToastIfAvailable('Test failed — server unreachable');
+            });
+        }
+    };
+
+    // -------------------------------------------------------------------------
     // INIT — runs after DOM ready
     // -------------------------------------------------------------------------
     function init() {
@@ -299,6 +413,11 @@
             if (!registration) return;
 
             createNotificationButton();
+
+            // Update settings panel UI
+            setTimeout(function() {
+                if (window.FCCPushPrefs) window.FCCPushPrefs.updateSettingsUI();
+            }, 500);
 
             // Show banner after short delay (let page settle)
             if (!sessionStorage.getItem('fcc-push-dismissed') &&

@@ -168,17 +168,25 @@ function pushNewsWarning(payload) {
 
 function pushCircuitBreaker(payload) {
     var drawdown = payload.drawdown || '';
-    var body = drawdown
-        ? 'Drawdown at ' + drawdown + ' - approaching threshold'
-        : 'Drawdown approaching risk threshold';
+    var level    = payload.level    || '';
+    var message  = payload.message  || '';
+    var body = message || (drawdown ? 'Drawdown: ' + drawdown : 'Drawdown threshold hit');
+    var title = level === 'EMERGENCY'
+        ? 'EMERGENCY STAND-DOWN'
+        : level === 'STANDDOWN'
+            ? 'Stand-Down Activated'
+            : 'Risk Cap Applied';
+    var vibrate = level === 'EMERGENCY'
+        ? [300, 100, 300, 100, 300, 100, 300]
+        : [300, 100, 300];
     sendPushToAll({
-        title:   'Circuit Breaker Warning',
+        title:   title,
         body:    body,
         icon:    '/icons/icon-192.png',
-        tag:     'circuit-breaker',
-        vibrate: [300, 100, 300, 100, 300],
+        tag:     'circuit-breaker-' + (level || 'cap'),
+        vibrate: vibrate,
         requireInteraction: true,
-        data:    { type: 'CIRCUIT_BREAKER' }
+        data:    { type: 'CIRCUIT_BREAKER', level: level }
     });
 }
 
