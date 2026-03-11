@@ -78,10 +78,13 @@
     }
 
     function saveSubscriptionToServer(subscription) {
+        // Attach current prefs so server can filter per-subscription
+        var prefs = window.FCCPushPrefs ? window.FCCPushPrefs.get() : {};
+        var payload = Object.assign({}, subscription.toJSON ? subscription.toJSON() : subscription, { prefs: prefs });
         return fetch(API_BASE + '/push/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(subscription)
+            body: JSON.stringify(payload)
         })
         .then(function(res) {
             if (res.ok) {
@@ -321,6 +324,14 @@
                 localStorage.setItem(this.STORAGE_KEY, JSON.stringify(prefs));
             } catch (e) {
                 console.warn('[PWA] Could not save prefs');
+            }
+            // Re-send subscription to server with updated prefs
+            if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+                navigator.serviceWorker.ready.then(function(reg) {
+                    reg.pushManager.getSubscription().then(function(sub) {
+                        if (sub) saveSubscriptionToServer(sub);
+                    });
+                });
             }
         },
 

@@ -1,4 +1,35 @@
 
+## [v4.6.3] - 2026-03-11
+
+### MINOR - PWA pref-aware push + mobile UI optimisation
+
+**ARMED/FOMO pref fix (alert server + client):**
+- sendPushToAll() now accepts a prefKey parameter
+- Each push function (pushArmed, pushFomoCleared, pushNewsWarning, pushCircuitBreaker) passes its prefKey
+- Server checks per-subscription prefs before sending — skips if disabled
+- Client attaches current prefs object when saving/updating subscription
+- FCCPushPrefs.save() re-sends subscription to server with updated prefs immediately on toggle change
+- Result: disabling ARMED in settings actually stops server from sending that push
+
+**Mobile UI optimisation (layout.css):**
+- Tab bar: larger touch targets (36px min-height), thinner gap, accent-coloured scrollbar indicator
+- Header: compact padding on mobile, quick action buttons smaller
+- Forms: font-size 1rem on inputs/selects (prevents iOS auto-zoom on focus)
+- All inputs/selects: 44px min-height (Apple HIG minimum touch target)
+- Select/dropdown: larger green chevron (16px), better contrast, green focus ring
+- Checkboxes: 20px touch target, larger label font
+- Buttons: 44px min-height on mobile
+- Grid: single column below 480px always
+- Cards: tighter padding below 480px
+- Container: tighter horizontal padding on small screens
+
+### Files changed
+- `forex-alert-server/index.js`
+- `forex-command-centre/src/js/pwa-notifications.js`
+- `forex-command-centre/src/css/layout.css`
+
+---
+
 ## [v4.6.2] - 2026-03-11
 
 ### PATCH - Add mobile-web-app-capable meta tag

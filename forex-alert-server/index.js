@@ -75,20 +75,28 @@ function saveSubscriptions(data) {
 function addOrUpdateSubscription(subscription) {
     var data = loadSubscriptions();
     var endpoint = subscription.endpoint;
+    // Extract prefs if sent (client sends { ...sub, prefs: {...} })
+    var prefs = subscription.prefs || { armed: true, fomoCleared: true, newsWarning: true, circuitBreaker: true };
+    var subData = {
+        endpoint:   subscription.endpoint,
+        keys:       subscription.keys,
+        expirationTime: subscription.expirationTime || null,
+        prefs:      prefs
+    };
     var idx = data.subscriptions.findIndex(function(s) { return s.endpoint === endpoint; });
     if (idx >= 0) {
-        data.subscriptions[idx] = subscription;
+        data.subscriptions[idx] = subData;
     } else {
-        data.subscriptions.push(subscription);
+        data.subscriptions.push(subData);
     }
     saveSubscriptions(data);
-    console.log('[PUSH] Subscription saved. Total:', data.subscriptions.length);
+    console.log('[PUSH] Subscription saved. Prefs:', JSON.stringify(prefs), '| Total:', data.subscriptions.length);
 }
 
 // ============================================================================
 // SEND PUSH NOTIFICATIONS
 // ============================================================================
-function sendPushToAll(payload) {
+function sendPushToAll(payload, prefKey) {
     var data = loadSubscriptions();
     if (!data.subscriptions.length) {
         console.log('[PUSH] No subscriptions registered');
@@ -99,6 +107,11 @@ function sendPushToAll(payload) {
     var payloadStr = JSON.stringify(payload);
 
     data.subscriptions.forEach(function(sub) {
+        // Check per-subscription pref if a key is provided
+        if (prefKey && sub.prefs && sub.prefs[prefKey] === false) {
+            console.log('[PUSH] Skipping (pref disabled):', prefKey, sub.endpoint.slice(-20));
+            return;
+        }
         webpush.sendNotification(sub, payloadStr)
             .then(function() {
                 console.log('[PUSH] Sent:', (payload.data && payload.data.type) || '?');
@@ -136,7 +149,7 @@ function pushArmed(alert) {
         vibrate: [200, 100, 200],
         requireInteraction: true,
         data:    { type: 'ARMED', pair: alert.pair }
-    });
+    }, 'armed');
 }
 
 function pushFomoCleared(pair) {
@@ -148,7 +161,7 @@ function pushFomoCleared(pair) {
         vibrate: [100, 50, 100],
         requireInteraction: false,
         data:    { type: 'FOMO_CLEARED', pair: pair }
-    });
+    }, 'fomoCleared');
 }
 
 function pushNewsWarning(payload) {
@@ -163,7 +176,7 @@ function pushNewsWarning(payload) {
         vibrate: [300, 100, 300],
         requireInteraction: true,
         data:    { type: 'NEWS_WARNING' }
-    });
+    }, 'newsWarning');
 }
 
 function pushCircuitBreaker(payload) {
@@ -187,7 +200,7 @@ function pushCircuitBreaker(payload) {
         vibrate: vibrate,
         requireInteraction: true,
         data:    { type: 'CIRCUIT_BREAKER', level: level }
-    });
+    }, 'circuitBreaker');
 }
 
 
