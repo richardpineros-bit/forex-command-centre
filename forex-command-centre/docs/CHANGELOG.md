@@ -1,4 +1,16 @@
 
+## [v4.6.2] - 2026-03-11
+
+### PATCH - Add mobile-web-app-capable meta tag
+
+- Added `<meta name="mobile-web-app-capable">` alongside existing Apple tag
+- Removes deprecation warning in Chrome DevTools
+
+### Files changed
+- `forex-command-centre/src/index.html`
+
+---
+
 ## [v4.6.1] - 2026-03-11
 
 ### PATCH - PWA: News gate + circuit breaker push wiring, settings panel, FCCPushPrefs
