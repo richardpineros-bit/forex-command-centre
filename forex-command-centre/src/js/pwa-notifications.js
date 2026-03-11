@@ -412,6 +412,37 @@
     };
 
     // -------------------------------------------------------------------------
+    // BADGE API — update app icon badge from armed pair count
+    // Polls /state every 60s when app is in foreground; clears on focus
+    // -------------------------------------------------------------------------
+    function updateBadge() {
+        if (!('setAppBadge' in navigator)) return;
+        fetch(API_BASE + '/state')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var count = (data.pairs && data.pairs.length) ? data.pairs.length : 0;
+                if (count > 0) {
+                    navigator.setAppBadge(count).catch(function() {});
+                } else {
+                    navigator.clearAppBadge().catch(function() {});
+                }
+            })
+            .catch(function() {});
+    }
+
+    function initBadgePolling() {
+        if (!('setAppBadge' in navigator)) return;
+        updateBadge();
+        setInterval(updateBadge, 60000);
+        // Clear badge when user opens / focuses the app
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                navigator.clearAppBadge().catch(function() {});
+            }
+        });
+    }
+
+    // -------------------------------------------------------------------------
     // INIT — runs after DOM ready
     // -------------------------------------------------------------------------
     function init() {
@@ -424,6 +455,7 @@
             if (!registration) return;
 
             createNotificationButton();
+            initBadgePolling();
 
             // Update settings panel UI
             setTimeout(function() {

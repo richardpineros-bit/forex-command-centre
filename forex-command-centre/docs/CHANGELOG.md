@@ -1,4 +1,37 @@
 
+## [v4.6.6] - 2026-03-12
+
+### PATCH - Armed panel ATR labels aligned to UTCC Pine Script + FAB base CSS fix + Badge API
+
+**Armed panel ATR labels (armed-panel.js):**
+- Labels now match UTCC Pine Script (`atrGuidance`) exactly — 4 tiers:
+  - IDEAL (<30%ile) — lime — expansion likely
+  - NORMAL (30–59%ile) — green — proceed full size
+  - ELEVATED (60–79%ile) — amber — reduce size 50%
+  - EXHAUSTED (≥80%ile) — red — pass or exit only
+- Percentile shown as subtitle (e.g. `47%ile`) under each label
+- Previous labels (IDEAL/LOW/EXHAUSTED with wrong thresholds) removed
+
+**FAB overlap fix (dashboard.css):**
+- `.fab-calendar` had no base `position: fixed` — only existed in mobile media queries
+- Added full base CSS: position, size, colours, z-index, hover state
+- Calendar FAB now correctly stacks above armed FAB on all screen sizes
+
+**Badge API (sw.js + pwa-notifications.js + alert server index.js):**
+- Alert server includes `armedCount` in ARMED push payload data
+- SW sets `navigator.setAppBadge(armedCount)` on push receive
+- Foreground polling: `pwa-notifications.js` polls `/state` every 60s and updates badge
+- Badge clears on `visibilitychange` (app focus) and notification click
+
+### Files changed
+- `forex-command-centre/src/js/armed-panel.js`
+- `forex-command-centre/src/css/dashboard.css`
+- `forex-command-centre/src/sw.js`
+- `forex-command-centre/src/js/pwa-notifications.js`
+- `forex-alert-server/index.js`
+
+---
+
 ## [v4.6.5] - 2026-03-11
 
 ### MINOR - PWA Badge API + FAB mobile layout fix

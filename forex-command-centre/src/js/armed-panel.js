@@ -138,11 +138,37 @@
         }
 
         var atrBehav = (p.volBehaviour || '').toUpperCase();
-        var atrLvl = p.volLevel ? Math.round(Number(p.volLevel)) + '%' : '';
-        var atrHtml = atrBehav
-            ? '<span style="color:' + atrColour(atrBehav) + ';font-size:0.7rem;font-weight:700;display:block;line-height:1.2">' + atrBehav + '</span>' +
-              (atrLvl ? '<span style="color:var(--text-muted);font-size:0.65rem">' + atrLvl + '</span>' : '')
-            : '<span style="color:var(--text-muted)">&#x2014;</span>';
+        var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
+
+        // Derive actionable label from ATR percentile — matches UTCC Pine Script exactly
+        // <30: IDEAL (expansion likely), 30-59: NORMAL, 60-79: ELEVATED (reduce size 50%), >=80: EXHAUSTED (pass/exit only)
+        var atrLabel, atrLabelColour;
+        if (atrPct === null) {
+            atrLabel = null;
+        } else if (atrPct >= 80) {
+            atrLabel = 'EXHAUSTED';
+            atrLabelColour = 'var(--color-fail)';
+        } else if (atrPct >= 60) {
+            atrLabel = 'ELEVATED';
+            atrLabelColour = '#eab308';
+        } else if (atrPct >= 30) {
+            atrLabel = 'NORMAL';
+            atrLabelColour = 'var(--color-pass)';
+        } else {
+            atrLabel = 'IDEAL';
+            atrLabelColour = '#86efac';
+        }
+
+        var atrHtml;
+        if (atrLabel) {
+            var pctStr = atrPct !== null ? atrPct + '%ile' : '';
+            atrHtml = '<span style="color:' + atrLabelColour + ';font-size:0.7rem;font-weight:700;display:block;line-height:1.2">' + atrLabel + '</span>' +
+                      (pctStr ? '<span style="color:var(--text-muted);font-size:0.6rem;display:block;line-height:1.1">' + pctStr + '</span>' : '');
+        } else if (atrBehav) {
+            atrHtml = '<span style="color:' + atrColour(atrBehav) + ';font-size:0.7rem;font-weight:700">' + atrBehav.replace('_', ' ') + '</span>';
+        } else {
+            atrHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
+        }
 
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 

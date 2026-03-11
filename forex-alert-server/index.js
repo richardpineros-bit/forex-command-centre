@@ -141,6 +141,8 @@ function pushArmed(alert) {
     var dir   = alert.direction || '';
     var pb    = alert.playbook || alert.primary || '';
     var body  = alert.pair + ' ' + dir + ' | ' + pb + ' | Score ' + score + (zone ? ' | ' + zone : '');
+    var state = loadState();
+    var armedCount = Object.keys(state.pairs).length;
     sendPushToAll({
         title:   'ARMED: ' + alert.pair,
         body:    body,
@@ -148,7 +150,7 @@ function pushArmed(alert) {
         tag:     'armed-' + alert.pair,
         vibrate: [200, 100, 200],
         requireInteraction: true,
-        data:    { type: 'ARMED', pair: alert.pair }
+        data:    { type: 'ARMED', pair: alert.pair, armedCount: armedCount }
     }, 'armed');
 }
 

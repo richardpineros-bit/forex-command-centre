@@ -3,7 +3,7 @@
 // Handles: push notifications, app shell caching, offline resilience
 // ============================================================================
 
-const CACHE_NAME = 'fcc-v3';
+const CACHE_NAME = 'fcc-v4';
 
 // App shell — critical files to cache for offline use
 const SHELL_URLS = [
@@ -111,7 +111,14 @@ self.addEventListener('push', function(event) {
     };
 
     event.waitUntil(
-        self.registration.showNotification(title, options)
+        self.registration.showNotification(title, options).then(function() {
+            // Update app icon badge with armed pair count
+            if ('setAppBadge' in self.navigator && data.data && data.data.armedCount !== undefined) {
+                return self.navigator.setAppBadge(data.data.armedCount);
+            } else if ('setAppBadge' in self.navigator) {
+                return self.navigator.setAppBadge(1);
+            }
+        })
     );
 });
 
@@ -121,6 +128,11 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
     console.log('[SW] Notification clicked:', event.notification.tag);
     event.notification.close();
+
+    // Clear app icon badge
+    if ('clearAppBadge' in self.navigator) {
+        self.navigator.clearAppBadge().catch(function() {});
+    }
 
     var targetUrl = '/';
     var notifData = event.notification.data || {};
