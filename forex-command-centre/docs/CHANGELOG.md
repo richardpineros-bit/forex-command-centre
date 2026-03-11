@@ -1,4 +1,51 @@
 
+## [v4.6.0] - 2026-03-11
+
+### MINOR - PWA Push Notifications: ARMED, FOMO gate cleared, News warning, Circuit breaker
+
+Converted FCC to a Progressive Web App (PWA) with background push notifications.
+No separate Android app required — installs directly from Chrome to home screen.
+
+**New files (frontend):**
+- `manifest.json` — PWA install config (name, icons, display mode, theme colour)
+- `sw.js` — Service worker: push handler, app shell caching, offline resilience
+- `icons/icon-192.png` — App icon (192x192)
+- `icons/icon-512.png` — App icon (512x512)
+- `js/pwa-notifications.js` — Client-side: SW registration, push subscription, permission UI
+
+**Modified files (frontend):**
+- `index.html` — Added manifest link, Apple PWA meta tags, pwa-notifications.js import
+
+**Alert server changes (v2.5.0):**
+- Added `web-push` npm dependency for VAPID-based push delivery
+- VAPID key pair generated and baked into server config
+- New subscription storage: `/data/push-subscriptions.json`
+- New endpoints: `POST /push/subscribe`, `POST /push/notify`
+- ARMED webhook now fires immediate push to all subscribers
+- FOMO gate: 1-hour setTimeout fires FOMO Cleared push automatically
+- FOMO timer cancelled if pair is BLOCKED before hour elapses
+- Dead subscriptions (410/404) auto-cleaned from storage
+
+**Notification types:**
+- ARMED — fires immediately on TradingView webhook (requireInteraction: true)
+- FOMO_CLEARED — fires exactly 1 hour after ARMED
+- NEWS_WARNING — triggered by FCC frontend
+- CIRCUIT_BREAKER — triggered by FCC frontend on drawdown threshold
+
+**Install to home screen:** Chrome three-dot menu → Add to home screen
+
+### Files changed
+- `forex-command-centre/src/index.html`
+- `forex-command-centre/src/sw.js` (new)
+- `forex-command-centre/src/manifest.json` (new)
+- `forex-command-centre/src/icons/icon-192.png` (new)
+- `forex-command-centre/src/icons/icon-512.png` (new)
+- `forex-command-centre/src/js/pwa-notifications.js` (new)
+- `forex-alert-server/index.js` (v2.4.1 → v2.5.0)
+- `forex-alert-server/package.json`
+
+---
+
 ## [v4.5.4] - 2026-03-11
 
 ### MINOR - All 6 UTCC indicators: vol_behaviour + vol_level in webhook payload
