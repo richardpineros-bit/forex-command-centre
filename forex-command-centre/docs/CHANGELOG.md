@@ -1,4 +1,26 @@
 
+## [v4.6.4] - 2026-03-11
+
+### MINOR - Mobile hamburger menu replaces scrolling tab bar
+
+- Desktop (>768px): tabs unchanged
+- Mobile (<=768px): tabs hidden, hamburger button shown in header
+- Tap hamburger -> slide-in drawer from right (280px wide, 85vw max)
+- Backdrop overlay closes menu on tap outside
+- Hamburger animates to X when open
+- Drawer items: icon + label, active state highlighted in green
+- UTCC Guide button in drawer footer
+- Header row stays single-line on mobile (title + quick actions + hamburger)
+- Guide button hidden from header on mobile (moved to drawer)
+- Theme buttons hidden on mobile (use Settings tab)
+- Mobile menu active state stays in sync when showTab called from elsewhere in code
+
+### Files changed
+- `forex-command-centre/src/index.html`
+- `forex-command-centre/src/css/layout.css`
+
+---
+
 ## [v4.6.3] - 2026-03-11
 
 ### MINOR - PWA pref-aware push + mobile UI optimisation

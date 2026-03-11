@@ -46,18 +46,24 @@
                 <span>Pre-Trade</span>
             </div>
             
-            <nav class="tab-nav">
+            <!-- Desktop tab nav -->
+            <nav class="tab-nav" id="desktop-tab-nav">
                 <button class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
                 <button class="tab-btn" onclick="showTab('daily-context')">Briefing</button>
-
                 <button class="tab-btn" onclick="showTab('playbook')">Game Plan</button>
                 <button class="tab-btn" onclick="showTab('validation')">Pre-Trade</button>
                 <button class="tab-btn" onclick="showTab('journal')">Journal</button>
                 <button class="tab-btn" onclick="showTab('performance')">Performance</button>
-                
                 <button class="tab-btn" onclick="showTab('reference')">Reference</button>
                 <button class="tab-btn" onclick="showTab('settings')">Settings</button>
             </nav>
+
+            <!-- Mobile hamburger button -->
+            <button class="hamburger-btn" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+            </button>
             
 
             <!-- Gold Nugget Guide Button -->
@@ -3181,6 +3187,91 @@
 
     <!-- INITIALIZATION === -->
     <script src="js/tooltip-definitions.js"></script>
+
+    <!-- Mobile nav menu overlay -->
+    <div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="closeMobileMenu()"></div>
+    <div id="mobile-menu" class="mobile-menu">
+        <div class="mobile-menu-header">
+            <span>&#x1F4CA; FCC</span>
+            <button onclick="closeMobileMenu()" class="mobile-menu-close">&#x2715;</button>
+        </div>
+        <nav class="mobile-menu-nav">
+            <button class="mobile-menu-btn active" data-tab="dashboard" onclick="mobileShowTab('dashboard')">
+                <span class="mobile-menu-icon">&#x1F4CA;</span> Dashboard
+            </button>
+            <button class="mobile-menu-btn" data-tab="daily-context" onclick="mobileShowTab('daily-context')">
+                <span class="mobile-menu-icon">&#x1F4CB;</span> Briefing
+            </button>
+            <button class="mobile-menu-btn" data-tab="playbook" onclick="mobileShowTab('playbook')">
+                <span class="mobile-menu-icon">&#x1F3AF;</span> Game Plan
+            </button>
+            <button class="mobile-menu-btn" data-tab="validation" onclick="mobileShowTab('validation')">
+                <span class="mobile-menu-icon">&#x2714;</span> Pre-Trade
+            </button>
+            <button class="mobile-menu-btn" data-tab="journal" onclick="mobileShowTab('journal')">
+                <span class="mobile-menu-icon">&#x1F4D3;</span> Journal
+            </button>
+            <button class="mobile-menu-btn" data-tab="performance" onclick="mobileShowTab('performance')">
+                <span class="mobile-menu-icon">&#x1F4C8;</span> Performance
+            </button>
+            <button class="mobile-menu-btn" data-tab="reference" onclick="mobileShowTab('reference')">
+                <span class="mobile-menu-icon">&#x1F4DA;</span> Reference
+            </button>
+            <button class="mobile-menu-btn" data-tab="settings" onclick="mobileShowTab('settings')">
+                <span class="mobile-menu-icon">&#x2699;</span> Settings
+            </button>
+        </nav>
+        <div class="mobile-menu-footer">
+            <button class="mobile-menu-guide-btn" onclick="TradingGuide.show(); closeMobileMenu();">
+                &#x1F4D6; UTCC Guide
+            </button>
+        </div>
+    </div>
+
+    <script>
+    function toggleMobileMenu() {
+        var menu = document.getElementById('mobile-menu');
+        var overlay = document.getElementById('mobile-menu-overlay');
+        var btn = document.getElementById('hamburger-btn');
+        var isOpen = menu.classList.contains('open');
+        if (isOpen) {
+            closeMobileMenu();
+        } else {
+            menu.classList.add('open');
+            overlay.classList.add('open');
+            btn.classList.add('open');
+        }
+    }
+
+    function closeMobileMenu() {
+        document.getElementById('mobile-menu').classList.remove('open');
+        document.getElementById('mobile-menu-overlay').classList.remove('open');
+        document.getElementById('hamburger-btn').classList.remove('open');
+    }
+
+    function mobileShowTab(tabId) {
+        showTab(tabId);
+        closeMobileMenu();
+        // Update active state in mobile menu
+        document.querySelectorAll('.mobile-menu-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+        // Also update desktop tab active state (showTab handles this but ensure mobile stays in sync)
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            var tabMatch = btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabId);
+            if (tabMatch) btn.classList.add('active');
+        });
+    }
+
+    // Keep mobile menu active state in sync when showTab is called from elsewhere
+    var _origShowTab = showTab;
+    showTab = function(tabId) {
+        _origShowTab(tabId);
+        document.querySelectorAll('.mobile-menu-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+    };
+    </script>
 
     <!-- PWA Push Notifications (v1.0.0) -->
     <script src="js/pwa-notifications.js"></script>
