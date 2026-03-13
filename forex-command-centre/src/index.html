@@ -543,7 +543,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Session-Pair Rating</label>
+                        <label class="form-label">Session-Pair Rating <span class="inst-check-tooltip" style="font-size:0.7rem;">?<span class="tooltip-content">Rates how well this currency pair fits the active session. E.g. USDJPY is naturally active in Tokyo; EURUSD in London. A poor rating doesn't block the trade &mdash; it flags that liquidity and volatility may be lower than ideal.</span></span></label>
                         <div class="session-pair-rating" id="session-pair-rating"></div>
                     </div>
                 </div>
@@ -844,6 +844,7 @@
                         <span>&#x1F4CA;</span>
                         <span>ATR Volatility Check (Position Sizing Guide)</span>
                     </div>
+                    <div style="padding: 0 var(--spacing-md) var(--spacing-sm); font-size: 0.75rem; color: var(--text-muted);">ATR (Average True Range) measures how much a pair has moved compared to its recent history. The percentile tells you where today's range sits vs the last 50 bars. Low = market hasn't moved much yet. High = it already has &mdash; you may be chasing.</div>
                     <div class="atr-guidance-content">
                         <div class="atr-tier compressed" id="atr-tier-compressed">
                             <span class="atr-tier-range">&lt; 30%</span>
@@ -1124,7 +1125,7 @@
                     <div class="kill-zone-indicator" id="kill-zone-indicator" style="display: none;">
                         <div class="kz-icon">&#x1F3AF;</div>
                         <div class="kz-content">
-                            <div class="kz-name" id="kz-name">London Open</div>
+                            <div class="kz-name" id="kz-name">London Open <span class="inst-check-tooltip" style="font-size:0.7rem;">?<span class="tooltip-content">A Session Hot Zone is a high-probability time window when institutional volume peaks. Price moves faster and further. Treat as a bonus filter &mdash; good UTCC setups during these windows carry extra conviction.</span></span></div>
                             <div class="kz-desc" id="kz-desc">High volatility breakout zone</div>
                             <div class="kz-pairs" id="kz-pairs">Optimal: EURUSD, GBPUSD</div>
                         </div>
@@ -1144,7 +1145,7 @@
                             <span class="entry-icon">&#x1F4CD;</span>
                             <span class="entry-label">Limit</span>
                         </button>
-                        <button type="button" class="entry-type-btn" data-type="scale" id="btn-scale" onclick="selectEntryType('scale')">
+                        <button type="button" class="entry-type-btn" data-type="scale" id="btn-scale" onclick="selectEntryType('scale')" title="Split your position into 2 entries: 50% now at the initial signal, 50% on a pullback confirmation. A+ setups only.">
                             <span class="entry-icon">&#x1F4CA;</span>
                             <span class="entry-label">Split Entry</span>
                         </button>

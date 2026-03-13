@@ -1,3 +1,35 @@
+## [v4.6.8] - 2026-03-14
+
+### MINOR - FCC audit fixes: plain-English labels, tooltips, verdict pills
+
+**gold-nugget-principles.js:**
+- Rewritten principle: 'Convert leakage from informational -> regulatory' -> 'Bad behaviour must have consequences. Logging a rule break without acting on it is pointless.'
+
+**index.html - ATR tier labels:**
+- COMPRESSED -> LOW ACTIVITY
+- ELEVATED -> ACTIVE
+- EXHAUSTED -> OVERSTRETCHED
+
+**index.html - UI label renames:**
+- Kill Zone Indicator -> Session Hot Zone (with tooltip)
+- Scale-In -> Split Entry (button label + protocol header; with title tooltip)
+- Session-Pair Rating label now has tooltip explaining session liquidity fit
+
+**index.html - Verdict pills (pre-trade checklist summary):**
+- Armed -> UTCC
+- EMAs -> MAs Lined Up
+- Failed -> Failed Move
+- Lag -> Not Chasing
+- RSI -> Momentum
+- 48h -> Cooling
+
+**index.html - R:R labels:**
+- 'Reward to TP1' -> 'Potential Gain to Target 1'
+- 'R:R to TP1' -> 'Reward vs Risk (TP1)'
+
+**index.html - ATR plain English explanation:**
+- Added descriptive subtitle under ATR Volatility Check panel explaining what ATR percentile means in plain terms
+
 
 ## [v4.6.7] - 2026-03-14
 
