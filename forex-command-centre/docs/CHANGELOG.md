@@ -1,3 +1,15 @@
+## [v4.6.11] - 2026-03-14
+
+### PATCH - utcc-forex.pine: remove dead criteriaMet == 5 branch
+
+**utcc-forex.pine:**
+- criteriaMet max is 4 (comment already said "NOW 4 CRITERIA") but == 5 branch was never removed
+- Deleted == 5 block; promoted its Textbook/Strong/Good quality labels into the == 4 (all criteria met) path
+- == 3 now handles the one-missing-criteria logic (was == 4)
+- == 2 now handles the borderline case (was == 3)
+- else handles 1 or fewer (unchanged logic)
+- Fixed stale comment: "all 5 criteria" -> "all 4 criteria"
+
 ## [v4.6.10] - 2026-03-14
 
 ### PATCH - ATR tier labels unified across all panels
