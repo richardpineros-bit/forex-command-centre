@@ -1,3 +1,12 @@
+## [v4.6.10] - 2026-03-14
+
+### PATCH - ATR tier labels unified across all panels
+
+**index.html:**
+- Reverted v4.6.8 label changes to match armed-panel.js exactly
+- LOW ACTIVITY -> IDEAL, ACTIVE -> ELEVATED, OVERSTRETCHED -> EXHAUSTED
+- All ATR tiers now consistent: IDEAL / NORMAL / ELEVATED / EXHAUSTED everywhere
+
 ## [v4.6.9] - 2026-03-14
 
 ### PATCH - Watchlist ATR column showing volBehaviour instead of ATR tier
