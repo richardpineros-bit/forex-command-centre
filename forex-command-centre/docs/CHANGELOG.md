@@ -1,3 +1,20 @@
+## [v4.6.12] - 2026-03-14
+
+### AUDIT - Full cross-indicator review: all 6 UTCC indicators verified consistent
+
+**Checked across utcc-forex, metals, indices, energy, bonds, crypto:**
+- ATR labels (IDEAL/NORMAL/ELEVATED/EXHAUSTED): identical in all 6
+- vol_state / vol_behaviour / vol_level JSON payload fields: consistent
+- allCriteriaMet definition (4 criteria): consistent
+- strongBullish/Bearish and perfectBullish/Bearish firing conditions: consistent
+- STAND_DOWN enforcement blocks arming in all 6 (different code paths, same outcome)
+
+**Intentional differences (by design):**
+- Score thresholds differ per asset class (forex 80, metals 76, indices 75, energy 78, bonds 70, crypto 85)
+- regimeAllowsArming gate style varies slightly per indicator; outcome is identical
+
+**No bugs found. All 6 indicators are consistent.**
+
 ## [v4.6.11] - 2026-03-14
 
 ### PATCH - utcc-forex.pine: remove dead criteriaMet == 5 branch
