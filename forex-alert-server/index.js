@@ -828,6 +828,7 @@ var server = http.createServer(function(req, res) {
                 criteria: d.criteria || 0,
                 volState: d.volState || '',
                 volBehaviour: d.volBehaviour || '',
+                volLevel: d.volLevel || '',
                 riskMult: d.riskMult || 1.0,
                 playbook: d.playbook || ''
             };

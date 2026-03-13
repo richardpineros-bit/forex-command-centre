@@ -1,3 +1,13 @@
+## [v4.6.9] - 2026-03-14
+
+### PATCH - Watchlist ATR column showing volBehaviour instead of ATR tier
+
+**forex-alert-server/index.js:**
+- Candidates (watchlist) response builder was missing `volLevel` field
+- Armed pairs response included `volLevel`; candidates did not -- causing `atrPct` to be null
+- `buildRow` fell through to `atrBehav` (TREND/QUIET etc) instead of deriving IDEAL/NORMAL/ACTIVE/OVERSTRETCHED tier
+- Fix: added `volLevel: d.volLevel || ''` to candidates response object (line ~831)
+
 ## [v4.6.8] - 2026-03-14
 
 ### MINOR - FCC audit fixes: plain-English labels, tooltips, verdict pills
