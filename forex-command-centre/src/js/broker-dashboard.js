@@ -733,13 +733,8 @@
                 // Run historical backfill (catches trades closed while offline)
                 setTimeout(() => this.backfillHistory(), 3000);
 
-                // Listen for trade closure events (backup listener in case
-                // the one in setupEventListeners misses due to load order)
-                window.addEventListener('broker:tradeclose', (e) => {
-                    if (e.detail && e.detail.trade) {
-                        this.processClosedTrade(e.detail.trade);
-                    }
-                });
+                // NOTE: broker:tradeclose listener is registered in setupEventListeners
+                // Do not add a second listener here — causes duplicate journal entries
 
                 console.log('[AutoJournal] Ready');
             },
@@ -1218,6 +1213,7 @@
 
                     // Enrich with alert data if we have it and entry is missing UTCC
                     if (alertData && !trades[idx].trendScore) {
+                        trades[idx].utccArmed = true;
                         trades[idx].trendScore = alertData.score;
                         trades[idx].utccTier = alertData.tier;
                         trades[idx].utccCriteriaPass = alertData.criteriaPass;
@@ -1289,6 +1285,7 @@
                         outcome: trade.outcome || this._classifyOutcome(trade.realizedPL),
 
                         // UTCC data (from alert match or empty for manual review)
+                        utccArmed: !!(alertData || utccState),
                         trendScore: alertData ? alertData.score : null,
                         grade: this._deriveGrade(
                             alertData ? alertData.score : null,
@@ -1465,7 +1462,7 @@
                         var d = new Date(rawDate);
                         tradeDate = ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('' + d.getFullYear()).slice(-2);
                     }
-                    const hasUtcc = trade.trendScore ? true : false;
+                    const hasUtcc = !!(trade.utccArmed || trade.trendScore || trade.utccTier || trade.alertId);
 
                     html += '<div class="rq-trade-item" data-trade-id="' + (trade.id || trade.date) + '">' +
                         '<div class="rq-trade-summary" onclick="BrokerDashboard.reviewQueue.toggleReview(\'' + (trade.id || trade.date) + '\')">' +
@@ -1525,7 +1522,7 @@
                 const netPL = parseFloat(trade.netPL || 0).toFixed(2);
                 const rVal = trade.rValue ? trade.rValue.toFixed(2) : '--';
                 const score = trade.trendScore || '';
-                const hasUtcc = trade.trendScore ? true : false;
+                const hasUtcc = !!(trade.utccArmed || trade.trendScore || trade.utccTier || trade.alertId);
 
                 let html = '<div class="rq-review-form">' +
                     // Auto-filled summary (read-only)

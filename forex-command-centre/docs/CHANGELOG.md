@@ -1,5 +1,25 @@
 
-## [v4.6.6] - 2026-03-12
+## [v4.6.7] - 2026-03-14
+
+### PATCH - Journal bug fixes: No UTCC false flag, duplicate entries, history table not refreshing
+
+**No UTCC false flag (broker-dashboard.js):**
+- `hasUtcc` was derived solely from `trendScore`, which is null if alert queue expired before trade closed
+- Added `utccArmed` boolean field set at journal creation time — true if any alertData or utccState was present
+- `_updateExistingEntry` also sets `utccArmed: true` when alert data is found
+- `hasUtcc` now checks `utccArmed || trendScore || utccTier || alertId` — UTCC badge shows correctly
+
+**Duplicate journal entries (broker-dashboard.js):**
+- Two `broker:tradeclose` listeners were registered: one in `setupEventListeners` (line 246) and one in `AutoJournal.init` (line 738)
+- Both fired on every trade close, `_processedIds` Set only prevented duplicates within same session
+- Removed redundant backup listener from `AutoJournal.init` — `setupEventListeners` is the sole handler
+
+**Trade history table not refreshing (journal-crud.js):**
+- `journal:entry` event was only handled by `server-storage.js` (to trigger a save) — no re-render of the table
+- Added `window.addEventListener('journal:entry')` at end of `journal-crud.js` that calls `loadTrades()` with 500ms delay
+- History table now updates automatically when auto-journal writes a new entry
+
+
 
 ### PATCH - Armed panel ATR labels aligned to UTCC Pine Script + FAB base CSS fix + Badge API
 
