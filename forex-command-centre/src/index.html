@@ -796,13 +796,13 @@
                     <div class="entry-verdict-status" id="entry-verdict-status">COMPLETE THE CHECKS</div>
                     <div class="entry-verdict-reason" id="entry-verdict-reason">Fill in all 7 checks above to see if you can trade</div>
                     <div class="entry-verdict-checklist" id="entry-verdict-checklist">
-                        <span class="verdict-check" id="vc-1">&#x23F3; Armed</span>
-                        <span class="verdict-check" id="vc-2">&#x23F3; EMAs</span>
+                        <span class="verdict-check" id="vc-1">&#x23F3; UTCC</span>
+                        <span class="verdict-check" id="vc-2">&#x23F3; MAs Lined Up</span>
                         <span class="verdict-check" id="vc-3">&#x23F3; Reaction</span>
-                        <span class="verdict-check" id="vc-4">&#x23F3; Failed</span>
-                        <span class="verdict-check" id="vc-5">&#x23F3; Lag</span>
-                        <span class="verdict-check" id="vc-6">&#x23F3; RSI</span>
-                        <span class="verdict-check" id="vc-7">&#x23F3; 48h</span>
+                        <span class="verdict-check" id="vc-4">&#x23F3; Failed Move</span>
+                        <span class="verdict-check" id="vc-5">&#x23F3; Not Chasing</span>
+                        <span class="verdict-check" id="vc-6">&#x23F3; Momentum</span>
+                        <span class="verdict-check" id="vc-7">&#x23F3; Cooling</span>
                     </div>
                 </div>
                 
@@ -847,7 +847,7 @@
                     <div class="atr-guidance-content">
                         <div class="atr-tier compressed" id="atr-tier-compressed">
                             <span class="atr-tier-range">&lt; 30%</span>
-                            <span class="atr-tier-label" style="color: var(--color-pass);">COMPRESSED</span>
+                            <span class="atr-tier-label" style="color: var(--color-pass);">LOW ACTIVITY</span>
                             <span class="atr-tier-action">Ideal entry. Volatility expansion likely. Full position size.</span>
                         </div>
                         <div class="atr-tier normal" id="atr-tier-normal">
@@ -857,12 +857,12 @@
                         </div>
                         <div class="atr-tier elevated" id="atr-tier-elevated">
                             <span class="atr-tier-range">60-80%</span>
-                            <span class="atr-tier-label" style="color: var(--color-warning);">ELEVATED</span>
+                            <span class="atr-tier-label" style="color: var(--color-warning);">ACTIVE</span>
                             <span class="atr-tier-action">Caution. Move underway. Reduce position size by 50%.</span>
                         </div>
                         <div class="atr-tier exhausted" id="atr-tier-exhausted">
                             <span class="atr-tier-range">&gt; 80%</span>
-                            <span class="atr-tier-label" style="color: var(--color-fail);">EXHAUSTED</span>
+                            <span class="atr-tier-label" style="color: var(--color-fail);">OVERSTRETCHED</span>
                             <span class="atr-tier-action">Pass. You are late. Wait for pullback or next setup.</span>
                         </div>
                         <div class="atr-current-value">
@@ -1043,11 +1043,11 @@
                             <div class="rr-stat-value" id="calc-risk-pips">--</div>
                         </div>
                         <div class="rr-stat">
-                            <div class="rr-stat-label">Reward to TP1</div>
+                            <div class="rr-stat-label">Potential Gain to Target 1</div>
                             <div class="rr-stat-value" id="calc-reward-pips">--</div>
                         </div>
                         <div class="rr-stat highlight">
-                            <div class="rr-stat-label">R:R to TP1</div>
+                            <div class="rr-stat-label">Reward vs Risk (TP1)</div>
                             <div class="rr-stat-value" id="calc-rr-tp1">--</div>
                         </div>
                         <div class="rr-stat">
@@ -1119,7 +1119,7 @@
                     </div>
                 </div>
                 
-                <!-- Kill Zone Indicator - NEW -->
+                <!-- Session Hot Zone Indicator -->
                 <div style="padding: 0 var(--spacing-md);">
                     <div class="kill-zone-indicator" id="kill-zone-indicator" style="display: none;">
                         <div class="kz-icon">&#x1F3AF;</div>
@@ -1146,7 +1146,7 @@
                         </button>
                         <button type="button" class="entry-type-btn" data-type="scale" id="btn-scale" onclick="selectEntryType('scale')">
                             <span class="entry-icon">&#x1F4CA;</span>
-                            <span class="entry-label">Scale-In</span>
+                            <span class="entry-label">Split Entry</span>
                         </button>
                     </div>
                     
@@ -1182,7 +1182,7 @@
                     <!-- Scale-In Details (hidden by default) -->
                     <div id="scale-in-details" class="entry-details">
                         <div class="scale-in-details">
-                            <h4 style="margin-bottom: var(--spacing-sm); color: var(--accent-tertiary);">&#x1F4CA; Scale-In Protocol (A+ Setups Only)</h4>
+                            <h4 style="margin-bottom: var(--spacing-sm); color: var(--accent-tertiary);">&#x1F4CA; Split Entry Protocol (A+ Setups Only)</h4>
                             
                             <!-- Scale-In Grade Check - NEW -->
                             <div class="scale-grade-check" id="scale-grade-check">
