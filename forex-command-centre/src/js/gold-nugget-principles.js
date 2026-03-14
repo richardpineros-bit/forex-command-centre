@@ -83,7 +83,7 @@ window.GoldNuggetPrinciples = {
         },
         {
             category: 'Kill-Switches',
-            principle: 'Convert leakage from informational → regulatory',
+            principle: 'Bad behaviour must have consequences. Logging a rule break without acting on it is pointless.',
             detail: 'Behaviour must have consequences. Logging alone is toothless. Missed discipline must be visible and must cost.',
             priority: 'HIGH'
         },

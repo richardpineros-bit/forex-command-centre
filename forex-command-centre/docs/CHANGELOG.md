@@ -1,3 +1,310 @@
+## [v4.6.12] - 2026-03-14
+
+### AUDIT - Full cross-indicator review: all 6 UTCC indicators verified consistent
+
+**Checked across utcc-forex, metals, indices, energy, bonds, crypto:**
+- ATR labels (IDEAL/NORMAL/ELEVATED/EXHAUSTED): identical in all 6
+- vol_state / vol_behaviour / vol_level JSON payload fields: consistent
+- allCriteriaMet definition (4 criteria): consistent
+- strongBullish/Bearish and perfectBullish/Bearish firing conditions: consistent
+- STAND_DOWN enforcement blocks arming in all 6 (different code paths, same outcome)
+
+**Intentional differences (by design):**
+- Score thresholds differ per asset class (forex 80, metals 76, indices 75, energy 78, bonds 70, crypto 85)
+- regimeAllowsArming gate style varies slightly per indicator; outcome is identical
+
+**No bugs found. All 6 indicators are consistent.**
+
+## [v4.6.11] - 2026-03-14
+
+### PATCH - utcc-forex.pine: remove dead criteriaMet == 5 branch
+
+**utcc-forex.pine:**
+- criteriaMet max is 4 (comment already said "NOW 4 CRITERIA") but == 5 branch was never removed
+- Deleted == 5 block; promoted its Textbook/Strong/Good quality labels into the == 4 (all criteria met) path
+- == 3 now handles the one-missing-criteria logic (was == 4)
+- == 2 now handles the borderline case (was == 3)
+- else handles 1 or fewer (unchanged logic)
+- Fixed stale comment: "all 5 criteria" -> "all 4 criteria"
+
+## [v4.6.10] - 2026-03-14
+
+### PATCH - ATR tier labels unified across all panels
+
+**index.html:**
+- Reverted v4.6.8 label changes to match armed-panel.js exactly
+- LOW ACTIVITY -> IDEAL, ACTIVE -> ELEVATED, OVERSTRETCHED -> EXHAUSTED
+- All ATR tiers now consistent: IDEAL / NORMAL / ELEVATED / EXHAUSTED everywhere
+
+## [v4.6.9] - 2026-03-14
+
+### PATCH - Watchlist ATR column showing volBehaviour instead of ATR tier
+
+**forex-alert-server/index.js:**
+- Candidates (watchlist) response builder was missing `volLevel` field
+- Armed pairs response included `volLevel`; candidates did not -- causing `atrPct` to be null
+- `buildRow` fell through to `atrBehav` (TREND/QUIET etc) instead of deriving IDEAL/NORMAL/ACTIVE/OVERSTRETCHED tier
+- Fix: added `volLevel: d.volLevel || ''` to candidates response object (line ~831)
+
+## [v4.6.8] - 2026-03-14
+
+### MINOR - FCC audit fixes: plain-English labels, tooltips, verdict pills
+
+**gold-nugget-principles.js:**
+- Rewritten principle: 'Convert leakage from informational -> regulatory' -> 'Bad behaviour must have consequences. Logging a rule break without acting on it is pointless.'
+
+**index.html - ATR tier labels:**
+- COMPRESSED -> LOW ACTIVITY
+- ELEVATED -> ACTIVE
+- EXHAUSTED -> OVERSTRETCHED
+
+**index.html - UI label renames:**
+- Kill Zone Indicator -> Session Hot Zone (with tooltip)
+- Scale-In -> Split Entry (button label + protocol header; with title tooltip)
+- Session-Pair Rating label now has tooltip explaining session liquidity fit
+
+**index.html - Verdict pills (pre-trade checklist summary):**
+- Armed -> UTCC
+- EMAs -> MAs Lined Up
+- Failed -> Failed Move
+- Lag -> Not Chasing
+- RSI -> Momentum
+- 48h -> Cooling
+
+**index.html - R:R labels:**
+- 'Reward to TP1' -> 'Potential Gain to Target 1'
+- 'R:R to TP1' -> 'Reward vs Risk (TP1)'
+
+**index.html - ATR plain English explanation:**
+- Added descriptive subtitle under ATR Volatility Check panel explaining what ATR percentile means in plain terms
+
+
+## [v4.6.7] - 2026-03-14
+
+### PATCH - Journal bug fixes: No UTCC false flag, duplicate entries, history table not refreshing
+
+**No UTCC false flag (broker-dashboard.js):**
+- `hasUtcc` was derived solely from `trendScore`, which is null if alert queue expired before trade closed
+- Added `utccArmed` boolean field set at journal creation time — true if any alertData or utccState was present
+- `_updateExistingEntry` also sets `utccArmed: true` when alert data is found
+- `hasUtcc` now checks `utccArmed || trendScore || utccTier || alertId` — UTCC badge shows correctly
+
+**Duplicate journal entries (broker-dashboard.js):**
+- Two `broker:tradeclose` listeners were registered: one in `setupEventListeners` (line 246) and one in `AutoJournal.init` (line 738)
+- Both fired on every trade close, `_processedIds` Set only prevented duplicates within same session
+- Removed redundant backup listener from `AutoJournal.init` — `setupEventListeners` is the sole handler
+
+**Trade history table not refreshing (journal-crud.js):**
+- `journal:entry` event was only handled by `server-storage.js` (to trigger a save) — no re-render of the table
+- Added `window.addEventListener('journal:entry')` at end of `journal-crud.js` that calls `loadTrades()` with 500ms delay
+- History table now updates automatically when auto-journal writes a new entry
+
+
+
+### PATCH - Armed panel ATR labels aligned to UTCC Pine Script + FAB base CSS fix + Badge API
+
+**Armed panel ATR labels (armed-panel.js):**
+- Labels now match UTCC Pine Script (`atrGuidance`) exactly — 4 tiers:
+  - IDEAL (<30%ile) — lime — expansion likely
+  - NORMAL (30–59%ile) — green — proceed full size
+  - ELEVATED (60–79%ile) — amber — reduce size 50%
+  - EXHAUSTED (≥80%ile) — red — pass or exit only
+- Percentile shown as subtitle (e.g. `47%ile`) under each label
+- Previous labels (IDEAL/LOW/EXHAUSTED with wrong thresholds) removed
+
+**FAB overlap fix (dashboard.css):**
+- `.fab-calendar` had no base `position: fixed` — only existed in mobile media queries
+- Added full base CSS: position, size, colours, z-index, hover state
+- Calendar FAB now correctly stacks above armed FAB on all screen sizes
+
+**Badge API (sw.js + pwa-notifications.js + alert server index.js):**
+- Alert server includes `armedCount` in ARMED push payload data
+- SW sets `navigator.setAppBadge(armedCount)` on push receive
+- Foreground polling: `pwa-notifications.js` polls `/state` every 60s and updates badge
+- Badge clears on `visibilitychange` (app focus) and notification click
+
+### Files changed
+- `forex-command-centre/src/js/armed-panel.js`
+- `forex-command-centre/src/css/dashboard.css`
+- `forex-command-centre/src/sw.js`
+- `forex-command-centre/src/js/pwa-notifications.js`
+- `forex-alert-server/index.js`
+
+---
+
+## [v4.6.5] - 2026-03-11
+
+### MINOR - PWA Badge API + FAB mobile layout fix
+
+**Badge API (armed-panel.js):**
+- `navigator.setAppBadge(armedCount)` called after every poll cycle
+- Badge shows number of armed instruments on app icon (Android Chrome PWA)
+- Clears automatically when armed count returns to 0
+- Gracefully skipped on browsers that don't support the Badging API
+
+**FAB mobile layout fix (layout.css):**
+- FABs were overlapping at the same bottom position side-by-side
+- Fixed: stacked vertically on mobile (<=768px) — calendar above, target below
+- Both FABs shrunk to 48px on mobile (was 56px)
+- Calendar sits at QAB + 16px + 48px (armed) + 12px from bottom
+- Armed sits at QAB (48px) + 16px from bottom
+- Fixed in both 768px breakpoint blocks (were duplicated with same bug)
+
+### Files changed
+- `forex-command-centre/src/js/armed-panel.js`
+- `forex-command-centre/src/css/layout.css`
+
+---
+
+## [v4.6.4] - 2026-03-11
+
+### MINOR - Mobile hamburger menu replaces scrolling tab bar
+
+- Desktop (>768px): tabs unchanged
+- Mobile (<=768px): tabs hidden, hamburger button shown in header
+- Tap hamburger -> slide-in drawer from right (280px wide, 85vw max)
+- Backdrop overlay closes menu on tap outside
+- Hamburger animates to X when open
+- Drawer items: icon + label, active state highlighted in green
+- UTCC Guide button in drawer footer
+- Header row stays single-line on mobile (title + quick actions + hamburger)
+- Guide button hidden from header on mobile (moved to drawer)
+- Theme buttons hidden on mobile (use Settings tab)
+- Mobile menu active state stays in sync when showTab called from elsewhere in code
+
+### Files changed
+- `forex-command-centre/src/index.html`
+- `forex-command-centre/src/css/layout.css`
+
+---
+
+## [v4.6.3] - 2026-03-11
+
+### MINOR - PWA pref-aware push + mobile UI optimisation
+
+**ARMED/FOMO pref fix (alert server + client):**
+- sendPushToAll() now accepts a prefKey parameter
+- Each push function (pushArmed, pushFomoCleared, pushNewsWarning, pushCircuitBreaker) passes its prefKey
+- Server checks per-subscription prefs before sending — skips if disabled
+- Client attaches current prefs object when saving/updating subscription
+- FCCPushPrefs.save() re-sends subscription to server with updated prefs immediately on toggle change
+- Result: disabling ARMED in settings actually stops server from sending that push
+
+**Mobile UI optimisation (layout.css):**
+- Tab bar: larger touch targets (36px min-height), thinner gap, accent-coloured scrollbar indicator
+- Header: compact padding on mobile, quick action buttons smaller
+- Forms: font-size 1rem on inputs/selects (prevents iOS auto-zoom on focus)
+- All inputs/selects: 44px min-height (Apple HIG minimum touch target)
+- Select/dropdown: larger green chevron (16px), better contrast, green focus ring
+- Checkboxes: 20px touch target, larger label font
+- Buttons: 44px min-height on mobile
+- Grid: single column below 480px always
+- Cards: tighter padding below 480px
+- Container: tighter horizontal padding on small screens
+
+### Files changed
+- `forex-alert-server/index.js`
+- `forex-command-centre/src/js/pwa-notifications.js`
+- `forex-command-centre/src/css/layout.css`
+
+---
+
+## [v4.6.2] - 2026-03-11
+
+### PATCH - Add mobile-web-app-capable meta tag
+
+- Added `<meta name="mobile-web-app-capable">` alongside existing Apple tag
+- Removes deprecation warning in Chrome DevTools
+
+### Files changed
+- `forex-command-centre/src/index.html`
+
+---
+
+## [v4.6.1] - 2026-03-11
+
+### PATCH - PWA: News gate + circuit breaker push wiring, settings panel, FCCPushPrefs
+
+**News gate push (news-gate-module.js):**
+- Hook into logDecision() — fires NEWS_WARNING push whenever verdict transitions to RED
+- 15-minute per-pair cooldown prevents spam on 30-min calendar refresh cycles
+- Respects FCCPushPrefs.newsWarning toggle
+
+**Circuit breaker push (circuit-breaker-module.js):**
+- Hook at all three daily loss thresholds:
+  - -3% RISK CAP: push title 'Risk Cap Applied'
+  - -5% STAND-DOWN: push title 'Stand-Down Activated'
+  - -10% EMERGENCY: push title 'EMERGENCY STAND-DOWN' (louder vibrate pattern)
+- Respects FCCPushPrefs.circuitBreaker toggle
+
+**Alert server (index.js v2.5.0 → patch):**
+- pushCircuitBreaker() updated to use level field (EMERGENCY/STANDDOWN/CAP)
+- Level-specific titles and vibration patterns
+- Unique tags per level to prevent notifications overwriting each other
+
+**Push settings panel (index.html + pwa-notifications.js):**
+- New settings card in Settings tab: '&#x1F514; Push Notifications'
+- Status badge: Active / Not enabled / Blocked
+- Enable button + Test button (sends test push via /push/notify)
+- Four toggles: ARMED, FOMO Cleared, News Warning, Circuit Breaker
+- FCCPushPrefs global: get(), save(), loadIntoUI(), updateSettingsUI(), requestPermission(), sendTest()
+- Settings panel auto-updates when permission state changes
+
+### Files changed
+- `forex-command-centre/src/index.html`
+- `forex-command-centre/src/js/pwa-notifications.js`
+- `forex-command-centre/src/js/news-gate-module.js`
+- `forex-command-centre/src/js/circuit-breaker-module.js`
+- `forex-alert-server/index.js`
+
+---
+
+## [v4.6.0] - 2026-03-11
+
+### MINOR - PWA Push Notifications: ARMED, FOMO gate cleared, News warning, Circuit breaker
+
+Converted FCC to a Progressive Web App (PWA) with background push notifications.
+No separate Android app required — installs directly from Chrome to home screen.
+
+**New files (frontend):**
+- `manifest.json` — PWA install config (name, icons, display mode, theme colour)
+- `sw.js` — Service worker: push handler, app shell caching, offline resilience
+- `icons/icon-192.png` — App icon (192x192)
+- `icons/icon-512.png` — App icon (512x512)
+- `js/pwa-notifications.js` — Client-side: SW registration, push subscription, permission UI
+
+**Modified files (frontend):**
+- `index.html` — Added manifest link, Apple PWA meta tags, pwa-notifications.js import
+
+**Alert server changes (v2.5.0):**
+- Added `web-push` npm dependency for VAPID-based push delivery
+- VAPID key pair generated and baked into server config
+- New subscription storage: `/data/push-subscriptions.json`
+- New endpoints: `POST /push/subscribe`, `POST /push/notify`
+- ARMED webhook now fires immediate push to all subscribers
+- FOMO gate: 1-hour setTimeout fires FOMO Cleared push automatically
+- FOMO timer cancelled if pair is BLOCKED before hour elapses
+- Dead subscriptions (410/404) auto-cleaned from storage
+
+**Notification types:**
+- ARMED — fires immediately on TradingView webhook (requireInteraction: true)
+- FOMO_CLEARED — fires exactly 1 hour after ARMED
+- NEWS_WARNING — triggered by FCC frontend
+- CIRCUIT_BREAKER — triggered by FCC frontend on drawdown threshold
+
+**Install to home screen:** Chrome three-dot menu → Add to home screen
+
+### Files changed
+- `forex-command-centre/src/index.html`
+- `forex-command-centre/src/sw.js` (new)
+- `forex-command-centre/src/manifest.json` (new)
+- `forex-command-centre/src/icons/icon-192.png` (new)
+- `forex-command-centre/src/icons/icon-512.png` (new)
+- `forex-command-centre/src/js/pwa-notifications.js` (new)
+- `forex-alert-server/index.js` (v2.4.1 → v2.5.0)
+- `forex-alert-server/package.json`
+
+---
 
 ## [v4.5.4] - 2026-03-11
 

@@ -1,8 +1,11 @@
 {
   "name": "trading-state",
-  "version": "1.0.0",
+  "version": "2.5.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
   }
 }

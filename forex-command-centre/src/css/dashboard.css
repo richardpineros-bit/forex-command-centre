@@ -498,6 +498,32 @@ a.armed-pair-row.armed-row-link:active {
     box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
 }
 
+.fab-calendar {
+    position: fixed;
+    bottom: calc(var(--spacing-xl) + 56px + 56px + 12px);
+    right: var(--spacing-xl);
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    font-size: 1.5rem;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+    z-index: 99;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.fab-calendar:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.2);
+}
+
 .fab-trade-count {
     position: absolute;
     top: -4px;

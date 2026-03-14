@@ -1160,21 +1160,19 @@ var color tradeStatusColor = colorNoTradeRed
 var string tradeStatusType = ""
 var string positionSizeRec = ""
 
-// OPTION B: CONDITIONAL STRICTNESS
-// 5/5 = ALWAYS TRADE
-// 4/5 = TRADE if Trend+MTF pass AND score ≥85
+// 4/4 = ALWAYS TRADE (all criteria met)
+// 3/4 = TRADE if Trend+MTF pass AND score >=85
 //     = CAUTION if Trend+MTF pass AND score 75-84
 //     = NO TRADE if Trend+MTF pass AND score <75
 //     = NO TRADE if Trend OR MTF fails (critical)
-// 3/5 = CAUTION if score ≥75, else NO TRADE
-// ≤2/5 = ALWAYS NO TRADE
+// 2/4 = CAUTION if score >=75, else NO TRADE
+// <=1/4 = ALWAYS NO TRADE
 
-if criteriaMet == 5
-    // Perfect - all criteria met
+if criteriaMet == 4
+    // All criteria met - full trade
     tradeStatus := "TRADE"
     tradeStatusColor := colorTradeGreen
     positionSizeRec := "Full"
-    // Check Entry Zone for label quality
     entryIsGood = str.contains(entryZoneQuality, "HOT") or str.contains(entryZoneQuality, "OPTIMAL")
     if overallScore >= 90 and entryIsGood
         tradeStatusType := "Textbook"
@@ -1183,10 +1181,10 @@ if criteriaMet == 5
     else
         tradeStatusType := "Good"
 
-else if criteriaMet == 4
-    // Check critical criteria (Trend Score & MTF Alignment)
+else if criteriaMet == 3
+    // One criteria missing - check critical pair (Trend Score & MTF Alignment)
     bool criticalPass = criterion1Pass and criterion2Pass
-    
+
     if criticalPass
         // Critical criteria met, check score
         if overallScore >= 85
@@ -1205,7 +1203,7 @@ else if criteriaMet == 4
             positionSizeRec := "Avoid"
             tradeStatusType := "Score Too Low"
     else
-        // Critical criteria failed
+        // Trend or MTF failed - no trade
         tradeStatus := "NO TRADE"
         tradeStatusColor := colorNoTradeRed
         positionSizeRec := "Avoid"
@@ -1214,7 +1212,7 @@ else if criteriaMet == 4
         else
             tradeStatusType := "MTF Divergence"
 
-else if criteriaMet == 3
+else if criteriaMet == 2
     // Borderline case
     if overallScore >= 75
         tradeStatus := "CAUTION"
@@ -1228,7 +1226,7 @@ else if criteriaMet == 3
         tradeStatusType := "Too Weak"
 
 else
-    // 2 or fewer criteria met - always avoid
+    // 1 or fewer criteria met - always avoid
     tradeStatus := "NO TRADE"
     tradeStatusColor := colorNoTradeRed
     positionSizeRec := "Avoid"
@@ -1246,7 +1244,7 @@ else
 // ============================================================================
 // COMBINED CRITERIA CHECK (for alerts)
 // ============================================================================
-// Boolean: True when all 5 criteria are met
+// Boolean: True when all 4 criteria are met
 allCriteriaMet = criterion1Pass and criterion2Pass and criterion3Pass and criterion4Pass
 
 // Derived variables for alert messages

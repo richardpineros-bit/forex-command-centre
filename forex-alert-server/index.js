@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const webpush = require('web-push');
 
 const PORT = process.env.PORT || 3847;
 const STATE_FILE = process.env.STATE_FILE || '/data/armed.json';
@@ -8,12 +9,14 @@ const UTCC_FILE = process.env.UTCC_FILE || '/data/utcc-alerts.json';
 const CANDIDATE_FILE = process.env.CANDIDATE_FILE || '/data/candidates.json';
 const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/data/structure.json';
 const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json';
+const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
 
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.4.1';
+const VERSION = '2.5.0';
 const CHANGES = [
+    '2.5.0 - PWA push notifications: ARMED, FOMO cleared (1hr), news gate, circuit breaker',
     '2.4.1 - CRITICAL: All data file paths moved from /app/ to /data/ (mounted volume) — arm-history.json, structure.json, armed.json, utcc-alerts.json, candidates.json now survive container restarts',
     '2.4.0 - Arm History expansion: capture full UTCC context (playbook, mtf, criteria, volBehaviour, volLevel, rsi, riskMult, riskState, maxRisk, dayOfWeek, hour, weekNumber)',
     '2.3.0 - Arm History: append every ARMED event to arm-history.json; GET /arm-history endpoint for heatmap dashboard',
@@ -34,6 +37,175 @@ const CONFIG = {
     CANDIDATE_TTL_HOURS: 4,         // Candidates expire after 4 hours
     STRUCTURE_TTL_HOURS: 4          // Structure alerts expire after 4 hours
 };
+
+// ============================================================================
+// WEB PUSH (VAPID) CONFIGURATION
+// ============================================================================
+const VAPID_PUBLIC_KEY  = 'BK7MEl0DhksZv7pLAk_C9a0K-cY-wpSNsuqfqMnkuLIrOPvnBEMBAGvQGwEx32EgRvIj8Uruhq_PHzw4vrxZa1I';
+const VAPID_PRIVATE_KEY = '6-kmWsH4vhes6qbAhlJJQKw1crolvRM4bhgnYcDWFYU';
+const VAPID_CONTACT     = 'mailto:admin@pineros.club';
+
+webpush.setVapidDetails(VAPID_CONTACT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+// In-memory FOMO timers: pair -> setTimeout handle
+var fomoTimers = {};
+
+// ============================================================================
+// PUSH SUBSCRIPTION MANAGEMENT
+// ============================================================================
+function loadSubscriptions() {
+    try {
+        if (fs.existsSync(PUSH_SUBS_FILE)) {
+            return JSON.parse(fs.readFileSync(PUSH_SUBS_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading subscriptions:', e.message);
+    }
+    return { subscriptions: [] };
+}
+
+function saveSubscriptions(data) {
+    try {
+        fs.writeFileSync(PUSH_SUBS_FILE, JSON.stringify(data, null, 2), 'utf8');
+    } catch (e) {
+        console.error('Error saving subscriptions:', e.message);
+    }
+}
+
+function addOrUpdateSubscription(subscription) {
+    var data = loadSubscriptions();
+    var endpoint = subscription.endpoint;
+    // Extract prefs if sent (client sends { ...sub, prefs: {...} })
+    var prefs = subscription.prefs || { armed: true, fomoCleared: true, newsWarning: true, circuitBreaker: true };
+    var subData = {
+        endpoint:   subscription.endpoint,
+        keys:       subscription.keys,
+        expirationTime: subscription.expirationTime || null,
+        prefs:      prefs
+    };
+    var idx = data.subscriptions.findIndex(function(s) { return s.endpoint === endpoint; });
+    if (idx >= 0) {
+        data.subscriptions[idx] = subData;
+    } else {
+        data.subscriptions.push(subData);
+    }
+    saveSubscriptions(data);
+    console.log('[PUSH] Subscription saved. Prefs:', JSON.stringify(prefs), '| Total:', data.subscriptions.length);
+}
+
+// ============================================================================
+// SEND PUSH NOTIFICATIONS
+// ============================================================================
+function sendPushToAll(payload, prefKey) {
+    var data = loadSubscriptions();
+    if (!data.subscriptions.length) {
+        console.log('[PUSH] No subscriptions registered');
+        return;
+    }
+
+    var deadEndpoints = [];
+    var payloadStr = JSON.stringify(payload);
+
+    data.subscriptions.forEach(function(sub) {
+        // Check per-subscription pref if a key is provided
+        if (prefKey && sub.prefs && sub.prefs[prefKey] === false) {
+            console.log('[PUSH] Skipping (pref disabled):', prefKey, sub.endpoint.slice(-20));
+            return;
+        }
+        webpush.sendNotification(sub, payloadStr)
+            .then(function() {
+                console.log('[PUSH] Sent:', (payload.data && payload.data.type) || '?');
+            })
+            .catch(function(err) {
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    deadEndpoints.push(sub.endpoint);
+                    console.log('[PUSH] Dead subscription removed');
+                } else {
+                    console.error('[PUSH] Send error:', err.statusCode, err.message);
+                }
+            });
+    });
+
+    if (deadEndpoints.length) {
+        var cleaned = loadSubscriptions();
+        cleaned.subscriptions = cleaned.subscriptions.filter(function(s) {
+            return deadEndpoints.indexOf(s.endpoint) === -1;
+        });
+        saveSubscriptions(cleaned);
+    }
+}
+
+function pushArmed(alert) {
+    var score = alert.score || 0;
+    var zone  = alert.entryZone || '';
+    var dir   = alert.direction || '';
+    var pb    = alert.playbook || alert.primary || '';
+    var body  = alert.pair + ' ' + dir + ' | ' + pb + ' | Score ' + score + (zone ? ' | ' + zone : '');
+    var state = loadState();
+    var armedCount = Object.keys(state.pairs).length;
+    sendPushToAll({
+        title:   'ARMED: ' + alert.pair,
+        body:    body,
+        icon:    '/icons/icon-192.png',
+        tag:     'armed-' + alert.pair,
+        vibrate: [200, 100, 200],
+        requireInteraction: true,
+        data:    { type: 'ARMED', pair: alert.pair, armedCount: armedCount }
+    }, 'armed');
+}
+
+function pushFomoCleared(pair) {
+    sendPushToAll({
+        title:   'FOMO Gate Cleared: ' + pair,
+        body:    '1-hour analysis window complete. You may now assess entry.',
+        icon:    '/icons/icon-192.png',
+        tag:     'fomo-' + pair,
+        vibrate: [100, 50, 100],
+        requireInteraction: false,
+        data:    { type: 'FOMO_CLEARED', pair: pair }
+    }, 'fomoCleared');
+}
+
+function pushNewsWarning(payload) {
+    var body = payload.event
+        ? payload.event + ' in ' + (payload.minutesAway || '?') + ' min'
+        : 'High-impact event approaching';
+    sendPushToAll({
+        title:   'News Warning',
+        body:    body,
+        icon:    '/icons/icon-192.png',
+        tag:     'news-warning',
+        vibrate: [300, 100, 300],
+        requireInteraction: true,
+        data:    { type: 'NEWS_WARNING' }
+    }, 'newsWarning');
+}
+
+function pushCircuitBreaker(payload) {
+    var drawdown = payload.drawdown || '';
+    var level    = payload.level    || '';
+    var message  = payload.message  || '';
+    var body = message || (drawdown ? 'Drawdown: ' + drawdown : 'Drawdown threshold hit');
+    var title = level === 'EMERGENCY'
+        ? 'EMERGENCY STAND-DOWN'
+        : level === 'STANDDOWN'
+            ? 'Stand-Down Activated'
+            : 'Risk Cap Applied';
+    var vibrate = level === 'EMERGENCY'
+        ? [300, 100, 300, 100, 300, 100, 300]
+        : [300, 100, 300];
+    sendPushToAll({
+        title:   title,
+        body:    body,
+        icon:    '/icons/icon-192.png',
+        tag:     'circuit-breaker-' + (level || 'cap'),
+        vibrate: vibrate,
+        requireInteraction: true,
+        data:    { type: 'CIRCUIT_BREAKER', level: level }
+    }, 'circuitBreaker');
+}
+
+
 
 // ============================================================================
 // STATE MANAGEMENT - ARMED PAIRS
@@ -656,6 +828,7 @@ var server = http.createServer(function(req, res) {
                 criteria: d.criteria || 0,
                 volState: d.volState || '',
                 volBehaviour: d.volBehaviour || '',
+                volLevel: d.volLevel || '',
                 riskMult: d.riskMult || 1.0,
                 playbook: d.playbook || ''
             };
@@ -740,6 +913,19 @@ var server = http.createServer(function(req, res) {
                 }
 
                 console.log('  -> ARMED ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-'));
+
+                // Push notification — ARMED fires
+                pushArmed(alert);
+
+                // FOMO gate — push again after 1 hour
+                if (fomoTimers[alert.pair]) {
+                    clearTimeout(fomoTimers[alert.pair]);
+                }
+                fomoTimers[alert.pair] = setTimeout(function() {
+                    pushFomoCleared(alert.pair);
+                    delete fomoTimers[alert.pair];
+                }, 60 * 60 * 1000);
+                console.log('  -> FOMO timer set for ' + alert.pair + ' (1hr)');
             }
             // ----------------------------------------------------------------
             // BLOCKED: Remove pair from state (replaces DISARMED)
@@ -757,6 +943,12 @@ var server = http.createServer(function(req, res) {
                     saveCandidates(cands);
                 }
 
+                // Cancel FOMO timer if pair was waiting
+                if (fomoTimers[alert.pair]) {
+                    clearTimeout(fomoTimers[alert.pair]);
+                    delete fomoTimers[alert.pair];
+                    console.log('  -> FOMO timer cancelled for ' + alert.pair);
+                }
                 console.log('  -> BLOCKED ' + alert.pair + ' (removed)');
             }
             // ----------------------------------------------------------------
@@ -1166,6 +1358,64 @@ var server = http.createServer(function(req, res) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ count: active.length, pairs: active, lastUpdate: data.lastUpdate }));
         }
+        return;
+    }
+
+
+    // ========================================================================
+    // PUSH NOTIFICATION ENDPOINTS (v2.5.0)
+    // ========================================================================
+
+    // POST /push/subscribe - Save a push subscription from the browser
+    if (req.method === 'POST' && req.url === '/push/subscribe') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var subscription = JSON.parse(body);
+                if (!subscription.endpoint) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'Missing endpoint' }));
+                    return;
+                }
+                addOrUpdateSubscription(subscription);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
+    // POST /push/notify - FCC frontend triggers news/circuit-breaker notifications
+    // Body: { type: 'NEWS_WARNING' | 'CIRCUIT_BREAKER', payload: {...} }
+    if (req.method === 'POST' && req.url === '/push/notify') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var data = JSON.parse(body);
+                var type = data.type || '';
+                var payload = data.payload || {};
+                if (type === 'NEWS_WARNING') {
+                    pushNewsWarning(payload);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true }));
+                } else if (type === 'CIRCUIT_BREAKER') {
+                    pushCircuitBreaker(payload);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true }));
+                } else {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'Unknown type: ' + type }));
+                }
+            } catch (e) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+            }
+        });
         return;
     }
 

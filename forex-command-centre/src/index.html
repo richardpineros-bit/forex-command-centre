@@ -9,6 +9,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a2332">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FCC">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <title>Forex Command Centre</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,18 +46,24 @@
                 <span>Pre-Trade</span>
             </div>
             
-            <nav class="tab-nav">
+            <!-- Desktop tab nav -->
+            <nav class="tab-nav" id="desktop-tab-nav">
                 <button class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
                 <button class="tab-btn" onclick="showTab('daily-context')">Briefing</button>
-
                 <button class="tab-btn" onclick="showTab('playbook')">Game Plan</button>
                 <button class="tab-btn" onclick="showTab('validation')">Pre-Trade</button>
                 <button class="tab-btn" onclick="showTab('journal')">Journal</button>
                 <button class="tab-btn" onclick="showTab('performance')">Performance</button>
-                
                 <button class="tab-btn" onclick="showTab('reference')">Reference</button>
                 <button class="tab-btn" onclick="showTab('settings')">Settings</button>
             </nav>
+
+            <!-- Mobile hamburger button -->
+            <button class="hamburger-btn" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+            </button>
             
 
             <!-- Gold Nugget Guide Button -->
@@ -530,7 +543,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Session-Pair Rating</label>
+                        <label class="form-label">Session-Pair Rating <span class="inst-check-tooltip" style="font-size:0.7rem;">?<span class="tooltip-content">Rates how well this currency pair fits the active session. E.g. USDJPY is naturally active in Tokyo; EURUSD in London. A poor rating doesn't block the trade &mdash; it flags that liquidity and volatility may be lower than ideal.</span></span></label>
                         <div class="session-pair-rating" id="session-pair-rating"></div>
                     </div>
                 </div>
@@ -783,13 +796,13 @@
                     <div class="entry-verdict-status" id="entry-verdict-status">COMPLETE THE CHECKS</div>
                     <div class="entry-verdict-reason" id="entry-verdict-reason">Fill in all 7 checks above to see if you can trade</div>
                     <div class="entry-verdict-checklist" id="entry-verdict-checklist">
-                        <span class="verdict-check" id="vc-1">&#x23F3; Armed</span>
-                        <span class="verdict-check" id="vc-2">&#x23F3; EMAs</span>
+                        <span class="verdict-check" id="vc-1">&#x23F3; UTCC</span>
+                        <span class="verdict-check" id="vc-2">&#x23F3; MAs Lined Up</span>
                         <span class="verdict-check" id="vc-3">&#x23F3; Reaction</span>
-                        <span class="verdict-check" id="vc-4">&#x23F3; Failed</span>
-                        <span class="verdict-check" id="vc-5">&#x23F3; Lag</span>
-                        <span class="verdict-check" id="vc-6">&#x23F3; RSI</span>
-                        <span class="verdict-check" id="vc-7">&#x23F3; 48h</span>
+                        <span class="verdict-check" id="vc-4">&#x23F3; Failed Move</span>
+                        <span class="verdict-check" id="vc-5">&#x23F3; Not Chasing</span>
+                        <span class="verdict-check" id="vc-6">&#x23F3; Momentum</span>
+                        <span class="verdict-check" id="vc-7">&#x23F3; Cooling</span>
                     </div>
                 </div>
                 
@@ -831,10 +844,11 @@
                         <span>&#x1F4CA;</span>
                         <span>ATR Volatility Check (Position Sizing Guide)</span>
                     </div>
+                    <div style="padding: 0 var(--spacing-md) var(--spacing-sm); font-size: 0.75rem; color: var(--text-muted);">ATR (Average True Range) measures how much a pair has moved compared to its recent history. The percentile tells you where today's range sits vs the last 50 bars. Low = market hasn't moved much yet. High = it already has &mdash; you may be chasing.</div>
                     <div class="atr-guidance-content">
                         <div class="atr-tier compressed" id="atr-tier-compressed">
                             <span class="atr-tier-range">&lt; 30%</span>
-                            <span class="atr-tier-label" style="color: var(--color-pass);">COMPRESSED</span>
+                            <span class="atr-tier-label" style="color: var(--color-pass);">IDEAL</span>
                             <span class="atr-tier-action">Ideal entry. Volatility expansion likely. Full position size.</span>
                         </div>
                         <div class="atr-tier normal" id="atr-tier-normal">
@@ -1030,11 +1044,11 @@
                             <div class="rr-stat-value" id="calc-risk-pips">--</div>
                         </div>
                         <div class="rr-stat">
-                            <div class="rr-stat-label">Reward to TP1</div>
+                            <div class="rr-stat-label">Potential Gain to Target 1</div>
                             <div class="rr-stat-value" id="calc-reward-pips">--</div>
                         </div>
                         <div class="rr-stat highlight">
-                            <div class="rr-stat-label">R:R to TP1</div>
+                            <div class="rr-stat-label">Reward vs Risk (TP1)</div>
                             <div class="rr-stat-value" id="calc-rr-tp1">--</div>
                         </div>
                         <div class="rr-stat">
@@ -1106,12 +1120,12 @@
                     </div>
                 </div>
                 
-                <!-- Kill Zone Indicator - NEW -->
+                <!-- Session Hot Zone Indicator -->
                 <div style="padding: 0 var(--spacing-md);">
                     <div class="kill-zone-indicator" id="kill-zone-indicator" style="display: none;">
                         <div class="kz-icon">&#x1F3AF;</div>
                         <div class="kz-content">
-                            <div class="kz-name" id="kz-name">London Open</div>
+                            <div class="kz-name" id="kz-name">London Open <span class="inst-check-tooltip" style="font-size:0.7rem;">?<span class="tooltip-content">A Session Hot Zone is a high-probability time window when institutional volume peaks. Price moves faster and further. Treat as a bonus filter &mdash; good UTCC setups during these windows carry extra conviction.</span></span></div>
                             <div class="kz-desc" id="kz-desc">High volatility breakout zone</div>
                             <div class="kz-pairs" id="kz-pairs">Optimal: EURUSD, GBPUSD</div>
                         </div>
@@ -1131,9 +1145,9 @@
                             <span class="entry-icon">&#x1F4CD;</span>
                             <span class="entry-label">Limit</span>
                         </button>
-                        <button type="button" class="entry-type-btn" data-type="scale" id="btn-scale" onclick="selectEntryType('scale')">
+                        <button type="button" class="entry-type-btn" data-type="scale" id="btn-scale" onclick="selectEntryType('scale')" title="Split your position into 2 entries: 50% now at the initial signal, 50% on a pullback confirmation. A+ setups only.">
                             <span class="entry-icon">&#x1F4CA;</span>
-                            <span class="entry-label">Scale-In</span>
+                            <span class="entry-label">Split Entry</span>
                         </button>
                     </div>
                     
@@ -1169,7 +1183,7 @@
                     <!-- Scale-In Details (hidden by default) -->
                     <div id="scale-in-details" class="entry-details">
                         <div class="scale-in-details">
-                            <h4 style="margin-bottom: var(--spacing-sm); color: var(--accent-tertiary);">&#x1F4CA; Scale-In Protocol (A+ Setups Only)</h4>
+                            <h4 style="margin-bottom: var(--spacing-sm); color: var(--accent-tertiary);">&#x1F4CA; Split Entry Protocol (A+ Setups Only)</h4>
                             
                             <!-- Scale-In Grade Check - NEW -->
                             <div class="scale-grade-check" id="scale-grade-check">
@@ -2972,6 +2986,70 @@
                 </div>
             </div>
             
+
+            <!-- Push Notifications -->
+            <div class="card mb-lg" id="push-notifications-card">
+                <div class="card-header">
+                    <h2 class="card-title">&#x1F514; Push Notifications</h2>
+                    <div id="push-notif-status-badge">
+                        <span class="badge" id="push-status-badge">Checking...</span>
+                    </div>
+                </div>
+
+                <p class="text-muted mb-md" style="font-size: 0.85rem;">
+                    Receive alerts on your phone when trading events occur. Install FCC to your home screen (Chrome &#x2192; Add to Home Screen) for full background push support.
+                </p>
+
+                <div class="form-group mb-md">
+                    <button class="btn btn-primary" id="push-enable-btn" onclick="FCCPushPrefs.requestPermission()">
+                        &#x1F514; Enable Push Notifications
+                    </button>
+                    <button class="btn btn-secondary" id="push-test-btn" onclick="FCCPushPrefs.sendTest()" style="display:none;">
+                        &#x1F9EA; Send Test
+                    </button>
+                </div>
+
+                <div id="push-toggles" style="display:none;">
+                    <p style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Alert Types</p>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="push-pref-armed" onchange="FCCPushPrefs.save()" checked>
+                            <strong>ARMED alert fires</strong>
+                            <span class="text-muted" style="font-size:0.8rem;"> &mdash; immediate push when pair arms</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="push-pref-fomo" onchange="FCCPushPrefs.save()" checked>
+                            <strong>FOMO gate cleared (1hr)</strong>
+                            <span class="text-muted" style="font-size:0.8rem;"> &mdash; push when 1-hour analysis window completes</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="push-pref-news" onchange="FCCPushPrefs.save()" checked>
+                            <strong>News gate warning</strong>
+                            <span class="text-muted" style="font-size:0.8rem;"> &mdash; push when high-impact event enters buffer window</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="push-pref-circuit" onchange="FCCPushPrefs.save()" checked>
+                            <strong>Circuit breaker threshold</strong>
+                            <span class="text-muted" style="font-size:0.8rem;"> &mdash; push at -3% cap, -5% stand-down, -10% emergency</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="push-blocked-msg" style="display:none; padding: 10px; background: rgba(239,68,68,0.1); border-radius: 6px; border: 1px solid var(--color-fail); font-size: 0.85rem; color: var(--color-fail);">
+                    &#x26A0; Notifications are blocked. Enable them in your browser/device settings, then reload.
+                </div>
+            </div>
+
             <!-- System Info -->
             <div class="card">
                 <div class="card-header">
@@ -3110,6 +3188,94 @@
 
     <!-- INITIALIZATION === -->
     <script src="js/tooltip-definitions.js"></script>
+
+    <!-- Mobile nav menu overlay -->
+    <div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="closeMobileMenu()"></div>
+    <div id="mobile-menu" class="mobile-menu">
+        <div class="mobile-menu-header">
+            <span>&#x1F4CA; FCC</span>
+            <button onclick="closeMobileMenu()" class="mobile-menu-close">&#x2715;</button>
+        </div>
+        <nav class="mobile-menu-nav">
+            <button class="mobile-menu-btn active" data-tab="dashboard" onclick="mobileShowTab('dashboard')">
+                <span class="mobile-menu-icon">&#x1F4CA;</span> Dashboard
+            </button>
+            <button class="mobile-menu-btn" data-tab="daily-context" onclick="mobileShowTab('daily-context')">
+                <span class="mobile-menu-icon">&#x1F4CB;</span> Briefing
+            </button>
+            <button class="mobile-menu-btn" data-tab="playbook" onclick="mobileShowTab('playbook')">
+                <span class="mobile-menu-icon">&#x1F3AF;</span> Game Plan
+            </button>
+            <button class="mobile-menu-btn" data-tab="validation" onclick="mobileShowTab('validation')">
+                <span class="mobile-menu-icon">&#x2714;</span> Pre-Trade
+            </button>
+            <button class="mobile-menu-btn" data-tab="journal" onclick="mobileShowTab('journal')">
+                <span class="mobile-menu-icon">&#x1F4D3;</span> Journal
+            </button>
+            <button class="mobile-menu-btn" data-tab="performance" onclick="mobileShowTab('performance')">
+                <span class="mobile-menu-icon">&#x1F4C8;</span> Performance
+            </button>
+            <button class="mobile-menu-btn" data-tab="reference" onclick="mobileShowTab('reference')">
+                <span class="mobile-menu-icon">&#x1F4DA;</span> Reference
+            </button>
+            <button class="mobile-menu-btn" data-tab="settings" onclick="mobileShowTab('settings')">
+                <span class="mobile-menu-icon">&#x2699;</span> Settings
+            </button>
+        </nav>
+        <div class="mobile-menu-footer">
+            <button class="mobile-menu-guide-btn" onclick="TradingGuide.show(); closeMobileMenu();">
+                &#x1F4D6; UTCC Guide
+            </button>
+        </div>
+    </div>
+
+    <script>
+    function toggleMobileMenu() {
+        var menu = document.getElementById('mobile-menu');
+        var overlay = document.getElementById('mobile-menu-overlay');
+        var btn = document.getElementById('hamburger-btn');
+        var isOpen = menu.classList.contains('open');
+        if (isOpen) {
+            closeMobileMenu();
+        } else {
+            menu.classList.add('open');
+            overlay.classList.add('open');
+            btn.classList.add('open');
+        }
+    }
+
+    function closeMobileMenu() {
+        document.getElementById('mobile-menu').classList.remove('open');
+        document.getElementById('mobile-menu-overlay').classList.remove('open');
+        document.getElementById('hamburger-btn').classList.remove('open');
+    }
+
+    function mobileShowTab(tabId) {
+        showTab(tabId);
+        closeMobileMenu();
+        // Update active state in mobile menu
+        document.querySelectorAll('.mobile-menu-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+        // Also update desktop tab active state (showTab handles this but ensure mobile stays in sync)
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            var tabMatch = btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabId);
+            if (tabMatch) btn.classList.add('active');
+        });
+    }
+
+    // Keep mobile menu active state in sync when showTab is called from elsewhere
+    var _origShowTab = showTab;
+    showTab = function(tabId) {
+        _origShowTab(tabId);
+        document.querySelectorAll('.mobile-menu-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.tab === tabId);
+        });
+    };
+    </script>
+
+    <!-- PWA Push Notifications (v1.0.0) -->
+    <script src="js/pwa-notifications.js"></script>
 
 </body>
 </html>

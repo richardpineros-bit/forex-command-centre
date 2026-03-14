@@ -1265,6 +1265,17 @@
                 reason: `Daily loss exceeded -10% (${dailyPnL.toFixed(2)}%)`
             };
             triggeredActions.push('EMERGENCY STAND-DOWN: -10% daily loss');
+            // Push notification
+            if (window.FCCPush) {
+                var prefs = window.FCCPushPrefs ? window.FCCPushPrefs.get() : {};
+                if (prefs.circuitBreaker !== false) {
+                    window.FCCPush.trigger('CIRCUIT_BREAKER', {
+                        drawdown: dailyPnL.toFixed(2) + '%',
+                        level: 'EMERGENCY',
+                        message: 'EMERGENCY STAND-DOWN: Daily loss -10%. 48h lockout active.'
+                    });
+                }
+            }
             
         } else if (dailyPnL <= THRESHOLDS.DAILY_LOSS_STANDDOWN_PERCENT && 
                    state.global.standDownLevel !== STAND_DOWN_LEVELS.STANDDOWN &&
@@ -1275,6 +1286,17 @@
             state.global.standDownUntil = addHours(new Date(), 24).toISOString();
             state.global.standDownLevel = STAND_DOWN_LEVELS.STANDDOWN;
             triggeredActions.push('STAND-DOWN: -5% daily loss');
+            // Push notification
+            if (window.FCCPush) {
+                var prefs = window.FCCPushPrefs ? window.FCCPushPrefs.get() : {};
+                if (prefs.circuitBreaker !== false) {
+                    window.FCCPush.trigger('CIRCUIT_BREAKER', {
+                        drawdown: dailyPnL.toFixed(2) + '%',
+                        level: 'STANDDOWN',
+                        message: 'STAND-DOWN: Daily loss -5%. 24h lockout active.'
+                    });
+                }
+            }
             
         } else if (dailyPnL <= THRESHOLDS.DAILY_LOSS_CAP_PERCENT && 
                    !state.global.riskCapped) {
@@ -1282,6 +1304,17 @@
             state.global.riskCapped = true;
             state.global.standDownLevel = STAND_DOWN_LEVELS.CAP;
             triggeredActions.push('RISK CAPPED: -3% daily loss');
+            // Push notification
+            if (window.FCCPush) {
+                var prefs = window.FCCPushPrefs ? window.FCCPushPrefs.get() : {};
+                if (prefs.circuitBreaker !== false) {
+                    window.FCCPush.trigger('CIRCUIT_BREAKER', {
+                        drawdown: dailyPnL.toFixed(2) + '%',
+                        level: 'CAP',
+                        message: 'RISK CAPPED: Daily loss -3%. Risk reduced to 50%.'
+                    });
+                }
+            }
         }
         
         saveState(state);

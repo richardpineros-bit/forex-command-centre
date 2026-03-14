@@ -175,13 +175,19 @@
     }
 
     .fab {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: var(--spacing-md);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px);
+        right: 16px;
     }
 
     .fab-calendar {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: calc(var(--spacing-md) + 70px);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px + 48px + 12px);
+        right: 16px;
     }
 
     h1 { font-size: 1.5rem; }
@@ -346,16 +352,440 @@
     }
 }
 
-/* --- Mobile: Armed instruments FAB positioning with Quick Access Bar --- */
+/* --- Mobile: FABs stacked vertically above Quick Access Bar --- */
 @media (max-width: 768px) {
+    /* Armed (target) — bottom bubble */
     .fab {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: var(--spacing-md);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px);   /* QAB height + gap */
+        right: 16px;
     }
 
+    /* Calendar — stacked above Armed */
     .fab-calendar {
-        bottom: calc(var(--spacing-md) + 56px);
-        right: calc(var(--spacing-md) + 70px);
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        bottom: calc(48px + 16px + 48px + 12px);  /* QAB + gap + fab + gap */
+        right: 16px;
     }
 }
 
+
+/* ============================================
+   MOBILE OPTIMISATION v4.6.3
+   Tabs, forms, dropdowns, menus
+   ============================================ */
+
+/* --- Scrollable tab bar with visible scroll indicator --- */
+@media (max-width: 768px) {
+    .app-header {
+        padding: var(--spacing-sm) var(--spacing-sm);
+    }
+
+    .tab-nav {
+        scrollbar-width: thin;
+        scrollbar-color: var(--accent-primary) transparent;
+        padding-bottom: 4px;
+        gap: 2px;
+    }
+
+    .tab-btn {
+        font-size: 0.78rem;
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        min-height: 36px;
+        min-width: 0;
+    }
+
+    .tab-btn.active {
+        background: var(--accent-primary);
+        color: #000;
+        font-weight: 600;
+    }
+
+    /* Hide title text on very small screens, keep icon */
+    .app-title span {
+        display: none;
+    }
+
+    /* Header quick actions row — compact */
+    .header-quick-actions {
+        gap: 4px;
+    }
+
+    .header-quick-actions button,
+    #pwa-notif-btn {
+        font-size: 11px !important;
+        padding: 5px 8px !important;
+    }
+
+    .btn-gold-nugget {
+        font-size: 11px !important;
+        padding: 5px 8px !important;
+    }
+}
+
+/* --- Forms: larger touch targets on mobile --- */
+@media (max-width: 768px) {
+    .form-input,
+    .form-select,
+    .form-textarea {
+        font-size: 1rem;        /* prevents iOS zoom on focus */
+        min-height: 44px;       /* Apple HIG minimum touch target */
+        padding: 10px 14px;
+    }
+
+    .form-select {
+        padding-right: 40px;
+        background-position: right 14px center;
+        background-size: 14px;
+    }
+
+    .form-label {
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+    }
+
+    .form-group {
+        margin-bottom: 14px;
+    }
+
+    /* Checkbox: bigger tap area */
+    .checkbox-label {
+        font-size: 0.92rem;
+        line-height: 1.5;
+        padding: 4px 0;
+    }
+
+    .checkbox-wrapper input[type="checkbox"],
+    input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
+    }
+
+    /* Buttons: full width on mobile where stacked */
+    .btn {
+        min-height: 44px;
+        font-size: 0.9rem;
+    }
+}
+
+/* --- Select/dropdown: native but styled for dark theme --- */
+@media (max-width: 768px) {
+    .form-select {
+        /* Force native picker on mobile — more reliable than custom */
+        -webkit-appearance: none;
+        appearance: none;
+        background-color: var(--bg-input);
+        color: var(--text-primary);
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-md);
+        /* Larger chevron for touch */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%2322c55e' d='M8 11L2 5h12z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 14px center;
+        background-size: 16px;
+        padding-right: 42px;
+    }
+
+    .form-select:focus {
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+    }
+}
+
+/* --- Grid: always single column on phone --- */
+@media (max-width: 480px) {
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* --- Cards: tighter padding on small screens --- */
+@media (max-width: 480px) {
+    .card {
+        padding: var(--spacing-sm);
+        border-radius: var(--radius-md);
+    }
+
+    .card-header {
+        padding-bottom: var(--spacing-xs);
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .card-title {
+        font-size: 0.95rem;
+    }
+}
+
+/* --- Tab content padding on mobile --- */
+@media (max-width: 480px) {
+    .tab-content {
+        padding: var(--spacing-sm) 0;
+        padding-bottom: 80px;
+    }
+
+    .container {
+        padding: 0 var(--spacing-xs);
+    }
+}
+
+/* ============================================
+   HAMBURGER MENU v4.6.4
+   Mobile: slide-in nav drawer
+   Desktop: hamburger hidden, tabs shown
+   ============================================ */
+
+/* --- Hamburger button (mobile only) --- */
+.hamburger-btn {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    width: 40px;
+    height: 40px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    padding: 8px;
+    flex-shrink: 0;
+    transition: background var(--transition-fast);
+}
+
+.hamburger-btn:hover {
+    background: var(--bg-hover);
+}
+
+.hamburger-bar {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: var(--text-primary);
+    border-radius: 2px;
+    transition: all 0.25s ease;
+    transform-origin: center;
+}
+
+/* Animate bars to X when open */
+.hamburger-btn.open .hamburger-bar:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+}
+.hamburger-btn.open .hamburger-bar:nth-child(2) {
+    opacity: 0;
+    transform: scaleX(0);
+}
+.hamburger-btn.open .hamburger-bar:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+}
+
+/* --- Overlay backdrop --- */
+.mobile-menu-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 199;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.mobile-menu-overlay.open {
+    display: block;
+    opacity: 1;
+}
+
+/* --- Slide-in drawer --- */
+.mobile-menu {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 280px;
+    max-width: 85vw;
+    height: 100dvh;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-primary);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+}
+
+.mobile-menu.open {
+    transform: translateX(0);
+}
+
+/* --- Drawer header --- */
+.mobile-menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-primary);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--accent-primary);
+    font-family: var(--font-heading);
+    flex-shrink: 0;
+}
+
+.mobile-menu-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+}
+
+.mobile-menu-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+/* --- Drawer nav items --- */
+.mobile-menu-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 12px;
+    gap: 4px;
+    flex: 1;
+}
+
+.mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 13px 16px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-family: var(--font-heading);
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.mobile-menu-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.mobile-menu-btn.active {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+.mobile-menu-icon {
+    font-size: 1.1rem;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* --- Drawer footer --- */
+.mobile-menu-footer {
+    padding: 12px 16px 24px;
+    border-top: 1px solid var(--border-primary);
+    flex-shrink: 0;
+}
+
+.mobile-menu-guide-btn {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: var(--radius-md);
+    color: var(--accent-primary);
+    font-size: 0.95rem;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.mobile-menu-guide-btn:hover {
+    background: rgba(34, 197, 94, 0.2);
+}
+
+/* ============================================
+   RESPONSIVE — show/hide hamburger vs tabs
+   ============================================ */
+@media (max-width: 768px) {
+    .hamburger-btn {
+        display: flex;
+    }
+
+    #desktop-tab-nav {
+        display: none;
+    }
+
+    /* Compact header row on mobile */
+    .app-header-content {
+        flex-direction: row !important;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .app-title {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .app-title h1 {
+        font-size: 0.95rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Shrink quick actions on mobile */
+    .header-quick-actions {
+        width: auto !important;
+        margin-left: 0 !important;
+        flex-shrink: 0;
+    }
+
+    .theme-toggle {
+        width: auto !important;
+        flex-shrink: 0;
+    }
+
+    /* Hide Guide button from header on mobile (it's in the drawer) */
+    .btn-gold-nugget {
+        display: none;
+    }
+
+    /* Hide theme buttons on mobile (use settings instead) */
+    .theme-toggle-btn {
+        display: none;
+    }
+}
+
+@media (min-width: 769px) {
+    .hamburger-btn {
+        display: none;
+    }
+
+    .mobile-menu,
+    .mobile-menu-overlay {
+        display: none !important;
+    }
+}

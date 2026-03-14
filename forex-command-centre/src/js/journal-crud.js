@@ -2032,4 +2032,11 @@ journalStyles.textContent = `
 `;
 document.head.appendChild(journalStyles);
 
+// Auto-refresh trade history table when auto-journal writes a new entry
+window.addEventListener('journal:entry', function() {
+    if (typeof loadTrades === 'function') {
+        setTimeout(loadTrades, 500);
+    }
+});
+
 // CHUNK 5 COMPLETE - Trade Journal CRUD
