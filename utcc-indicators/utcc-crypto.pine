@@ -118,9 +118,13 @@ ALERT_BLOCKED   = "BLOCKED"
 // ============================================================================
 EXECUTION_NONE = "NONE"
 
-EXECUTION_FULL = "- MAX_RISK: 1.0R\n- MAX_TRADES: 3\n- ADDS: ENABLED"
+EXECUTION_FULL = "- MAX_RISK: 1.0R\n" +
+    "- MAX_TRADES: 3\n" +
+    "- ADDS: ENABLED"
 
-EXECUTION_CONDITIONAL = "- MAX_RISK: 0.25R\n- MAX_TRADES: 1\n- ADDS: DISABLED"
+EXECUTION_CONDITIONAL = "- MAX_RISK: 0.25R\n" +
+    "- MAX_TRADES: 1\n" +
+    "- ADDS: DISABLED"
 
 // ============================================================================
 // ALERT BUILDER FUNCTIONS (Institutional Format)
