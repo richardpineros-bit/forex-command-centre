@@ -382,8 +382,7 @@ ALERT_BLOCKED   = "BLOCKED"
 // ============================================================================
 // EXECUTION STRINGS (Pre-Built)
 // ============================================================================
-EXECUTION_NONE =
-    "NONE"
+EXECUTION_NONE = "NONE"
 
 EXECUTION_FULL =
     "- MAX_RISK: 1.0R\n" +
