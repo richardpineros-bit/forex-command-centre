@@ -489,27 +489,6 @@ f_buildAlert(
     header + "\n" + "\u2014\n" + body
 
 
-// JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
-f_buildJson_context() =>
-    string dStr = trendDirection == 1 ? "long" : trendDirection == -1 ? "short" : "none"
-    string eClean = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPTIMAL" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACCEPTABLE" : "EXTENDED"
-    string maxRisk = finalPermission == "STAND_DOWN" ? "NONE" : finalPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
-    string maxTrades = finalPermission == "STAND_DOWN" ? "0" : finalPermission == "CONDITIONAL" ? "1" : "3"
-    string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
-    string p = '{"type":"' + resolvedAlertType + '","pair":"' + syminfo.ticker + '","asset_class":"METALS"'
-    p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
-    p := p + ',"permission":"' + finalPermission + '"'
-    p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
-    p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
-    p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
-    p := p + ',"vol_state":"' + atrState + '","vol_behaviour":"' + atrState + '","vol_level":' + str.tostring(math.round(atrPercentile))
-    p := p + ',"mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rsiCount
-    p := p + ',"session":"' + currentSession + '","playbook":"' + currentPlaybook + '"'
-    p := p + ',"regime":"' + regimeCode + '","risk_state":"' + riskCode + '"}}'
-    p
-
-
-// JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
 // ============================================================================
 // CALCULATIONS: EMA TREND SYSTEM
 // ============================================================================
@@ -2388,6 +2367,25 @@ if barstate.islast and showAlertDiagnostics
     table.cell(diagTable, 1, dRow, candidateText, 
          text_color=candidateColor, text_size=diagSize,
          bgcolor=color.rgb(30, 30, 40), text_halign=text.align_right)
+
+// JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
+f_buildJson_context() =>
+    string dStr = trendDirection == 1 ? "long" : trendDirection == -1 ? "short" : "none"
+    string eClean = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPTIMAL" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACCEPTABLE" : "EXTENDED"
+    string maxRisk = finalPermission == "STAND_DOWN" ? "NONE" : finalPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
+    string maxTrades = finalPermission == "STAND_DOWN" ? "0" : finalPermission == "CONDITIONAL" ? "1" : "3"
+    string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
+    string p = '{"type":"' + resolvedAlertType + '","pair":"' + syminfo.ticker + '","asset_class":"METALS"'
+    p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
+    p := p + ',"permission":"' + finalPermission + '"'
+    p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
+    p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
+    p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
+    p := p + ',"vol_state":"' + atrState + '","vol_behaviour":"' + atrState + '","vol_level":' + str.tostring(math.round(atrPercentile))
+    p := p + ',"mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rsiCount
+    p := p + ',"session":"' + currentSession + '","playbook":"' + currentPlaybook + '"'
+    p := p + ',"regime":"' + regimeCode + '","risk_state":"' + riskCode + '"}}'
+    p
 
 // v2.5.0: Institutional alert system using f_buildAlert()
 

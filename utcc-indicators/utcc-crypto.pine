@@ -544,27 +544,6 @@ colorText = input.color(color.white, "Text", group=GRP_STYLE, inline="table3")
 
 // ============================================================================
 
-// JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
-f_buildJson_context() =>
-    string dStr = trendDirection == 1 ? "long" : trendDirection == -1 ? "short" : "none"
-    string eClean = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPTIMAL" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACCEPTABLE" : "EXTENDED"
-    string maxRisk = finalPermission == "STAND_DOWN" ? "NONE" : finalPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
-    string maxTrades = finalPermission == "STAND_DOWN" ? "0" : finalPermission == "CONDITIONAL" ? "1" : "3"
-    string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
-    string p = '{"type":"' + resolvedAlertType + '","pair":"' + syminfo.ticker + '","asset_class":"CRYPTO"'
-    p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
-    p := p + ',"permission":"' + finalPermission + '"'
-    p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
-    p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
-    p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
-    p := p + ',"vol_state":"' + atrState + '","vol_behaviour":"' + atrState + '","vol_level":' + str.tostring(math.round(atrPercentile))
-    p := p + ',"mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rsiCount
-    p := p + ',"session":"' + currentSession + '","playbook":"' + currentPlaybook + '"'
-    p := p + ',"regime":"' + regimeCode + '","risk_state":"' + riskCode + '"}}'
-    p
-
-// 📊 CALCULATIONS: EMA TREND SYSTEM
-// ============================================================================
 
 fastEMA = ta.ema(close, fastLength)
 midEMA = ta.ema(close, midLength)
@@ -2568,6 +2547,25 @@ riskContext = weekendRiskDetected ? "Reduced liquidity" :
 
 // v2.5.1: Short playbook for alerts (strips LONG/SHORT suffix)
 playbookShort = str.contains(currentPlaybook, "CONTINUATION") ? "CONTINUATION" : str.contains(currentPlaybook, "DEEP PULLBACK") ? "DEEP PULLBACK" : str.contains(currentPlaybook, "OBSERVATION") ? "OBSERVATION" : str.contains(currentPlaybook, "STAND DOWN") ? "STAND DOWN" : "NO TRADE"
+
+// JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
+f_buildJson_context() =>
+    string dStr = trendDirection == 1 ? "long" : trendDirection == -1 ? "short" : "none"
+    string eClean = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPTIMAL" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACCEPTABLE" : "EXTENDED"
+    string maxRisk = finalPermission == "STAND_DOWN" ? "NONE" : finalPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
+    string maxTrades = finalPermission == "STAND_DOWN" ? "0" : finalPermission == "CONDITIONAL" ? "1" : "3"
+    string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
+    string p = '{"type":"' + resolvedAlertType + '","pair":"' + syminfo.ticker + '","asset_class":"CRYPTO"'
+    p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
+    p := p + ',"permission":"' + finalPermission + '"'
+    p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
+    p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
+    p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
+    p := p + ',"vol_state":"' + atrState + '","vol_behaviour":"' + atrState + '","vol_level":' + str.tostring(math.round(atrPercentile))
+    p := p + ',"mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rsiCount
+    p := p + ',"session":"' + currentSession + '","playbook":"' + currentPlaybook + '"'
+    p := p + ',"regime":"' + regimeCode + '","risk_state":"' + riskCode + '"}}'
+    p
 
 // ============================================================================
 // REGISTER ALERT CONDITIONS (4-Emoji Standard)
