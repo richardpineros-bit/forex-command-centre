@@ -1958,7 +1958,7 @@ if useAlertPerBar or useAlertBarClose
                 finalPermission == "STAND_DOWN" ? EXECUTION_NONE : EXECUTION_CONDITIONAL,
                 riskCode,
                 math.round(overallScore)
-             + "\n" + f_buildJson_context()),
+            ) + "\n" + f_buildJson_context(),
             alert.freq_once_per_bar
         )
     
@@ -1973,7 +1973,7 @@ if useAlertPerBar or useAlertBarClose
                 finalPermission == "STAND_DOWN" ? EXECUTION_NONE : EXECUTION_CONDITIONAL,
                 riskCode,
                 math.round(overallScore)
-             + "\n" + f_buildJson_context()),
+            ) + "\n" + f_buildJson_context(),
             alert.freq_once_per_bar
         )
     
@@ -1989,7 +1989,7 @@ if useAlertPerBar or useAlertBarClose
                 resolvedExecution,
                 riskCode,
                 math.round(overallScore)
-             + "\n" + f_buildJson_context()),
+            ) + "\n" + f_buildJson_context(),
             alertFreq
         )
     
@@ -2004,7 +2004,7 @@ if useAlertPerBar or useAlertBarClose
                 resolvedExecution,
                 riskCode,
                 math.round(overallScore)
-             + "\n" + f_buildJson_context()),
+            ) + "\n" + f_buildJson_context(),
             alertFreq
         )
     
@@ -2020,7 +2020,7 @@ if useAlertPerBar or useAlertBarClose
                 EXECUTION_NONE,
                 riskCode,
                 math.round(overallScore)
-             + "\n" + f_buildJson_context()),
+            ) + "\n" + f_buildJson_context(),
             alertFreq
         )
     
