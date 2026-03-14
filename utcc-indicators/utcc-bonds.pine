@@ -393,7 +393,7 @@ EXECUTION_CONDITIONAL = "- MAX_RISK: 0.25R\n- MAX_TRADES: 1\n- ADDS: DISABLED"
 // ============================================================================
 
 // Emoji Resolver (strict, fixed — 4 emojis only)
-f_alertEmoji(alertType) =>
+f_alertEmoji(string alertType) =>
     string emoji = "\u26AA"
     if alertType == ALERT_ARMED
         emoji := "\U0001F7E2"
@@ -406,7 +406,7 @@ f_alertEmoji(alertType) =>
     emoji
 
 // Severity Prefix ([A]/[C]/[B]/[I])
-f_alertPrefix(alertType) =>
+f_alertPrefix(string alertType) =>
     string prefix = "[I]"
     if alertType == ALERT_ARMED
         prefix := "[A]"
@@ -419,13 +419,13 @@ f_alertPrefix(alertType) =>
     prefix
 
 // Header Builder (scan line for triage)
-f_alertHeader(alertType, symbolStr, primaryReason, riskState, scoreStr) =>
+f_alertHeader(string alertType, string symbolStr, string primaryReason, string riskState, string scoreStr) =>
     emoji = f_alertEmoji(alertType)
     prefix = f_alertPrefix(alertType)
     emoji + " " + prefix + " " + alertType + " | " + symbolStr + " | " + primaryReason + " | " + riskState + " | " + scoreStr
 
 // Body Builder (audit detail)
-f_alertBody(primaryReason, contributingReasons, permission, execution) =>
+f_alertBody(string primaryReason, string contributingReasons, string permission, string execution) =>
     "Primary: " + primaryReason + "\n" +
     "Contributing: [" + contributingReasons + "]\n\n" +
     "PERMISSION: " + permission + "\n" +
