@@ -426,10 +426,7 @@ f_alertHeader(string alertType, string symbolStr, string primaryReason, string r
 
 // Body Builder (audit detail)
 f_alertBody(string primaryReason, string contributingReasons, string permission, string execution) =>
-    "Primary: " + primaryReason + "\n" +
-    "Contributing: [" + contributingReasons + "]\n\n" +
-    "PERMISSION: " + permission + "\n" +
-    "EXECUTION:\n" + execution
+    "Primary: " + primaryReason + "\nContributing: [" + contributingReasons + "]\n\nPERMISSION: " + permission + "\nEXECUTION:\n" + execution
 
 // Full Alert Builder (header + em-dash + body)
 f_buildAlert(
