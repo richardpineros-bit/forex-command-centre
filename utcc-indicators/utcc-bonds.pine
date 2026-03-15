@@ -433,14 +433,14 @@ f_alertBody(string primaryReason, string contributingReasons, string permission,
 
 // Full Alert Builder (header + em-dash + body)
 f_buildAlert(
-    alertType,
-    symbolStr,
-    primaryReason,
-    contributingReasons,
-    permission,
-    execution,
-    riskState,
-    scoreValue
+    string alertType,
+    string symbolStr,
+    string primaryReason,
+    string contributingReasons,
+    string permission,
+    string execution,
+    string riskState,
+    int scoreValue
 ) =>
     scoreStr = "U-SCORE-" + str.tostring(scoreValue)
     header = f_alertHeader(alertType, symbolStr, primaryReason, riskState, scoreStr)
