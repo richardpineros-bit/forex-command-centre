@@ -2472,17 +2472,17 @@
                     <table class="table" id="trade-history-table">
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Pair</th>
-                                <th>Dir</th>
+                                <th id="th-date" onclick="sortTradeHistory('date')" style="cursor:pointer;user-select:none;">Date<span class="sort-arrow"> &#x25BC;</span></th>
+                                <th id="th-pair" onclick="sortTradeHistory('pair')" style="cursor:pointer;user-select:none;">Pair<span class="sort-arrow"> &#x25B8;</span></th>
+                                <th id="th-dir" onclick="sortTradeHistory('dir')" style="cursor:pointer;user-select:none;">Dir<span class="sort-arrow"> &#x25B8;</span></th>
                                 <th>Source</th>
                                 <th>Alert</th>
-                                <th>Grade</th>
+                                <th id="th-grade" onclick="sortTradeHistory('grade')" style="cursor:pointer;user-select:none;">Grade<span class="sort-arrow"> &#x25B8;</span></th>
                                 <th>Entry</th>
                                 <th>Exit</th>
-                                <th>R-Multiple</th>
-                                <th>Score</th>
-                                <th>Zone</th>
+                                <th id="th-r" onclick="sortTradeHistory('r')" style="cursor:pointer;user-select:none;">R-Multiple<span class="sort-arrow"> &#x25B8;</span></th>
+                                <th id="th-score" onclick="sortTradeHistory('score')" style="cursor:pointer;user-select:none;">Score<span class="sort-arrow"> &#x25B8;</span></th>
+                                <th id="th-zone" onclick="sortTradeHistory('zone')" style="cursor:pointer;user-select:none;">Zone<span class="sort-arrow"> &#x25B8;</span></th>
                                 <th>Actions</th>
                             </tr>
                         </thead>

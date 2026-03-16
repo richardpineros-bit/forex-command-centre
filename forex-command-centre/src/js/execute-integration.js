@@ -117,8 +117,8 @@
             
             if (rr < 1.5) {
                 console.warn('[Validation] R:R below minimum:', rr.toFixed(2));
-                // Allow but warn
-                showNotification(`Warning: R:R is ${rr.toFixed(2)} (below 1.5)`, 'warning');
+                showNotification(`Trade blocked: R:R is ${rr.toFixed(2)} \u2014 minimum 1.5:1 required. Rework your levels.`, 'error');
+                return false;
             }
         }
         

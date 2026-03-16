@@ -8,6 +8,8 @@
 let currentEditTradeId = null;
 let tradeHistoryPage = 1;
 const TRADES_PER_PAGE = 15;
+let tradeHistorySortCol = 'date';
+let tradeHistorySortDir = 'desc';
 
 function loadTrades() {
     const trades = loadFromStorage(STORAGE_KEYS.trades, []);
@@ -265,12 +267,61 @@ function updateOpenPositions(trades) {
     `).join('');
 }
 
+function sortTradeHistory(col) {
+    if (tradeHistorySortCol === col) {
+        tradeHistorySortDir = tradeHistorySortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        tradeHistorySortCol = col;
+        tradeHistorySortDir = col === 'date' ? 'desc' : 'asc';
+    }
+    tradeHistoryPage = 1;
+    loadTrades();
+}
+
+function applyTradeSort(trades) {
+    const col = tradeHistorySortCol;
+    const dir = tradeHistorySortDir === 'asc' ? 1 : -1;
+    return [...trades].sort((a, b) => {
+        let av, bv;
+        switch (col) {
+            case 'date':   av = new Date(a.date || 0).getTime(); bv = new Date(b.date || 0).getTime(); break;
+            case 'pair':   av = (a.pair || '').toLowerCase(); bv = (b.pair || '').toLowerCase(); break;
+            case 'dir':    av = (a.direction || '').toLowerCase(); bv = (b.direction || '').toLowerCase(); break;
+            case 'grade':  av = (a.grade || 'ZZZ').toLowerCase(); bv = (b.grade || 'ZZZ').toLowerCase(); break;
+            case 'r':      av = parseFloat(a.rMultiple || a.rValue || 0); bv = parseFloat(b.rMultiple || b.rValue || 0); break;
+            case 'score':  av = parseFloat(a.trendScore || 0); bv = parseFloat(b.trendScore || 0); break;
+            case 'zone':   av = (a.entryZone || '').toLowerCase(); bv = (b.entryZone || '').toLowerCase(); break;
+            default:       return 0;
+        }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+    });
+}
+
+function updateSortHeaders() {
+    const sortable = { date: 'th-date', pair: 'th-pair', dir: 'th-dir', grade: 'th-grade', r: 'th-r', score: 'th-score', zone: 'th-zone' };
+    Object.entries(sortable).forEach(([col, id]) => {
+        const th = document.getElementById(id);
+        if (!th) return;
+        const arrow = th.querySelector('.sort-arrow');
+        if (!arrow) return;
+        if (tradeHistorySortCol === col) {
+            arrow.textContent = tradeHistorySortDir === 'asc' ? ' \u25B2' : ' \u25BC';
+        } else {
+            arrow.textContent = ' \u25B8';
+        }
+    });
+}
+
 function updateTradeHistory(trades) {
     const closedTrades = trades.filter(t => t.status === 'closed' || t.status === 'closed_pending_review' || t.status === 'complete');
-    const filteredTrades = filterTradesForHistory(closedTrades);
+    const filteredTrades = applyTradeSort(filterTradesForHistory(closedTrades));
     const tbody = document.getElementById('trade-history-body');
     
     if (!tbody) return;
+    
+    updateSortHeaders();
     
     // Paginate
     const totalPages = Math.ceil(filteredTrades.length / TRADES_PER_PAGE);
