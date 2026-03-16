@@ -132,9 +132,38 @@
                 return false;
             }
         }
+
+        // --- ENTRY ZONE ENFORCEMENT ---
+        const zone = (document.getElementById('val-entry-zone')?.value || '').toUpperCase();
+        if (zone === 'EXTENDED') {
+            showNotification('\u26D4 Trade blocked: You are Chasing \u2014 the move has left without you. Wait for a pullback.', 'error');
+            return false;
+        }
+        if (zone === 'ACCEPTABLE') {
+            const ack = document.getElementById('val-zone-stretched-ack');
+            if (!ack || !ack.checked) {
+                showNotification('\u26A0 Stretched location \u2014 tick the acknowledgement checkbox before executing.', 'warning');
+                document.getElementById('zone-stretched-ack')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return false;
+            }
+        }
         
         return true;
     }
+
+    /**
+     * Toggle stretched acknowledgement panel based on zone selection
+     */
+    function onEntryZoneChange() {
+        const zone = (document.getElementById('val-entry-zone')?.value || '').toUpperCase();
+        const ackPanel = document.getElementById('zone-stretched-ack');
+        const ackBox = document.getElementById('val-zone-stretched-ack');
+        if (ackPanel) {
+            ackPanel.style.display = zone === 'ACCEPTABLE' ? 'block' : 'none';
+        }
+        if (ackBox && zone !== 'ACCEPTABLE') ackBox.checked = false;
+    }
+    window.onEntryZoneChange = onEntryZoneChange;
 
     /**
      * Reset pre-trade form after successful capture
@@ -145,6 +174,14 @@
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+
+        // Reset entry zone
+        const zoneEl = document.getElementById('val-entry-zone');
+        if (zoneEl) zoneEl.value = '';
+        const ackPanel = document.getElementById('zone-stretched-ack');
+        if (ackPanel) ackPanel.style.display = 'none';
+        const ackBox = document.getElementById('val-zone-stretched-ack');
+        if (ackBox) ackBox.checked = false;
         
         // Uncheck execution checkboxes
         ['exec-type-declared', 'exec-single-trigger', 'exec-planned-price', 

@@ -1001,6 +1001,24 @@
                         <p class="text-muted" style="font-size: 0.75rem; margin-top: 4px;">
                             Entry type selection coming in next update (Market/Limit/Scale-in)
                         </p>
+                        <div class="form-group" style="margin-top: 0.75rem;">
+                            <label class="form-label">EMA Cloud Location
+                                <span style="font-weight:normal;color:var(--text-muted);font-size:0.7rem;">(from UTCC Alert)</span>
+                            </label>
+                            <select class="form-select" id="val-entry-zone" onchange="onEntryZoneChange()">
+                                <option value="">-- Select zone --</option>
+                                <option value="HOT">&#x1F525; Cloud Touch &mdash; price at EMA edge</option>
+                                <option value="OPTIMAL">&#x2705; Clean Pullback &mdash; pulled back into structure</option>
+                                <option value="ACCEPTABLE">&#x26A0; Stretched &mdash; away from cloud, you are late</option>
+                                <option value="EXTENDED">&#x26D4; Chasing &mdash; the move has left without you</option>
+                            </select>
+                        </div>
+                        <div id="zone-stretched-ack" style="display:none; margin-top:0.5rem; padding:0.6rem 0.75rem; background:rgba(234,179,8,0.12); border:1px solid rgba(234,179,8,0.4); border-radius:6px;">
+                            <label class="checkbox-wrapper" style="margin:0;">
+                                <input type="checkbox" id="val-zone-stretched-ack">
+                                <span class="checkbox-label" style="font-size:0.8rem; color:var(--color-warn);">I understand I am entering a stretched location &mdash; structure must fully justify this</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 

@@ -127,7 +127,6 @@ if ($action === 'canExecuteTrade') {
     echo json_encode(['allowed' => true, 'reason' => null, 'blockedBy' => null]);
     exit;
 }
-
 // Get requested file
 $fileKey = $_GET['file'] ?? $_POST['file'] ?? null;
 

@@ -446,10 +446,10 @@ function getAlertBadge(alertType) {
 
 function getZoneBadge(zone) {
     const badges = {
-        'HOT': '<span class="zone-badge zone-hot">HOT</span>',
-        'OPTIMAL': '<span class="zone-badge zone-optimal">OPT</span>',
-        'ACCEPTABLE': '<span class="zone-badge zone-acceptable">ACC</span>',
-        'EXTENDED': '<span class="zone-badge zone-extended">EXT</span>'
+        'HOT':        '<span class="zone-badge zone-hot" title="Cloud Touch">CLOUD</span>',
+        'OPTIMAL':    '<span class="zone-badge zone-optimal" title="Clean Pullback">PULL</span>',
+        'ACCEPTABLE': '<span class="zone-badge zone-acceptable" title="Stretched">STRCH</span>',
+        'EXTENDED':   '<span class="zone-badge zone-extended" title="Chasing">CHASE</span>'
     };
     return badges[zone] || '-';
 }

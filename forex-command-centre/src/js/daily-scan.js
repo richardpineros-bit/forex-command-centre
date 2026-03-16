@@ -147,10 +147,10 @@ function createPairDetailsHTML(pair) {
                 <label class="form-label">Entry Zone</label>
                 <select class="form-select" data-pair="${pair}" data-field="entryZone" onchange="onPairDataChange('${pair}')">
                     <option value="">-</option>
-                    <option value="hot">HOT</option>
-                    <option value="optimal">OPTIMAL</option>
-                    <option value="acceptable">ACCEPTABLE</option>
-                    <option value="extended">EXTENDED</option>
+                    <option value="hot">&#x1F525; Cloud Touch</option>
+                    <option value="optimal">&#x2705; Clean Pullback</option>
+                    <option value="acceptable">&#x26A0; Stretched</option>
+                    <option value="extended">&#x26D4; Chasing</option>
                 </select>
             </div>
             <div class="form-group">

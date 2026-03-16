@@ -1076,51 +1076,51 @@
 
                 '<div class="zone-card zone-hot">' +
                     '<div class="zone-header">' +
-                        '<span class="zone-badge">HOT</span>' +
+                        '<span class="zone-badge">\uD83D\uDD25 Cloud Touch</span>' +
                         '<span class="zone-distance">Within 0.3 ATR of EMA</span>' +
                     '</div>' +
                     '<div class="zone-body">' +
-                        '<p><strong>Best entry location.</strong> Price is right at the ribbon &mdash; optimal risk:reward.</p>' +
+                        '<p><strong>Best entry location.</strong> Price is right at the EMA cloud edge &mdash; textbook pullback entry.</p>' +
                         '<p>Action: <strong>Full position allowed</strong></p>' +
                     '</div>' +
                 '</div>' +
 
                 '<div class="zone-card zone-optimal">' +
                     '<div class="zone-header">' +
-                        '<span class="zone-badge">OPTIMAL</span>' +
+                        '<span class="zone-badge">\u2705 Clean Pullback</span>' +
                         '<span class="zone-distance">Within 0.5 ATR of EMA</span>' +
                     '</div>' +
                     '<div class="zone-body">' +
-                        '<p><strong>Good entry location.</strong> Slightly extended but still acceptable.</p>' +
+                        '<p><strong>Good entry location.</strong> Pulled back into structure, momentum still intact.</p>' +
                         '<p>Action: <strong>Normal position</strong></p>' +
                     '</div>' +
                 '</div>' +
 
                 '<div class="zone-card zone-acceptable">' +
                     '<div class="zone-header">' +
-                        '<span class="zone-badge">ACCEPTABLE</span>' +
+                        '<span class="zone-badge">\u26A0 Stretched</span>' +
                         '<span class="zone-distance">Within 1.0 ATR of EMA</span>' +
                     '</div>' +
                     '<div class="zone-body">' +
-                        '<p><strong>Marginal location.</strong> Consider reduced size or waiting for pullback.</p>' +
-                        '<p>Action: <strong>Reduced position (50&ndash;75%)</strong></p>' +
+                        '<p><strong>You are already late.</strong> Away from the cloud &mdash; structure must fully justify this entry.</p>' +
+                        '<p>Action: <strong>Reduced position (50&ndash;75%) + acknowledgement required</strong></p>' +
                     '</div>' +
                 '</div>' +
 
                 '<div class="zone-card zone-extended">' +
                     '<div class="zone-header">' +
-                        '<span class="zone-badge">EXTENDED</span>' +
+                        '<span class="zone-badge">\u26D4 Chasing</span>' +
                         '<span class="zone-distance">Beyond 1.0 ATR from EMA</span>' +
                     '</div>' +
                     '<div class="zone-body">' +
-                        '<p><strong>Poor location.</strong> Too far from value &mdash; likely to pull back first.</p>' +
-                        '<p>Action: <strong>DO NOT ENTER &mdash; wait for pullback</strong></p>' +
+                        '<p><strong>The move has left without you.</strong> Do not enter. Wait for price to pull back to the cloud.</p>' +
+                        '<p>Action: <strong>BLOCKED &mdash; system will not allow execution</strong></p>' +
                     '</div>' +
                 '</div>' +
 
                 '<div class="guide-box guide-box-warn">' +
-                    '<strong>&#x26A0; Location Matters More Than Score</strong>' +
-                    '<p>A score of 90 in an EXTENDED zone is worse than a score of 80 in a HOT zone. Never buy into resistance. Never short into support. Location trumps everything.</p>' +
+                    '<strong>\u26A0 Location Matters More Than Score</strong>' +
+                    '<p>A score of 90 in a Chasing zone is worse than a score of 80 at Cloud Touch. Never buy into resistance. Never short into support. Location trumps everything.</p>' +
                 '</div>' +
 
                 '<h3>Support/Resistance Rules</h3>' +
