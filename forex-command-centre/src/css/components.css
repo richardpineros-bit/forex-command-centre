@@ -260,6 +260,16 @@
     letter-spacing: 0.5px;
 }
 
+.table th[id] {
+    cursor: pointer;
+    user-select: none;
+}
+
+.table th[id]:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
 .table tr:last-child td {
     border-bottom: none;
 }

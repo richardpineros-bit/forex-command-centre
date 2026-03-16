@@ -277,6 +277,7 @@ function sortTradeHistory(col) {
     tradeHistoryPage = 1;
     loadTrades();
 }
+window.sortTradeHistory = sortTradeHistory;
 
 function applyTradeSort(trades) {
     const col = tradeHistorySortCol;
