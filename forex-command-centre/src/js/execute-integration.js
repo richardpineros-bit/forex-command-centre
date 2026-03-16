@@ -23,15 +23,16 @@
         // Visual feedback
         btn.classList.add('capturing');
         const originalText = btn.textContent;
-        btn.textContent = 'Capturing...';
+        btn.textContent = 'Checking...';
         
         try {
-            // 1. Run existing validation (if any)
-            const validationPassed = runPreTradeValidation();
+            // 1. Server-side permission gate + field validation (async)
+            const validationPassed = await runPreTradeValidation();
             if (!validationPassed) {
-                showNotification('Validation failed - check all criteria', 'warning');
                 return;
             }
+            
+            btn.textContent = 'Capturing...';
             
             // 2. Create pending trade via TradeCapture
             if (typeof TradeCapture !== 'undefined') {
@@ -77,8 +78,9 @@
     /**
      * Run pre-trade validation checks
      * Returns true if all required checks pass
+     * Server-side gate is the authority for circuit breaker + daily context
      */
-    function runPreTradeValidation() {
+    async function runPreTradeValidation() {
         // Check required fields
         const pair = document.getElementById('val-pair')?.value;
         const direction = document.getElementById('val-direction')?.value;
@@ -94,15 +96,24 @@
             console.warn('[Validation] Missing entry or stop');
             return false;
         }
-        
-        // Check Circuit Breaker permission
-        if (typeof CircuitBreaker !== 'undefined' && CircuitBreaker.canTrade) {
-            const canTrade = CircuitBreaker.canTrade();
-            if (!canTrade.allowed) {
-                console.warn('[Validation] Circuit breaker blocked:', canTrade.reason);
-                showNotification('Trading blocked: ' + canTrade.reason, 'error');
+
+        // --- SERVER-SIDE PERMISSION GATE ---
+        // Authoritative check — reads circuit-breaker.json + daily-context.json directly
+        // Browser state is irrelevant here; server is the single source of truth
+        try {
+            const permResponse = await fetch('/api/storage-api.php?action=canExecuteTrade');
+            if (!permResponse.ok) throw new Error('HTTP ' + permResponse.status);
+            const perm = await permResponse.json();
+            if (!perm.allowed) {
+                console.warn('[Validation] Server gate blocked:', perm.reason);
+                showNotification('\u26D4 Trade blocked: ' + perm.reason, 'error');
                 return false;
             }
+        } catch (e) {
+            // Fail-closed: if we can't reach the server, no trade
+            console.error('[Validation] Permission gate unreachable:', e.message);
+            showNotification('\u26D4 Trade blocked: Cannot verify trading permission — check connection', 'error');
+            return false;
         }
         
         // Check minimum R:R

@@ -29,7 +29,8 @@
         'ftcc_broker_config': 'broker-config',
         'ftcc_settings': 'settings',
         'ftcc_regime': 'regime',
-        'ftcc_playbook': 'playbook'
+        'ftcc_playbook': 'playbook',
+        'fcc_daily_context': 'daily-context'
     };
 
     // Reverse map for intercept lookups

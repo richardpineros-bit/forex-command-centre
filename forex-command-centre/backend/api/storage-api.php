@@ -36,6 +36,98 @@ $allowedFiles = [
     'daily-context' => 'daily-context.json'
 ];
 
+// ============================================================
+// canExecuteTrade - Authoritative server-side permission gate
+// Called by execute-integration.js before ANY trade execution
+// Reads state files directly — browser has no input here
+// ============================================================
+$action = $_GET['action'] ?? null;
+
+if ($action === 'canExecuteTrade') {
+    $cbPath  = $storageDir . 'circuit-breaker.json';
+    $dcPath  = $storageDir . 'daily-context.json';
+
+    // Load circuit-breaker state
+    $cb = file_exists($cbPath) ? json_decode(file_get_contents($cbPath), true) : null;
+    // Load daily-context state
+    $dc = file_exists($dcPath) ? json_decode(file_get_contents($dcPath), true) : null;
+
+    // --- CIRCUIT BREAKER CHECKS ---
+    if ($cb) {
+        $global      = $cb['global']      ?? [];
+        $behavioural = $cb['behavioural'] ?? [];
+
+        // 1. Review required
+        if (!empty($behavioural['revengeFlaggedForReview']) || !empty($cb['pendingReview'])) {
+            echo json_encode(['allowed' => false, 'reason' => 'Post-session review required before trading can resume', 'blockedBy' => 'circuit_breaker']);
+            exit;
+        }
+
+        // 2. Stand-down active
+        if (!empty($global['standDownActive'])) {
+            $until  = !empty($global['standDownUntil']) ? $global['standDownUntil'] : 'unknown';
+            $reason = !empty($global['standDownReason']) ? $global['standDownReason'] : 'Stand-down active';
+            echo json_encode(['allowed' => false, 'reason' => $reason . ' — resumes: ' . $until, 'blockedBy' => 'circuit_breaker']);
+            exit;
+        }
+
+        // 3. Leakage lockout
+        if (!empty($behavioural['leakageLockoutActive'])) {
+            $until = $behavioural['leakageLockoutUntil'] ?? null;
+            if ($until && strtotime($until) > time()) {
+                $minsLeft = ceil((strtotime($until) - time()) / 60);
+                echo json_encode(['allowed' => false, 'reason' => 'Leakage lockout active — ' . $minsLeft . ' minutes remaining', 'blockedBy' => 'circuit_breaker']);
+                exit;
+            }
+        }
+
+        // 4. No active session
+        if (empty($global['sessionActive'])) {
+            echo json_encode(['allowed' => false, 'reason' => 'No active session — lock your Daily Briefing first', 'blockedBy' => 'circuit_breaker']);
+            exit;
+        }
+    } else {
+        // Fail-closed: no circuit-breaker file = no trade
+        echo json_encode(['allowed' => false, 'reason' => 'Circuit breaker state unavailable — cannot verify trading permission', 'blockedBy' => 'circuit_breaker']);
+        exit;
+    }
+
+    // --- DAILY CONTEXT CHECKS ---
+    if ($dc) {
+        // Must be locked (briefing completed)
+        if (empty($dc['locked'])) {
+            echo json_encode(['allowed' => false, 'reason' => 'Daily Briefing not locked — complete and lock your briefing first', 'blockedBy' => 'daily_context']);
+            exit;
+        }
+
+        // Briefing must be from today
+        $lockedAt = $dc['lockedAt'] ?? null;
+        if ($lockedAt) {
+            $lockedDate = date('Y-m-d', strtotime($lockedAt));
+            $today      = date('Y-m-d');
+            if ($lockedDate !== $today) {
+                echo json_encode(['allowed' => false, 'reason' => 'Daily Briefing is from a previous session — complete today\'s briefing first', 'blockedBy' => 'daily_context']);
+                exit;
+            }
+        }
+
+        // STAND_DOWN permission blocks trading
+        $permission = $dc['permission'] ?? null;
+        if ($permission === 'STAND_DOWN') {
+            echo json_encode(['allowed' => false, 'reason' => 'Daily permission is STAND DOWN — observation only today', 'blockedBy' => 'daily_context']);
+            exit;
+        }
+    } else {
+        // Fail-closed: no daily-context = no trade
+        echo json_encode(['allowed' => false, 'reason' => 'Daily Briefing not found — complete your briefing first', 'blockedBy' => 'daily_context']);
+        exit;
+    }
+
+    // All checks passed
+    echo json_encode(['allowed' => true, 'reason' => null, 'blockedBy' => null]);
+    exit;
+}
+
 // Get requested file
 $fileKey = $_GET['file'] ?? $_POST['file'] ?? null;
 
