@@ -1,3 +1,43 @@
+## [v4.7.0] - 2026-03-16
+
+### MAJOR - F2: Server-side permission gate; authoritative canExecuteTrade endpoint
+
+**storage-api.php:**
+- New `?action=canExecuteTrade` endpoint — reads circuit-breaker.json and daily-context.json directly from disk
+- Checks in order: review required → stand-down active → leakage lockout → no active session → briefing not locked → stale briefing → STAND_DOWN permission
+- Fail-closed on everything: missing file = blocked, no session = blocked, STAND_DOWN = blocked
+- Browser localStorage has zero input into this decision
+
+**execute-integration.js:**
+- `runPreTradeValidation()` converted to async
+- Browser-side `CircuitBreaker.canTrade()` call removed — was the multi-device bypass gap
+- Button shows "Checking..." while awaiting server response
+- Fail-closed: server unreachable = blocked with clear error message
+
+**server-storage.js:**
+- Added `fcc_daily_context` → `daily-context` to STORAGE_MAP
+- Daily context now auto-polled every 30s alongside circuit-breaker (was manual sync only)
+
+**Infrastructure (manual):**
+- Cloudflare Access applied to API endpoints (forex.pineros.club/api/*)
+
+## [v4.6.1] - 2026-03-16
+
+### PATCH - P0 fixes: R:R hard block; sortable trade history headers
+
+**execute-integration.js:**
+- R:R < 1.5 converted from warning to hard block — returns false, shows error notification
+- Message: "Trade blocked: R:R is X.XX — minimum 1.5:1 required. Rework your levels."
+
+**journal-crud.js:**
+- Added `sortTradeHistory()`, `applyTradeSort()`, `updateSortHeaders()` functions
+- Sortable columns: Date, Pair, Dir, Grade, R-Multiple, Score, Zone
+- Click header to sort, click again to reverse; active column shows ▲/▼, inactive shows ▸
+- Default sort: Date descending (newest first)
+
+**index.html:**
+- Trade history table headers updated with IDs, onclick handlers, and sort arrow indicators
+
 ## [v4.6.12] - 2026-03-14
 
 ### AUDIT - Full cross-indicator review: all 6 UTCC indicators verified consistent
