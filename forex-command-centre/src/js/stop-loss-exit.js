@@ -807,21 +807,15 @@ function executeTradeFromValidation() {
         else if (hour >= 22 || hour < 6) session = 'ny';
         if (tradeSessionEl) tradeSessionEl.value = session;
         
-        // v2.9.0: Auto-populate Permission Log from Regime module
+        // v2.9.0: Auto-populate Permission Log from DailyContext
         try {
-            let regimeData = null;
-            if (window.RegimeModule && RegimeModule.loadRegimeData) {
-                regimeData = RegimeModule.loadRegimeData();
-            }
-            const sessionData = regimeData?.sessions?.[session] || {};
-            
-            // Populate hidden fields
+            const dcData = window.DailyContext ? window.DailyContext.getData() : null;
             const setHidden = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
-            setHidden('trade-market-regime', sessionData.regime || regimeData?.dailyContext?.regime || '');
-            setHidden('trade-structure-quality', sessionData.structure || '');
-            setHidden('trade-vol-context', sessionData.volatility || '');
-            setHidden('trade-session-window', sessionData.sessionWindow || '');
-            setHidden('trade-permission-state', sessionData.permissionState || 'full');
+            setHidden('trade-market-regime', dcData?.regime || '');
+            setHidden('trade-vol-context', dcData?.volatility || '');
+            setHidden('trade-permission-state', dcData?.permission ? dcData.permission.toLowerCase() : 'full');
+            setHidden('trade-structure-quality', '');
+            setHidden('trade-session-window', '');
             
             // Build decision reason from available data
             const parts = [];

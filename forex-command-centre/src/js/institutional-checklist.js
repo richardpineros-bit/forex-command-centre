@@ -170,7 +170,7 @@ function updateInstitutionalChecklist() {
             regime: getCurrentRegimeState(),
             playbook: PlaybookModule.getSelectedPlaybook()?.id,
             positionSize: (rsiLevel === 'pass') ? 'full' : 'reduced',
-            hasOverride: window.RegimeModule?.hasActiveOverride() || false,
+            hasOverride: false,
             conviction: (rsiLevel === 'pass' && hardChecksPassed) ? 'high' : 'medium',
             correlatedPositions: getCorrelatedOpenPositions(pair),
             criteriaPass: (check1Pass ? 1 : 0) + (check2Pass ? 1 : 0) + (check3Pass ? 1 : 0) + (check4Pass ? 1 : 0) + (check5Pass ? 1 : 0) + (check7Pass ? 1 : 0),
@@ -183,9 +183,8 @@ function updateInstitutionalChecklist() {
 
 // Helper function to get current regime state
 function getCurrentRegimeState() {
-    if (window.RegimeModule) {
-        const data = window.RegimeModule.loadRegimeData();
-        return data.dailyContext?.marketState || null;
+    if (window.DailyContext) {
+        return window.DailyContext.getData()?.regime || null;
     }
     return null;
 }

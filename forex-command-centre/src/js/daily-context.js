@@ -980,7 +980,6 @@ window.DailyContext = (function () {
         };
 
         save(data);
-        syncWithRegimeModule(data);
         
         // v4.1.1: Start circuit breaker session (was triggered by old Regime tab lock)
         if (window.CircuitBreaker && typeof CircuitBreaker.startSession === 'function') {
@@ -990,25 +989,6 @@ window.DailyContext = (function () {
         
         refreshAll();
         console.log('[DailyContext v4.0] Locked:', data);
-    }
-
-    function syncWithRegimeModule(data) {
-        // Backward compatibility: keep RegimeModule in sync so old gating works
-        if (window.RegimeModule && typeof RegimeModule.loadRegimeData === 'function') {
-            try {
-                var regData = RegimeModule.loadRegimeData();
-                if (!regData.dailyContext) regData.dailyContext = {};
-                regData.dailyContext.locked = true;
-                regData.dailyContext.timestamp = data.lockedAt;
-                regData.dailyContext.marketState = data.regime;
-                regData.dailyContext.primaryRisk = data.primaryRisk;
-                regData.dailyContext.keyDriver = data.macroNote;
-                var regKey = 'ftcc_regime';
-                localStorage.setItem(regKey, JSON.stringify(regData));
-            } catch (e) {
-                console.warn('[DailyContext] RegimeModule sync failed:', e);
-            }
-        }
     }
 
     // ========================================
@@ -1035,15 +1015,6 @@ window.DailyContext = (function () {
 
         data.locked = false;
         save(data);
-
-        if (window.RegimeModule && typeof RegimeModule.loadRegimeData === 'function') {
-            try {
-                var regData = RegimeModule.loadRegimeData();
-                if (regData.dailyContext) regData.dailyContext.locked = false;
-                localStorage.setItem('ftcc_regime', JSON.stringify(regData));
-            } catch (e) { /* ignore */ }
-        }
-
         refreshAll();
     }
 

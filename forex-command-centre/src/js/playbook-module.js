@@ -616,18 +616,12 @@
         var regime = null;
         var permission = null;
 
-        // Get regime from DailyContext first, then RegimeModule
+        // Get regime from DailyContext
         if (window.DailyContext) {
             var dcState = window.DailyContext.getState ? window.DailyContext.getState() : null;
             if (dcState && dcState.locked) {
                 regime = dcState.regime;
                 permission = dcState.permission;
-            }
-        }
-        if (!regime && window.RegimeModule) {
-            var regimeData = window.RegimeModule.loadRegimeData();
-            if (regimeData.dailyContext) {
-                regime = regimeData.dailyContext.marketState;
             }
         }
 

@@ -134,11 +134,10 @@
             return 'off-hours';
         };
 
-        // Get regime from RegimeModule
+        // Get regime from DailyContext
         let regime = 'unknown';
-        if (typeof RegimeModule !== 'undefined' && RegimeModule.getCurrentRegime) {
-            const r = RegimeModule.getCurrentRegime();
-            regime = r?.regime || r?.type || 'unknown';
+        if (window.DailyContext) {
+            regime = window.DailyContext.getData()?.regime || 'unknown';
         }
 
         // Get playbook from PlaybookModule
