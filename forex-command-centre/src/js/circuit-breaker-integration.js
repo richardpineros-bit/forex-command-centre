@@ -21,10 +21,9 @@
             attempts++;
             
             const hasCB = typeof window.CircuitBreaker !== 'undefined';
-            const hasRegime = typeof window.RegimeModule !== 'undefined';
             const hasPlaybook = typeof window.PlaybookModule !== 'undefined';
             
-            if (hasCB && hasRegime && hasPlaybook) {
+            if (hasCB && hasPlaybook) {
                 console.log('Circuit Breaker Integration: All dependencies loaded');
                 callback();
             } else if (attempts < maxAttempts) {
@@ -32,7 +31,6 @@
             } else {
                 console.error('Circuit Breaker Integration: Dependencies not loaded after timeout', {
                     CircuitBreaker: hasCB,
-                    RegimeModule: hasRegime,
                     PlaybookModule: hasPlaybook
                 });
             }
@@ -41,111 +39,6 @@
         check();
     }
 
-    // ============================================
-    // REGIME MODULE INTEGRATION
-    // ============================================
-    
-    function integrateWithRegime() {
-        const RegimeModule = window.RegimeModule;
-        const CircuitBreaker = window.CircuitBreaker;
-        
-        // Store original functions
-        const originalCheckPreTradeAccess = RegimeModule.checkPreTradeAccess;
-        const originalSubmitSessionRegime = RegimeModule.submitSessionRegime;
-        
-        // ----------------------------------------
-        // WRAP: checkPreTradeAccess
-        // Add CircuitBreaker gate check
-        // ----------------------------------------
-        RegimeModule.checkPreTradeAccess = function() {
-            // First check CircuitBreaker gates
-            const cbCheck = CircuitBreaker.canTrade();
-            if (!cbCheck.allowed) {
-                return {
-                    allowed: false,
-                    reason: cbCheck.reason,
-                    source: 'circuit_breaker'
-                };
-            }
-            
-            // Check for pending review
-            if (CircuitBreaker.isReviewRequired()) {
-                const review = CircuitBreaker.getPendingReview();
-                return {
-                    allowed: false,
-                    reason: `Post-session review required: ${review.reason}`,
-                    source: 'circuit_breaker_review'
-                };
-            }
-            
-            // Then check original regime logic
-            return originalCheckPreTradeAccess.call(this);
-        };
-        
-        // ----------------------------------------
-        // HOOK: Session regime submission
-        // Start CircuitBreaker session when regime is locked
-        // ----------------------------------------
-        const originalSaveSessionRegime = RegimeModule.submitSessionRegime;
-        if (originalSaveSessionRegime) {
-            // We need to hook into the internal saveSessionRegime instead
-            // This is called when a session regime is locked
-        }
-        
-        console.log('Circuit Breaker Integration: Regime module hooked');
-    }
-    
-    // ============================================
-    // SESSION START HOOK
-    // ============================================
-    
-    function hookSessionStart() {
-        const CircuitBreaker = window.CircuitBreaker;
-        
-        // Watch for regime lock events via localStorage changes
-        // This is a non-invasive way to detect session starts
-        
-        const REGIME_STORAGE_KEY = 'ftcc_regime';
-        let lastRegimeData = localStorage.getItem(REGIME_STORAGE_KEY);
-        
-        // Check periodically for regime changes
-        setInterval(() => {
-            const currentData = localStorage.getItem(REGIME_STORAGE_KEY);
-            if (currentData !== lastRegimeData) {
-                lastRegimeData = currentData;
-                
-                try {
-                    const regime = JSON.parse(currentData);
-                    
-                    // Detect which session was just locked
-                    ['tokyo', 'london', 'newyork'].forEach(session => {
-                        const sessionData = regime?.sessions?.[session];
-                        if (sessionData?.locked) {
-                            // Check if this is a new lock (within last 5 seconds)
-                            const lockTime = new Date(sessionData.timestamp);
-                            const now = new Date();
-                            const secondsSinceLock = (now - lockTime) / 1000;
-                            
-                            if (secondsSinceLock < 5) {
-                                // New session lock detected
-                                console.log(`Circuit Breaker Integration: Session lock detected - ${session}`);
-                                CircuitBreaker.startSession(session);
-                                
-                                // Dispatch custom event for UI updates
-                                window.dispatchEvent(new CustomEvent('circuitbreaker:sessionstart', {
-                                    detail: { session }
-                                }));
-                            }
-                        }
-                    });
-                } catch (e) {
-                    // Ignore parse errors
-                }
-            }
-        }, 1000);
-        
-        console.log('Circuit Breaker Integration: Session start hook active');
-    }
 
     // ============================================
     // PLAYBOOK MODULE INTEGRATION
@@ -948,10 +841,8 @@
         
         // Wait for dependencies then integrate
         waitForDependencies(() => {
-            integrateWithRegime();
             integrateWithPlaybook();
             integratePairSelection();
-            hookSessionStart();
             integrateTradeResults();
             integrateShowTabGating();
             setupUIEventHandlers();

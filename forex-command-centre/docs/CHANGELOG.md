@@ -1,3 +1,21 @@
+## [v4.7.1] - 2026-03-16
+
+### PATCH - Legacy cleanup: RegimeModule fully removed
+
+**circuit-breaker-integration.js:**
+- Removed `hasRegime` dependency check from `waitForDependencies()`
+- Deleted `integrateWithRegime()` function (was wrapping dead RegimeModule methods)
+- Deleted `hookSessionStart()` function (was polling dead `ftcc_regime` localStorage key)
+- Removed both calls from `init()`
+
+**index.html:**
+- Removed `<script src="js/regime-module.js"></script>` (line 3124)
+
+**regime-module.js:**
+- File deleted from repository (`git rm`)
+
+All other regime-module.js removal work (institutional-checklist.js, playbook-module.js, trade-capture.js, stop-loss-exit.js, daily-context.js) was completed in prior session.
+
 ## [v4.7.0] - 2026-03-16
 
 ### MAJOR - F2: Server-side permission gate; authoritative canExecuteTrade endpoint
