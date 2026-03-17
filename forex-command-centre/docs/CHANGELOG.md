@@ -1,3 +1,57 @@
+## [v4.8.2] - 2026-03-17
+
+### PATCH - Regime label audit: full consistency pass across all files
+
+**trading-guide.js:**
+- Entire guide rewritten from old 4-regime model (EXPANSION/BALANCED/CONTRACTION/TRANSITION) to correct 6-regime model
+- Regime definitions, permission matrix, and playbook quick reference all updated
+- Removed non-existent "Range Fade" playbook
+- ROTATION, COMPRESSION, DISTRIBUTION, UNCLEAR all now correctly documented
+
+**journal-crud.js:**
+- `'balanced'` regime check replaced with `'rotation'` and `'distribution'`
+
+**css/modals.css:**
+- Replaced `state-balanced`, `state-contraction` CSS classes with `state-rotation`, `state-compression`, `state-distribution`, `state-unclear`
+
+**css/regime.css:**
+- Replaced `regime-state-balanced` with correct 6-regime class set
+- Same for `.context-value.regime-*` selectors
+
+**index.html:**
+- Tooltip text: "Contraction regime" -> "Compression", "Balanced regime" -> "Rotation"
+
+---
+
+## [v4.8.1] - 2026-03-16
+
+### PATCH - Fix sortable trade history: expose sortTradeHistory on window
+
+**journal-crud.js:**
+- `sortTradeHistory()` exposed as `window.sortTradeHistory` so inline `onclick` handlers in index.html can reach it
+- Was silently failing due to module scope
+
+**index.html:**
+- Sortable `<th>` elements given hover cursor style via inline CSS
+
+---
+
+## [v4.8.0] - 2026-03-16
+
+### MINOR - EMA cloud location gate: Cloud Touch / Clean Pullback / Stretched / Chasing
+
+**pre-trade.js:**
+- New EMA location field with 4 states: Cloud Touch, Clean Pullback, Stretched, Chasing
+- Chasing = hard-blocked at execution (R:R typically impossible from that distance)
+- Stretched = requires manual acknowledgement checkbox before execution proceeds
+- Location stored in pre-trade state and visible in checklist summary
+
+**execute-integration.js:**
+- Location gate added to `runPreTradeValidation()`: Chasing returns false with clear error message
+- Stretched requires checkbox acknowledgement flag before allowing proceed
+
+---
+
 ## [v4.7.1] - 2026-03-16
 
 ### PATCH - Legacy cleanup: RegimeModule fully removed
