@@ -488,8 +488,10 @@ font-weight: 600;
 }
 
 .state-expansion { background: var(--color-pass); color: white; }
-.state-balanced { background: var(--color-info); color: white; }
-.state-contraction { background: var(--color-warning); color: #000; }
+.state-rotation { background: var(--color-info); color: white; }
+.state-compression { background: var(--color-warning); color: #000; }
+.state-distribution { background: #a855f7; color: white; }
+.state-unclear { background: var(--color-fail); color: white; }
 .state-transition { background: var(--color-fail); color: white; }
 
 /* Drawdown Badges */

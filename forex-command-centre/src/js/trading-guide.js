@@ -238,17 +238,23 @@
                     '<thead><tr><th>Regime</th><th>What It Means</th><th>Playbooks Allowed</th></tr></thead>' +
                     '<tbody>' +
                         '<tr><td><span class="state-badge state-expansion">EXPANSION</span></td>' +
-                            '<td>Trend; clean directional movement. EMAs fanning, momentum sustained.</td>' +
+                            '<td>Clear trend, EMAs fanning, directional momentum sustained.</td>' +
                             '<td>Continuation, Deep Pullback</td></tr>' +
-                        '<tr><td><span class="state-badge state-balanced">BALANCED</span></td>' +
-                            '<td>Range; mean reversion dominates. Clear boundaries, rotating price.</td>' +
-                            '<td>Range Fade at extremes only; reduced size</td></tr>' +
-                        '<tr><td><span class="state-badge state-contraction">CONTRACTION</span></td>' +
-                            '<td>Squeeze/compression; breakout risk. Volatility tightening.</td>' +
-                            '<td>Breakout plan ONLY after confirmation; otherwise wait</td></tr>' +
+                        '<tr><td><span class="state-badge state-rotation">ROTATION</span></td>' +
+                            '<td>Range-bound, S/R holding, mean reversion dominates.</td>' +
+                            '<td>Observation only (forced)</td></tr>' +
+                        '<tr><td><span class="state-badge state-compression">COMPRESSION</span></td>' +
+                            '<td>Volatility squeeze, ATR contracting, breakout imminent.</td>' +
+                            '<td>Range Breakout after confirmation; default Observation</td></tr>' +
+                        '<tr><td><span class="state-badge state-distribution">DISTRIBUTION</span></td>' +
+                            '<td>Trend losing momentum, smart money exiting, momentum fading.</td>' +
+                            '<td>Deep Pullback with caution; default Observation</td></tr>' +
                         '<tr><td><span class="state-badge state-transition">TRANSITION</span></td>' +
-                            '<td>Regime unclear/flip risk. Conflicting signals.</td>' +
-                            '<td><strong>NO TRADE &mdash; observation only</strong></td></tr>' +
+                            '<td>Market changing character, old pattern ending, mixed signals.</td>' +
+                            '<td>Deep Pullback or Range Breakout if clear; default Observation</td></tr>' +
+                        '<tr><td><span class="state-badge state-unclear">UNCLEAR</span></td>' +
+                            '<td>Cannot read the market &mdash; honest admission.</td>' +
+                            '<td><strong>STAND DOWN &mdash; zero execution</strong></td></tr>' +
                     '</tbody>' +
                 '</table>' +
 
@@ -472,22 +478,34 @@
                             '<td>Continuation + Deep Pullback playbooks. Full size (1.0R).</td>' +
                         '</tr>' +
                         '<tr>' +
-                            '<td><strong>BALANCED</strong></td>' +
-                            '<td>Range-bound, S/R holding, no directional bias</td>' +
-                            '<td style="color:var(--color-warning)">CONDITIONAL</td>' +
-                            '<td>Range extremes only. Reduced size (0.5&ndash;0.75R). Tight filters.</td>' +
+                            '<td><strong>ROTATION</strong></td>' +
+                            '<td>Range-bound, S/R holding, mean reversion dominates</td>' +
+                            '<td style="color:var(--color-fail)">OBSERVATION</td>' +
+                            '<td>Observation only (forced). No directional trades.</td>' +
                         '</tr>' +
                         '<tr>' +
-                            '<td><strong>CONTRACTION</strong></td>' +
-                            '<td>Low volatility squeeze, ATR compressing</td>' +
+                            '<td><strong>COMPRESSION</strong></td>' +
+                            '<td>Low volatility squeeze, ATR contracting, breakout imminent</td>' +
                             '<td style="color:var(--color-warning)">CONDITIONAL</td>' +
-                            '<td>Breakout plan only after confirmation + retest. Reduced size (0.25&ndash;0.5R).</td>' +
+                            '<td>Range Breakout if confirmed + retest. Default Observation.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>DISTRIBUTION</strong></td>' +
+                            '<td>Trend losing steam, momentum fading, smart money exiting</td>' +
+                            '<td style="color:var(--color-warning)">CONDITIONAL</td>' +
+                            '<td>Deep Pullback with caution only. Reduced size. Default Observation.</td>' +
+                        '</tr>' +
+                        '<tr>' +
+                            '<td><strong>TRANSITION</strong></td>' +
+                            '<td>Market changing character, mixed signals, old pattern ending</td>' +
+                            '<td style="color:var(--color-warning)">CONDITIONAL</td>' +
+                            '<td>Deep Pullback or Range Breakout if clear. Default Observation.</td>' +
                         '</tr>' +
                         '<tr style="background:rgba(239,68,68,0.1)">' +
-                            '<td><strong>TRANSITION</strong></td>' +
-                            '<td>Mixed signals, structure breaking, conflicting timeframes</td>' +
+                            '<td><strong>UNCLEAR</strong></td>' +
+                            '<td>Cannot read the market &mdash; honest admission</td>' +
                             '<td style="color:var(--color-fail)">STAND DOWN</td>' +
-                            '<td>Mark levels only. Zero execution. Observation mode.</td>' +
+                            '<td>System locked. Mark levels only. Zero execution.</td>' +
                         '</tr>' +
                     '</tbody>' +
                 '</table>' +
@@ -852,22 +870,34 @@
                             '<td>Best conditions. Trade with trend.</td>' +
                         '</tr>' +
                         '<tr>' +
-                            '<td><span class="state-badge state-balanced">BALANCED</span></td>' +
-                            '<td>Mean reversion; Range extremes only</td>' +
-                            '<td>Reduced (0.5&ndash;0.75R)</td>' +
-                            '<td>Only at defined boundaries. Tighter filters.</td>' +
+                            '<td><span class="state-badge state-rotation">ROTATION</span></td>' +
+                            '<td>Observation only (forced)</td>' +
+                            '<td>0R</td>' +
+                            '<td>No directional trades. Mark levels only.</td>' +
                         '</tr>' +
                         '<tr>' +
-                            '<td><span class="state-badge state-contraction">CONTRACTION</span></td>' +
-                            '<td>Breakout plan only after confirmation</td>' +
+                            '<td><span class="state-badge state-compression">COMPRESSION</span></td>' +
+                            '<td>Range Breakout after confirmation; default Observation</td>' +
                             '<td>Reduced (0.25&ndash;0.5R)</td>' +
                             '<td>Wait for breakout + retest. Otherwise wait.</td>' +
                         '</tr>' +
-                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                        '<tr>' +
+                            '<td><span class="state-badge state-distribution">DISTRIBUTION</span></td>' +
+                            '<td>Deep Pullback with caution; default Observation</td>' +
+                            '<td>Reduced (0.5&ndash;0.75R)</td>' +
+                            '<td>Only high-conviction setups. Reduced size.</td>' +
+                        '</tr>' +
+                        '<tr>' +
                             '<td><span class="state-badge state-transition">TRANSITION</span></td>' +
-                            '<td><strong>NO TRADE</strong></td>' +
+                            '<td>Deep Pullback or Range Breakout if clear; default Observation</td>' +
+                            '<td>Reduced (0.5R)</td>' +
+                            '<td>Default to Observation. Only trade if signal is unambiguous.</td>' +
+                        '</tr>' +
+                        '<tr style="background:rgba(239,68,68,0.1)">' +
+                            '<td><span class="state-badge state-unclear">UNCLEAR</span></td>' +
+                            '<td><strong>STAND DOWN</strong></td>' +
                             '<td>0R</td>' +
-                            '<td>Mark levels only. Zero execution.</td>' +
+                            '<td>System locked. Zero execution. No exceptions.</td>' +
                         '</tr>' +
                     '</tbody>' +
                 '</table>' +

@@ -140,7 +140,10 @@
 
 /* Market State Colors */
 .regime-state-expansion { color: var(--color-pass); }
-.regime-state-balanced { color: var(--color-info); }
+.regime-state-rotation { color: var(--color-info); }
+.regime-state-compression { color: var(--color-warning); }
+.regime-state-distribution { color: #a855f7; }
+.regime-state-unclear { color: var(--color-fail); }
 .regime-state-transition { color: var(--color-warning); }
 .regime-state-compression { color: var(--color-fail); }
 
@@ -939,8 +942,10 @@
 }
 
 .context-value.regime-expansion { color: var(--color-pass); }
-.context-value.regime-balanced { color: var(--color-info); }
-.context-value.regime-contraction { color: var(--color-warning); }
+.context-value.regime-rotation { color: var(--color-info); }
+.context-value.regime-compression { color: var(--color-warning); }
+.context-value.regime-distribution { color: #a855f7; }
+.context-value.regime-unclear { color: var(--color-fail); }
 .context-value.regime-compression { color: var(--text-muted); }
 .context-value.regime-transition { color: var(--color-fail); }
 

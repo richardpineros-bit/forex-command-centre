@@ -808,7 +808,8 @@ function resolvePermissionDecision() {
     
     // Conditional conditions
     var conditionals = [];
-    if (regimeVal === 'balanced') conditionals.push('Balanced regime');
+    if (regimeVal === 'rotation') conditionals.push('Rotation regime');
+    if (regimeVal === 'distribution') conditionals.push('Distribution regime');
     if (regimeVal === 'compression') conditionals.push('Compression regime');
     if (structVal === 'overlapping') conditionals.push('Overlapping structure');
     if (volVal === 'divergent') conditionals.push('Divergent volatility');
