@@ -424,6 +424,7 @@ f_buildJson(string aType, string symbol, string assetClass, string pReason, stri
     p := p + ',"context":{"direction":"' + direction + '","score":' + str.tostring(score)
     p := p + ',"criteria":' + str.tostring(criteria) + ',"entry":"' + entry + '"'
     p := p + ',"vol_state":"' + volState + '","vol_behaviour":"' + volBehav + '","vol_level":' + str.tostring(volLvl)
+    p := p + ',"struct_ext":"' + structVerdict + '"' + ',"struct_bars":' + str.tostring(barsSinceRibbonTouch)
     p := p + ',"mtf":' + str.tostring(mtf) + ',"rsi":' + str.tostring(rsi)
     p := p + ',"session":"' + session + '","playbook":"' + playbook + '"'
     p := p + ',"regime":"' + regime + '","risk_state":"' + rState + '"}}'
@@ -679,6 +680,20 @@ else
 distFromFastEMA = atrValue > 0 ? math.abs(close - fastEMA) / atrValue : 10.0
 distFromMidEMA = atrValue > 0 ? math.abs(close - midEMA) / atrValue : 10.0
 distFromSlowEMA = atrValue > 0 ? math.abs(close - slowEMA) / atrValue : 10.0
+
+// === Structural Extension (v2.6.x) ===
+// Measures ATR-multiples price has moved from last EMA ribbon touch.
+// Touch = close enters zone between fastEMA and slowEMA.
+var int barsSinceRibbonTouch = 0
+var float priceAtLastTouch = close
+bool inRibbonZone = close >= math.min(fastEMA, slowEMA) and close <= math.max(fastEMA, slowEMA)
+if inRibbonZone
+    barsSinceRibbonTouch := 0
+    priceAtLastTouch := close
+else
+    barsSinceRibbonTouch := barsSinceRibbonTouch + 1
+float structAtrMult = atrValue > 0 ? math.abs(close - priceAtLastTouch) / atrValue : 0.0
+string structVerdict = structAtrMult >= 2.0 ? "EXTENDED" : structAtrMult >= 1.0 ? "DEVELOPING" : "FRESH"
 
 // Entry Zone Quality Assessment (0-5 base points)
 var string entryZoneQuality = ""

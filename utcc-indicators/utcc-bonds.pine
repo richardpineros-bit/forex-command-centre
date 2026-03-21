@@ -862,6 +862,20 @@ else
 distFromFastEMA = atrValue > 0 ? math.abs(close - fastEMA) / atrValue : 10.0
 distFromMidEMA = atrValue > 0 ? math.abs(close - midEMA) / atrValue : 10.0
 
+// === Structural Extension (v2.6.x) ===
+// Measures ATR-multiples price has moved from last EMA ribbon touch.
+// Touch = close enters zone between fastEMA and slowEMA.
+var int barsSinceRibbonTouch = 0
+var float priceAtLastTouch = close
+bool inRibbonZone = close >= math.min(fastEMA, slowEMA) and close <= math.max(fastEMA, slowEMA)
+if inRibbonZone
+    barsSinceRibbonTouch := 0
+    priceAtLastTouch := close
+else
+    barsSinceRibbonTouch := barsSinceRibbonTouch + 1
+float structAtrMult = atrValue > 0 ? math.abs(close - priceAtLastTouch) / atrValue : 0.0
+string structVerdict = structAtrMult >= 2.0 ? "EXTENDED" : structAtrMult >= 1.0 ? "DEVELOPING" : "FRESH"
+
 var string entryZoneQuality = ""
 var float entryZoneScore = 0.0
 var color entryZoneColor = color.gray
@@ -1923,6 +1937,7 @@ f_buildJson_context() =>
     p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
     p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
     p := p + ',"vol_state":"' + atrState + '","vol_behaviour":"' + atrState + '","vol_level":' + str.tostring(math.round(atrPercentile))
+    p := p + ',"struct_ext":"' + structVerdict + '"' + ',"struct_bars":' + str.tostring(barsSinceRibbonTouch)
     p := p + ',"mtf":' + str.tostring(mtfAlignCount) + ',"rsi":' + rsiCount
     p := p + ',"session":"' + currentSession + '","playbook":"' + currentPlaybook + '"'
     p := p + ',"regime":"' + regimeCode + '","risk_state":"' + riskCode + '"}}'
