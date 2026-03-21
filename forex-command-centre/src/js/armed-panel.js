@@ -170,6 +170,19 @@
             atrHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
         }
 
+
+        // Structural extension display
+        var structRaw = (p.struct_ext || '').toUpperCase();
+        var structHtml;
+        if (structRaw === 'FRESH') {
+            structHtml = '<span style="color:#4ade80;font-size:0.7rem;font-weight:700">FRESH</span>';
+        } else if (structRaw === 'DEVELOPING') {
+            structHtml = '<span style="color:#eab308;font-size:0.7rem;font-weight:700">DEV</span>';
+        } else if (structRaw === 'EXTENDED') {
+            structHtml = '<span style="color:var(--color-fail);font-size:0.7rem;font-weight:700">EXT</span>';
+        } else {
+            structHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
+        }
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
         return '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
@@ -180,6 +193,7 @@
             '<span class="armed-maxrisk">' + (p.maxRisk || '\u2014') + '</span>' +
             '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
             '<span class="armed-atr">' + atrHtml + '</span>' +
+            '<span class="armed-struct">' + structHtml + '</span>' +
             '<span class="armed-age">' + statusHtml + '</span>' +
         '</a>';
     }
@@ -195,6 +209,7 @@
             '<span>Risk</span>' +
             '<span>Sc</span>' +
             '<span>ATR</span>' +
+            '<span>Struct</span>' +
             '<span style="text-align:right">Age</span>' +
             '<span></span>' +
         '</div>';

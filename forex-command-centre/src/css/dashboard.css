@@ -50,7 +50,7 @@
 
 .armed-col-headers {
     display: grid;
-    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 90px;
+    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 56px 90px;
     gap: var(--spacing-sm);
     padding: 2px var(--spacing-md);
     font-size: 0.65rem;
@@ -62,7 +62,7 @@
 
 .armed-pair-row {
     display: grid;
-    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 90px;
+    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 56px 90px;
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);
@@ -630,7 +630,7 @@ a.armed-pair-row.armed-row-link:active {
 @media (max-width: 768px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 24px 60px 1fr 50px 40px 30px 70px 80px;
+        grid-template-columns: 24px 60px 1fr 50px 40px 30px 70px 48px 80px;
         gap: 4px;
         padding: var(--spacing-xs) var(--spacing-sm);
         font-size: 0.75rem;
