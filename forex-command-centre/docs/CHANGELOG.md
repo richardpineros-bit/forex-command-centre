@@ -1,5 +1,17 @@
 ## [v4.8.2] - 2026-03-17
 
+## [v4.9.0] - 2026-03-21
+### Added
+- **STRUCT column** in armed instruments panel (between ATR and Age) -- displays FRESH (green), DEVELOPING (amber), EXTENDED (red) from struct_ext payload; advisory only, no gate yet
+- **struct_ext label** on each armed pair chip in Quick Access Bar -- same colour coding
+
+## [v2.6.x] - 2026-03-21
+### Added (Pine Script -- all 6 UTCC indicators)
+- **Structural Extension tracking**: ribbon touch detection (close enters fast/slow EMA band), bars since last touch, cumulative move as ATR multiples
+- **structVerdict**: FRESH (<1.0x ATR), DEVELOPING (1.0-2.0x), EXTENDED (>2.0x)
+- **Payload fields**: struct_ext (verdict string) and struct_bars (bar count since last ribbon touch)
+
+
 ### PATCH - Regime label audit: full consistency pass across all files
 
 **trading-guide.js:**
