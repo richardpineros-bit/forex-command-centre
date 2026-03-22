@@ -415,6 +415,11 @@ f_alertBody(string pReason, string contribReasons, string permission, string exe
      "PERMISSION: " + permission + "\n" +
      "EXECUTION:\n" + execution
 
+// Structural extension forward declarations (vars used inside f_buildJson)
+var string structVerdict = "FRESH"
+var int barsSinceRibbonTouch = 0
+var float priceAtLastTouch = close
+
 // --- JSON Payload Builder (Machine-Parsable — for webhook receiver) ---
 f_buildJson(string aType, string symbol, string assetClass, string pReason, string contribReasons, string permission, string execMaxRisk, int execMaxTrades, string execAdds, string direction, int score, int criteria, string entry, string volState, string volBehav, int volLvl, int mtf, int rsi, string session, string playbook, string regime, string rState) =>
     string p = '{"type":"' + aType + '","pair":"' + symbol + '","asset_class":"' + assetClass + '"'
@@ -684,8 +689,7 @@ distFromSlowEMA = atrValue > 0 ? math.abs(close - slowEMA) / atrValue : 10.0
 // === Structural Extension (v2.6.x) ===
 // Measures ATR-multiples price has moved from last EMA ribbon touch.
 // Touch = close enters zone between fastEMA and slowEMA.
-var int barsSinceRibbonTouch = 0
-var float priceAtLastTouch = close
+// Update structural extension vars (declared above f_buildJson)
 bool inRibbonZone = close >= math.min(fastEMA, slowEMA) and close <= math.max(fastEMA, slowEMA)
 if inRibbonZone
     barsSinceRibbonTouch := 0
@@ -693,7 +697,7 @@ if inRibbonZone
 else
     barsSinceRibbonTouch := barsSinceRibbonTouch + 1
 float structAtrMult = atrValue > 0 ? math.abs(close - priceAtLastTouch) / atrValue : 0.0
-string structVerdict = structAtrMult >= 2.0 ? "EXTENDED" : structAtrMult >= 1.0 ? "DEVELOPING" : "FRESH"
+structVerdict := structAtrMult >= 2.0 ? "EXTENDED" : structAtrMult >= 1.0 ? "DEVELOPING" : "FRESH"
 
 // Entry Zone Quality Assessment (0-5 base points)
 var string entryZoneQuality = ""
