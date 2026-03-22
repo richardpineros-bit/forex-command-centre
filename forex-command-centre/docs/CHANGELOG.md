@@ -1,3 +1,17 @@
+## [v2.6.x+1] - 2026-03-22
+### Changed (Pine Script -- utcc-energy + utcc-bonds)
+- **struct_ext persistence arming (v2.0 state machine)** -- energy and bonds migrated from simple lockedDirection pattern to metals-canonical state machine
+- **New inputs**: disarmScoreThreshold, efficiencyThreshold, upgradePersistence (GRP_LOCK v2.0 group)
+- **Structural damage detection**: emaCompressed, mtfBroken, efficiencyCollapse -- disarm only fires when BOTH score drop AND structural damage present
+- **Persistence gating**: barsAboveThreshold must reach upgradePersistence before arming; prevents premature locks
+- **Bonds**: state machine outputs to isArmedRaw; governance split at line ~1094 (isArmedRaw → isArmed) preserved intact
+- **Energy**: state machine outputs directly to isArmed (no isArmedRaw split); regimeAllowsArming veto included inline
+- **candidateMeetsLong/Short**: lockedDirection → armedDirection on both files
+- **playbookShort**: lockedPlaybook → currentPlaybook on both files
+- **currentPlaybook**: rewritten to atrState-based logic (CONTINUATION/DEEP PULLBACK/OBSERVATION ONLY/STAND DOWN)
+- **Diag table**: Persistence and Structural Damage rows added to both files
+- **Removed**: DIRECTION-FLIP / D-SESSION-CONFLICT disarm branches (superseded by structural damage logic)
+
 ## [v4.8.2] - 2026-03-17
 
 ## [v4.9.0] - 2026-03-21

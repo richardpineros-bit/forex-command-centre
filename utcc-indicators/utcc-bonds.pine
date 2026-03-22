@@ -33,7 +33,7 @@ indicator("UTCC Bonds v2.5.1 - Institutional",
 // Phase 4 — Governance Hardening:
 // - isArmedRaw/isArmed split: governance veto is absolute (no leakage)
 // - Regime-aware execution constraints (R-TRANSITION=0.5R/2, K-REDUCED=0.5R/1)
-// - Disarm reason codes: D-REGIME-VETO/D-RISK-LOCKED/D-CRITERIA-LOST/D-SESSION-CONFLICT/D-DIRECTION-LOST
+// - Disarm reason codes: D-REGIME-VETO/D-RISK-LOCKED/D-CRITERIA-LOST/D-DIRECTION-LOST/D-UNKNOWN
 // - Gov Override + Last Disarm rows in diagnostics panel
 //
 // UNCHANGED:
@@ -266,12 +266,14 @@ sepTolerance = input.float(0.20, "Volatility Separation Tolerance", minval=0.05,
 eqTolerance = input.float(0.40, "Volatility Equality Tolerance", minval=0.10, maxval=0.60, step=0.05, group=GRP_ATR)
 
 // ============================================================================
-// INPUTS - SESSION LOCK SETTINGS
+// INPUTS - SESSION LOCK (v2.0)
 // ============================================================================
-GRP_SESSION = "🔒 Session Lock"
-enableSessionLock = input.bool(true, "Enable Session Lock", group=GRP_SESSION,
-     tooltip="When enabled, first valid signal of session locks direction. Prevents flip-flopping.")
-lockResetOnSessionChange = input.bool(true, "Reset Lock on Session Change", group=GRP_SESSION)
+GRP_LOCK = "🔒 Session Lock (v2.0)"
+enableSessionLock = input.bool(true, "Enable Session Lock", group=GRP_LOCK)
+disarmScoreThreshold = input.int(10, "Disarm Score Drop", minval=5, maxval=20, step=1, group=GRP_LOCK)
+efficiencyThreshold = input.float(0.4, "Min Directional Efficiency", minval=0.1, maxval=0.8, step=0.05, group=GRP_LOCK)
+upgradePersistence = input.int(1, "Upgrade Persistence (bars)", minval=1, maxval=5, group=GRP_LOCK)
+lockResetOnSessionChange = input.bool(true, "Reset Lock on Session Change", group=GRP_LOCK)
 
 // ============================================================================
 // INPUTS - S/R PROXIMITY SETTINGS
@@ -950,31 +952,81 @@ overallScore = trendScoreComponent + entryScoreComponent + srScoreComponent + mt
 overallScore := math.min(100, overallScore)
 
 // ============================================================================
-// 🔒 SESSION LOCK SYSTEM
+// 🔒 SESSION LOCK SYSTEM (v2.0)
 // ============================================================================
 
-var int lockedDirection = 0
-var string lockedPlaybook = ""
+candleRange = high - low
+candleBody = math.abs(close - open)
+rawEfficiency = candleRange > 0 ? candleBody / candleRange : 0
+
+candleBullish = close > open
+candleBearish = close < open
+
+var bool isArmedState = false
+var int armedDirectionState = 0
+var float armedScore = 0.0
+var string armedSession = ""
+var int barsAboveThreshold = 0
+var string disarmReason = ""
 var string lastSession = ""
 
-sessionChanged = currentSession != lastSession and lastSession != ""
+sessionJustChanged = currentSession != lastSession
+sessionResetEvent = sessionJustChanged and barstate.isnew
 
-sessionResetEvent = enableSessionLock and lockResetOnSessionChange and sessionChanged and lockedDirection != 0
+var bool structuralDamage = false
+var bool efficiencyCollapse = false
+var bool mtfBroken = false
+var bool emaCompressed = false
 
-if sessionChanged and lockResetOnSessionChange
-    lockedDirection := 0
-    lockedPlaybook := ""
+// Session Lock Logic
+bullishEfficiency = candleBullish ? rawEfficiency : 0.0
+bearishEfficiency = candleBearish ? rawEfficiency : 0.0
 
-if enableSessionLock and lockedDirection == 0 and allCriteriaMet and trendDirection != 0
-    lockedDirection := trendDirection
-    if entryZoneQuality == "HOT ZONE" or entryZoneQuality == "OPTIMAL" or entryZoneQuality == "ACCEPTABLE"
-        lockedPlaybook := "CONTINUATION"
-    else if entryZoneQuality == "PULLBACK"
-        lockedPlaybook := "DEEP PULLBACK"
-    else
-        lockedPlaybook := "OBSERVATION"
+emaCompressed := trendDirection == 0
+mtfBroken := mtfAlignCount < 3
+efficiencyCollapse := (trendDirection == 1 and bullishEfficiency < efficiencyThreshold and candleBullish) or (trendDirection == -1 and bearishEfficiency < efficiencyThreshold and candleBearish)
+structuralDamage := emaCompressed or mtfBroken or efficiencyCollapse
 
-isArmedRaw = allCriteriaMet and trendDirection != 0 and (not enableSessionLock or trendDirection == lockedDirection or lockedDirection == 0)
+if emaCompressed
+    disarmReason := "EMA Compressed"
+else if mtfBroken
+    disarmReason := "MTF Break"
+else if efficiencyCollapse
+    disarmReason := "Efficiency Collapse"
+else
+    disarmReason := ""
+
+meetsArmCriteria = allCriteriaMet and overallScore >= alertStrongThreshold and mtfAlignCount == 3 and trendDirection != 0
+if meetsArmCriteria
+    barsAboveThreshold := barsAboveThreshold + 1
+else
+    barsAboveThreshold := 0
+
+if enableSessionLock
+    if sessionJustChanged
+        isArmedState := false
+        armedDirectionState := 0
+        armedScore := 0.0
+        armedSession := ""
+        barsAboveThreshold := 0
+
+    if not isArmedState and barsAboveThreshold >= upgradePersistence
+        isArmedState := true
+        armedDirectionState := trendDirection
+        armedScore := overallScore
+        armedSession := currentSession
+
+    if isArmedState
+        scoreBelowDisarm = overallScore < (armedScore - disarmScoreThreshold)
+        if scoreBelowDisarm and structuralDamage
+            isArmedState := false
+            armedDirectionState := 0
+else
+    isArmedState := meetsArmCriteria
+    armedDirectionState := trendDirection
+    armedScore := overallScore
+
+isArmedRaw = isArmedState
 
 // ============================================================================
 // INSTITUTIONAL PRIORITY RESOLVER (Regime > Risk > UTCC)
@@ -1325,8 +1377,8 @@ var int wasCandidateDir_rt = 0
 var bool wasCandidate_close = false
 var int wasCandidateDir_close = 0
 
-candidateMeetsLong = allCriteriaMet and trendDirection == 1 and (not enableSessionLock or lockedDirection == 0 or lockedDirection == 1)
-candidateMeetsShort = allCriteriaMet and trendDirection == -1 and (not enableSessionLock or lockedDirection == 0 or lockedDirection == -1)
+candidateMeetsLong = allCriteriaMet and trendDirection == 1 and (not enableSessionLock or armedDirection == 0 or armedDirection == 1)
+candidateMeetsShort = allCriteriaMet and trendDirection == -1 and (not enableSessionLock or armedDirection == 0 or armedDirection == -1)
 candidateMeets = candidateMeetsLong or candidateMeetsShort
 candidateDirection = candidateMeetsLong ? 1 : candidateMeetsShort ? -1 : 0
 
@@ -1366,8 +1418,6 @@ if contextJustDisarmed
         disarmReasonCode := "D-RISK-LOCKED"
     else if not allCriteriaMet
         disarmReasonCode := "D-CRITERIA-LOST"
-    else if enableSessionLock and trendDirection != lockedDirection and lockedDirection != 0
-        disarmReasonCode := "D-SESSION-CONFLICT"
     else if trendDirection == 0
         disarmReasonCode := "D-DIRECTION-LOST"
     else
@@ -1688,7 +1738,7 @@ if barstate.islast
 var table diagTable = na
 
 if barstate.isfirst and showAlertDiagnostics
-    diagTable := table.new(position.bottom_left, 2, 24, bgcolor=color.new(color.rgb(30, 30, 40), 10), frame_color=color.rgb(100, 100, 120), frame_width=1, border_width=1, border_color=color.rgb(60, 60, 80))
+    diagTable := table.new(position.bottom_left, 2, 26, bgcolor=color.new(color.rgb(30, 30, 40), 10), frame_color=color.rgb(100, 100, 120), frame_width=1, border_width=1, border_color=color.rgb(60, 60, 80))
 
 if barstate.islast and showAlertDiagnostics
     table.clear(diagTable, 0, 0, 1, 23)
@@ -1749,12 +1799,23 @@ if barstate.islast and showAlertDiagnostics
     table.cell(diagTable, 1, dRow, armedDisplayText, text_color=armedDisplayColor, text_size=size.normal, bgcolor=diagBG, text_halign=text.align_right)
     dRow += 1
 
+    // Persistence
+    persistOK = barsAboveThreshold >= upgradePersistence
+    table.cell(diagTable, 0, dRow, "Persistence", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, str.tostring(barsAboveThreshold) + "/" + str.tostring(upgradePersistence) + " " + (persistOK ? "PASS" : "WAIT"), text_color=persistOK ? color.rgb(34, 171, 148) : color.rgb(234, 179, 8), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
+    // Structural Damage
+    table.cell(diagTable, 0, dRow, "Structural Damage", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
+    table.cell(diagTable, 1, dRow, structuralDamage ? "YES !!" : "NO OK", text_color=structuralDamage ? color.rgb(239, 83, 80) : color.rgb(100, 100, 120), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
+    dRow += 1
+
     table.cell(diagTable, 0, dRow, "Playbook", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
     table.cell(diagTable, 1, dRow, currentPlaybook, text_color=color.rgb(100, 181, 246), text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
     dRow += 1
 
-    lockStatusText = enableSessionLock ? (lockedDirection != 0 ? "LOCKED" : "SEEKING") : "DISABLED"
-    lockStatusColor = enableSessionLock ? (lockedDirection != 0 ? color.rgb(34, 197, 94) : color.rgb(234, 179, 8)) : color.gray
+    lockStatusText = enableSessionLock ? (isArmed ? "LOCKED" : "SEEKING") : "DISABLED"
+    lockStatusColor = enableSessionLock ? (isArmed ? color.rgb(34, 197, 94) : color.rgb(234, 179, 8)) : color.gray
     table.cell(diagTable, 0, dRow, "Session Lock", text_color=color.white, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_left)
     table.cell(diagTable, 1, dRow, lockStatusText, text_color=lockStatusColor, text_size=diagSize, bgcolor=diagBG, text_halign=text.align_right)
     dRow += 1
@@ -1885,7 +1946,7 @@ riskType = bondEventRiskDetected ? "EVENT RISK" : spreadSpikeDetected ? "SPREAD 
 riskContext = bondEventRiskDetected ? bondRiskReason : spreadSpikeDetected ? str.tostring(math.round(currentSpread / avgSpread * 10) / 10) + "x avg" : ""
 
 // v2.3.0: Short playbook for alerts
-playbookShort = str.contains(lockedPlaybook, "CONTINUATION") ? "CONTINUATION" : str.contains(lockedPlaybook, "DEEP PULLBACK") ? "DEEP PULLBACK" : str.contains(lockedPlaybook, "OBSERVATION") ? "OBSERVATION" : "NO TRADE"
+playbookShort = str.contains(currentPlaybook, "CONTINUATION") ? "CONTINUATION" : str.contains(currentPlaybook, "DEEP PULLBACK") ? "DEEP PULLBACK" : str.contains(currentPlaybook, "OBSERVATION") ? "OBSERVATION" : "NO TRADE"
 
 // v2.3.0: TradingView chart link
 chartLink = "https://tradingview.com/chart/?symbol=OANDA:" + syminfo.ticker
