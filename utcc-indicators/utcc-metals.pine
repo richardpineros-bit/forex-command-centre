@@ -314,14 +314,14 @@ effectiveADXThreshold = useAutoADX ? autoADXThreshold : adxThreshold
 // ============================================================================
 GRP_ALERTS = "🔔 Context Alerts (v2.0)"
 
-alertMode = input.string("alertcondition", "Alert Mode",
+alertMode = input.string("alert() per bar", "Alert Mode",
      options=["alertcondition", "alert() per bar", "alert() bar close"],
      group=GRP_ALERTS)
 
 enableContextCandidate = input.bool(true, "CONTEXT CANDIDATE Alert", group=GRP_ALERTS)
 enableContextArmed = input.bool(true, "CONTEXT ARMED Alert", group=GRP_ALERTS)
 enableContextDisarmed = input.bool(true, "CONTEXT DISARMED Alert", group=GRP_ALERTS)
-enableSessionReset = input.bool(true, "SESSION RESET Alert", group=GRP_ALERTS)
+enableSessionReset = input.bool(false, "SESSION RESET Alert", group=GRP_ALERTS)
 
 alertStrongThreshold = input.int(76, "ARMED Threshold", minval=70, maxval=90, group=GRP_ALERTS)
 candidateThreshold = input.int(82, "CANDIDATE Threshold", minval=70, maxval=95, group=GRP_ALERTS)
@@ -336,7 +336,7 @@ GRP_LOCK = "🔒 Session Lock (v2.0)"
 enableSessionLock = input.bool(true, "Enable Session Lock", group=GRP_LOCK)
 disarmScoreThreshold = input.int(10, "Disarm Score Drop", minval=5, maxval=20, step=1, group=GRP_LOCK)
 efficiencyThreshold = input.float(0.4, "Min Directional Efficiency", minval=0.1, maxval=0.8, step=0.05, group=GRP_LOCK)
-upgradePersistence = input.int(2, "Upgrade Persistence (bars)", minval=1, maxval=5, group=GRP_LOCK)
+upgradePersistence = input.int(1, "Upgrade Persistence (bars)", minval=1, maxval=5, group=GRP_LOCK)
 
 mtfDegradationScoreThreshold = input.int(75, "4H Score Warning Level", minval=60, maxval=85, group=GRP_ALERTS)
 

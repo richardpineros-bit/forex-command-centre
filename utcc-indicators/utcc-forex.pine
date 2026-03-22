@@ -194,7 +194,7 @@ eqTolerance = input.float(0.40, "Equality Tolerance", minval=0.05, maxval=0.50, 
 GRP_ALERTS = "Context Alerts"
 
 // Alert Mode Selection
-alertMode = input.string("alertcondition", "Alert Mode",
+alertMode = input.string("alert() per bar", "Alert Mode",
      options=["alertcondition", "alert() per bar", "alert() bar close"],
      group=GRP_ALERTS,
      tooltip="alertcondition = Use TradingView trigger options (Once per minute)\nalert() per bar = Mid-bar via Any alert() function call\nalert() bar close = Bar close via Any alert() function call")
@@ -209,7 +209,7 @@ enableContextArmed = input.bool(true, "CONTEXT ARMED Alert",
 enableContextDisarmed = input.bool(true, "CONTEXT DISARMED Alert", 
      group=GRP_ALERTS,
      tooltip="Fires when dual disarm triggers. Stop hunting. Cancel bias. More important than armed.")
-enableSessionReset = input.bool(true, "SESSION RESET Alert", 
+enableSessionReset = input.bool(false, "SESSION RESET Alert", 
      group=GRP_ALERTS,
      tooltip="Fires when new session begins. Fresh evaluation required. Don't trade yesterday's logic.")
 
@@ -243,7 +243,7 @@ efficiencyThreshold = input.float(0.4, "Min Directional Efficiency",
      group=GRP_LOCK,
      tooltip="Body/Range ratio. Below this = structural damage.\n0.7+ = Strong directional\n0.4-0.7 = Mixed\n<0.4 = Indecision (wick-heavy)")
 
-upgradePersistence = input.int(2, "Upgrade Persistence (bars)",
+upgradePersistence = input.int(1, "Upgrade Persistence (bars)",
      minval=1, maxval=5,
      group=GRP_LOCK,
      tooltip="Score must stay above threshold for X bars before arming.\nDowngrades are immediate on structural damage.")

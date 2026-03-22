@@ -262,7 +262,7 @@ autoEntryAcceptable = input.float(1.3, "ACCEPTABLE Zone (ATR)", minval=0.5, maxv
 // ============================================================================
 GRP_ALERTS = "🔔 Alert Settings"
 
-alertMode = input.string("alert() bar close", "Alert Mode",
+alertMode = input.string("alert() per bar", "Alert Mode",
      options=["alertcondition", "alert() per bar", "alert() bar close"],
      group=GRP_ALERTS,
      tooltip="alertcondition = Standard TradingView\nalert() per bar = Any alert() call\nalert() bar close = Fires on bar close only")
@@ -276,7 +276,7 @@ enableContextArmed = input.bool(true, "CONTEXT ARMED Alert",
 enableContextDisarmed = input.bool(true, "CONTEXT DISARMED Alert",
      group=GRP_ALERTS,
      tooltip="Fires when previously armed setup loses qualification.")
-enableSessionReset = input.bool(true, "SESSION RESET Alert",
+enableSessionReset = input.bool(false, "SESSION RESET Alert",
      group=GRP_ALERTS,
      tooltip="Fires when session changes and lock resets.")
 

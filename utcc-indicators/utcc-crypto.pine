@@ -423,7 +423,7 @@ atrFilterPercent := useAutoATR ? autoATRFilter : manualATRFilter
 // ============================================================================
 GRP_ALERTS = "🔔 Context Alerts (v2.0)"
 
-alertMode = input.string("alertcondition", "Alert Mode",
+alertMode = input.string("alert() per bar", "Alert Mode",
      options=["alertcondition", "alert() per bar", "alert() bar close"],
      group=GRP_ALERTS)
 
@@ -436,7 +436,7 @@ enableContextArmed = input.bool(true, "CONTEXT ARMED Alert",
 enableContextDisarmed = input.bool(true, "CONTEXT BLOCKED Alert", 
      group=GRP_ALERTS,
      tooltip="Fires when dual disarm triggers. Context blocked.")
-enableSessionReset = input.bool(true, "SESSION RESET Alert", 
+enableSessionReset = input.bool(false, "SESSION RESET Alert", 
      group=GRP_ALERTS,
      tooltip="Fires when crypto session changes (Asian/EU/US).")
 
@@ -464,7 +464,7 @@ efficiencyThreshold = input.float(0.4, "Min Directional Efficiency",
      minval=0.1, maxval=0.8, step=0.05,
      group=GRP_LOCK)
 
-upgradePersistence = input.int(2, "Upgrade Persistence (bars)",
+upgradePersistence = input.int(1, "Upgrade Persistence (bars)",
      minval=1, maxval=5,
      group=GRP_LOCK)
 
