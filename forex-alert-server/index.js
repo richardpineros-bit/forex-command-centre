@@ -874,7 +874,7 @@ var server = http.createServer(function(req, res) {
         req.on('data', function(chunk) { body += chunk; });
         req.on('end', function() {
             var timestamp = new Date().toISOString();
-            console.log('[' + timestamp + '] Webhook: ' + body.substring(0, 100));
+            console.log('[' + timestamp + '] Webhook: ' + body.substring(0, 500));
 
             var alert = parseAlert(body);
 
@@ -924,7 +924,7 @@ var server = http.createServer(function(req, res) {
                     saveCandidates(cands);
                 }
 
-                console.log('  -> ARMED ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-'));
+                console.log('  -> ARMED ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-') + ' | struct:' + (alert.structExt || 'NONE'));
 
                 // Push notification — ARMED fires
                 pushArmed(alert);
@@ -1051,7 +1051,7 @@ var server = http.createServer(function(req, res) {
         req.on('data', function(chunk) { body += chunk; });
         req.on('end', function() {
             var timestamp = new Date().toISOString();
-            console.log('[' + timestamp + '] UTCC: ' + body.substring(0, 100));
+            console.log('[' + timestamp + '] UTCC: ' + body.substring(0, 500));
 
             var alert = parseUtccAlert(body);
 
