@@ -102,7 +102,7 @@ const QuickAccessBar = (function() {
                     '<span class="quick-item-label">' +
                         '<span class="quick-item-pair">' + (armed.pair || '?') + '</span>' +
                         '<span class="quick-item-status" style="color:' + ttlStatus.colour + '">' + statusLabel + '</span>' +
-                        (armed.struct_ext ? '<span class="quick-item-struct" style="color:' + (armed.struct_ext === 'EXTENDED' ? 'var(--color-fail)' : armed.struct_ext === 'DEVELOPING' ? '#eab308' : '#4ade80') + ';font-size:0.6rem;font-weight:700;display:block;line-height:1.1">' + armed.struct_ext + '</span>' : '') +
+                        ((armed.structExt || armed.struct_ext) ? '<span class="quick-item-struct" style="color:' + ((armed.structExt || armed.struct_ext) === 'EXTENDED' ? 'var(--color-fail)' : (armed.structExt || armed.struct_ext) === 'DEVELOPING' ? '#eab308' : '#4ade80') + ';font-size:0.6rem;font-weight:700;display:block;line-height:1.1">' + (armed.structExt || armed.struct_ext) + '</span>' : '') +
                     '</span>' +
                 '</div>';
             });

@@ -172,7 +172,7 @@
 
 
         // Structural extension display
-        var structRaw = (p.struct_ext || '').toUpperCase();
+        var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
         var structHtml;
         if (structRaw === 'FRESH') {
             structHtml = '<span style="color:#4ade80;font-size:0.7rem;font-weight:700">FRESH</span>';
