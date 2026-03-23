@@ -190,7 +190,7 @@
             '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
             '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
             '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
-            '<span class="armed-maxrisk">' + (p.maxRisk || '\u2014') + '</span>' +
+            '<span class="armed-maxrisk">' + ((p.maxRisk || '').split('|')[0].trim() || '\u2014') + '</span>' +
             '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
             '<span class="armed-atr">' + atrHtml + '</span>' +
             '<span class="armed-struct">' + structHtml + '</span>' +
