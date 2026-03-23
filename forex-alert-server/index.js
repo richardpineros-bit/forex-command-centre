@@ -317,6 +317,8 @@ function appendArmEvent(alert, timestamp) {
             volState:     alert.volState     || '',
             volBehaviour: alert.volBehaviour || '',
             volLevel:     alert.volLevel     || 0,
+            structExt:    alert.structExt    || '',
+            structBars:   alert.structBars   !== undefined ? alert.structBars : null,
 
             // ── Momentum ──────────────────────────────────────────
             rsi:          alert.rsi          || 0,
@@ -586,6 +588,8 @@ function parseNewAlert(body) {
     var volState = '';
     var volBehaviour = '';
     var volLevel = '';
+    var structExt = '';
+    var structBars = null;
     var riskMult = 1.0;
     var playbook = '';
     var rsi = 0;
@@ -616,6 +620,8 @@ function parseNewAlert(body) {
                 volState = ctx.vol_state || '';
                 volBehaviour = ctx.vol_behaviour || '';
                 volLevel = ctx.vol_level || '';
+                structExt = ctx.struct_ext || '';
+                structBars = ctx.struct_bars !== undefined ? ctx.struct_bars : null;
                 riskMult = parseFloat(ctx.risk_mult) || 1.0;
                 rsi = parseInt(ctx.rsi) || 0;
                 playbook = ctx.playbook || '';
@@ -656,6 +662,8 @@ function parseNewAlert(body) {
         volState: volState,
         volBehaviour: volBehaviour,
         volLevel: volLevel,
+        structExt: structExt,
+        structBars: structBars,
         riskMult: riskMult,
         rsi: rsi,
         playbook: playbook
@@ -799,6 +807,8 @@ var server = http.createServer(function(req, res) {
                 volState: d.volState || '',
                 volBehaviour: d.volBehaviour || '',
                 volLevel: d.volLevel || '',
+                structExt: d.structExt || '',
+                structBars: d.structBars !== undefined ? d.structBars : null,
                 riskMult: d.riskMult || 1.0,
                 rsi: d.rsi || 0,
                 playbook: d.playbook || ''
@@ -898,6 +908,8 @@ var server = http.createServer(function(req, res) {
                     volState: alert.volState || '',
                     volBehaviour: alert.volBehaviour || '',
                     volLevel: alert.volLevel || '',
+                    structExt: alert.structExt || '',
+                    structBars: alert.structBars !== undefined ? alert.structBars : null,
                     riskMult: alert.riskMult || 1.0,
                     rsi: alert.rsi || 0,
                     playbook: alert.playbook || alert._playbook || ''
@@ -1011,6 +1023,8 @@ var server = http.createServer(function(req, res) {
                     criteria: alert.criteria || 0,
                     volState: alert.volState || '',
                     volBehaviour: alert.volBehaviour || '',
+                    structExt: alert.structExt || '',
+                    structBars: alert.structBars !== undefined ? alert.structBars : null,
                     riskMult: alert.riskMult || 1.0,
                     playbook: alert.playbook || ''
                 };
