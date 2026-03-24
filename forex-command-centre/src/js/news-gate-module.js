@@ -44,6 +44,39 @@
     };
 
     // ============================================
+    // CROSS-PAIR CRITICAL CONFIG (v1.2.0)
+    // ============================================
+
+    // Currencies whose CRITICAL events block ALL pairs regardless of composition
+    const CROSS_PAIR_CRITICAL_CURRENCIES = ['USD', 'EUR', 'GBP'];
+
+    // Event title fragments that trigger cross-pair lockout when they match
+    // a CROSS_PAIR_CRITICAL_CURRENCIES event
+    const CROSS_PAIR_CRITICAL_EVENTS = [
+        'Non-Farm Payroll',
+        'Nonfarm Payroll',
+        'NFP',
+        'CPI',
+        'Consumer Price Index',
+        'Core CPI',
+        'Core PCE',
+        'PCE Price Index',
+        'FOMC Rate Decision',
+        'Fed Rate Decision',
+        'Federal Reserve Rate',
+        'FOMC Statement',
+        'Fed Press Conference',
+        'ECB Rate Decision',
+        'ECB Monetary Policy',
+        'BoE Rate Decision',
+        'BoE Monetary Policy',
+        'GDP',
+        'Gross Domestic Product',
+        'Employment Change',
+        'Unemployment Rate'
+    ];
+
+    // ============================================
     // MODULE INTERFACE
     // ============================================
 
@@ -139,6 +172,27 @@
         const quoteCurrency = pair.substring(3, 6);
         const now = new Date();
         const windowEnd = new Date(now.getTime() + (hoursAhead * 60 * 60 * 1000));
+
+        // CROSS-PAIR CRITICAL CHECK (v1.2.0)
+        // Block ALL pairs within 4h of major USD/EUR/GBP events (e.g. NFP, CPI, FOMC)
+        var crossBlock = scanCrossPairCritical(pair, now, windowEnd);
+        if (crossBlock) {
+            var cbBuffer = IMPACT_BUFFERS.CRITICAL.bufferHours * 60;
+            var isRed = crossBlock.minutesUntil < cbBuffer;
+            var cbVerdict = {
+                verdict: isRed ? 'RED' : 'YELLOW',
+                reason: (isRed ? 'CROSS-PAIR CRITICAL: ' : 'CAUTION \u2014 CROSS-PAIR: ') +
+                    crossBlock.event.title + ' (' + crossBlock.event.currency + ') in ' +
+                    formatTime(crossBlock.minutesUntil) +
+                    (isRed ? ' \u2014 ALL pairs blocked (4h buffer)' : ''),
+                nextEvent: crossBlock.event,
+                minutesUntil: crossBlock.minutesUntil,
+                safe: !isRed,
+                crossPair: true
+            };
+            logDecision(pair, cbVerdict);
+            return cbVerdict;
+        }
 
         // Find all upcoming events for this pair's currencies
         const upcomingEvents = LIVE_CALENDAR_DATA.events.filter(event => {
@@ -257,6 +311,50 @@
         if (imp.includes('MEDIUM') || imp.includes('MED')) return 'MEDIUM';
         if (imp.includes('LOW')) return 'LOW';
         return 'MEDIUM';
+    }
+
+    /**
+     * Scan for cross-pair critical events (e.g. NFP blocks ALL pairs)
+     * Returns the nearest blocking event or null
+     */
+    function scanCrossPairCritical(pair, now, windowEnd) {
+        var baseCcy  = pair.substring(0, 3);
+        var quoteCcy = pair.substring(3, 6);
+
+        var blocking = [];
+
+        LIVE_CALENDAR_DATA.events.forEach(function(event) {
+            // Only scan currencies in CROSS_PAIR_CRITICAL_CURRENCIES
+            if (!CROSS_PAIR_CRITICAL_CURRENCIES.includes(event.currency)) return;
+
+            // Skip if this currency is already in the pair being assessed
+            // (already caught by the pair-specific scan)
+            if (event.currency === baseCcy || event.currency === quoteCcy) return;
+
+            if (!event.datetime_utc) return;
+            var eventTime = new Date(event.datetime_utc);
+            if (eventTime <= now || eventTime > windowEnd) return;
+
+            // Must be HIGH impact
+            var impact = normaliseImpact(event.impact);
+            if (impact !== 'HIGH') return;
+
+            // Must match a cross-pair critical event title
+            var title = event.title || '';
+            var isKnownCritical = CROSS_PAIR_CRITICAL_EVENTS.some(function(fragment) {
+                return title.toLowerCase().includes(fragment.toLowerCase());
+            });
+            if (!isKnownCritical) return;
+
+            var minutesUntil = Math.round((eventTime - now) / 60000);
+            blocking.push({ event: event, minutesUntil: minutesUntil });
+        });
+
+        if (blocking.length === 0) return null;
+
+        // Return nearest
+        blocking.sort(function(a, b) { return a.minutesUntil - b.minutesUntil; });
+        return blocking[0];
     }
 
     /**

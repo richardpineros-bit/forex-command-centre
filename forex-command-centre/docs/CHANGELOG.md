@@ -1,3 +1,12 @@
+## [v5.0.1] - 2026-03-24
+### Cross-Pair CRITICAL News Enforcement
+- `js/news-gate-module.js` v1.2.0: `scanCrossPairCritical()` blocks ALL pairs within 4h of major USD/EUR/GBP events (NFP, CPI, FOMC, PCE, ECB/BoE rate decisions, GDP, Employment Change)
+- `CROSS_PAIR_CRITICAL_CURRENCIES` constant: USD, EUR, GBP
+- `CROSS_PAIR_CRITICAL_EVENTS` list: 21 event title fragments
+- Cross-pair block skips currencies already in the assessed pair (no double-counting)
+- Verdict reason clearly labels source: "CROSS-PAIR CRITICAL: NFP (USD) in 2h 30m -- ALL pairs blocked (4h buffer)"
+- `crossPair: true` flag on verdict object for downstream display logic
+
 ## [v5.0.0] - 2026-03-24
 ### News Bias Engine + Canary Alerts
 - `js/news-bias-engine.js` (new): polls `/bias-history/latest` every 30 min, exposes `window.NewsBiasEngine.getVerdict(pair)` and `getBias(currency)`, graceful fallback if API unreachable
