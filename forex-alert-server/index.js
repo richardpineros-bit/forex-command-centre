@@ -9,6 +9,7 @@ const UTCC_FILE = process.env.UTCC_FILE || '/data/utcc-alerts.json';
 const CANDIDATE_FILE = process.env.CANDIDATE_FILE || '/data/candidates.json';
 const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/data/structure.json';
 const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json';
+const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.json';
 const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
 
 // ============================================================================
@@ -282,6 +283,33 @@ function loadArmHistory() {
     return { events: [], lastUpdate: null };
 }
 
+function loadBiasHistory() {
+    try {
+        if (fs.existsSync(BIAS_HISTORY_FILE)) {
+            return JSON.parse(fs.readFileSync(BIAS_HISTORY_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error loading bias history:', e.message);
+    }
+    return { schema_version: '1.0.0', runs: [], run_count: 0, last_updated: null };
+}
+
+function getCurrentPairVerdicts() {
+    var history = loadBiasHistory();
+    if (!history.runs || history.runs.length === 0) return {};
+    // Most recent run has the current verdicts
+    var latest = history.runs[history.runs.length - 1];
+    return latest.pair_verdicts || {};
+}
+
+function getCurrentCurrencyBias() {
+    var history = loadBiasHistory();
+    if (!history.runs || history.runs.length === 0) return {};
+    var latest = history.runs[history.runs.length - 1];
+    return latest.currency_bias || {};
+}
+
+
 function appendArmEvent(alert, timestamp) {
     try {
         var data = loadArmHistory();
@@ -332,7 +360,45 @@ function appendArmEvent(alert, timestamp) {
             riskState:    alert.riskState    || 'K-NORMAL',
             riskMult:     alert.riskMult     || 1.0,
             maxRisk:      alert.maxRisk      || '1.0R',
-            permission:   alert.permission   || 'FULL'
+            permission:   alert.permission   || 'FULL',
+
+            // ── News bias at arm time (from bias-history.json) ──────────────
+            news_bias:    (function() {
+                try {
+                    var verdicts = getCurrentPairVerdicts();
+                    var biases   = getCurrentCurrencyBias();
+                    var pair     = alert.pair || '';
+                    var base     = pair.substring(0,3);
+                    var quote    = pair.substring(3,6);
+                    if (!verdicts[pair]) return null;
+                    var verdict  = verdicts[pair];
+                    // Determine confluence vs UTCC direction
+                    var utccDir  = (alert.direction || '').toUpperCase();
+                    var biasDir  = verdict.direction; // 'BULLISH','BEARISH','NEUTRAL'
+                    var confluence = 'NEUTRAL';
+                    if (biasDir !== 'NEUTRAL') {
+                        var biasLong  = biasDir === 'BULLISH';
+                        var utccLong  = utccDir === 'LONG' || utccDir === 'BULL';
+                        var utccShort = utccDir === 'SHORT' || utccDir === 'BEAR';
+                        if ((biasLong && utccLong) || (!biasLong && utccShort)) {
+                            confluence = 'ALIGNED';
+                        } else if ((biasLong && utccShort) || (!biasLong && utccLong)) {
+                            confluence = 'CONFLICTING';
+                        }
+                    }
+                    return {
+                        pair_direction:  verdict.direction,
+                        net_score:       verdict.net_score,
+                        strength:        verdict.strength,
+                        confluence:      confluence,
+                        size_modifier:   confluence === 'CONFLICTING' ? verdict.size_modifier : 1.0,
+                        base_bias:       (biases[base]  || {bias:'UNKNOWN',score:0,confidence:'LOW'}),
+                        quote_bias:      (biases[quote] || {bias:'UNKNOWN',score:0,confidence:'LOW'})
+                    };
+                } catch(e) {
+                    return null;
+                }
+            })()
         });
 
         data.lastUpdate = new Date().toISOString();
@@ -1377,6 +1443,73 @@ var server = http.createServer(function(req, res) {
 
 
     // ========================================================================
+    // GET /bias-history - Return news bias history (scraper output)
+    // Usage: /bias-history?days=30&pair=AUDUSD&currency=AUD
+    if (req.method === 'GET' && req.url.startsWith('/bias-history')) {
+        var urlParts = req.url.split('?');
+        var queryStr = urlParts[1] || '';
+        var params = {};
+        queryStr.split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+
+        var history = loadBiasHistory();
+        var runs = history.runs || [];
+
+        // Filter by days
+        var days = parseInt(params.days) || 0;
+        if (days > 0) {
+            var cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+            runs = runs.filter(function(r) {
+                return new Date(r.timestamp).getTime() >= cutoff;
+            });
+        }
+
+        // Build response - include full runs + summary
+        var summary = {
+            total_runs:      runs.length,
+            last_updated:    history.last_updated,
+            schema_version:  history.schema_version
+        };
+
+        // Latest pair verdicts and currency bias (most useful for FCC frontend)
+        var latestVerdicts  = getCurrentPairVerdicts();
+        var latestBias      = getCurrentCurrencyBias();
+
+        // If pair filter - extract relevant verdict
+        if (params.pair) {
+            latestVerdicts = {};
+            var pd = getCurrentPairVerdicts();
+            if (pd[params.pair]) latestVerdicts[params.pair] = pd[params.pair];
+        }
+
+        // If currency filter - extract relevant bias
+        if (params.currency) {
+            latestBias = {};
+            var cb = getCurrentCurrencyBias();
+            if (cb[params.currency]) latestBias[params.currency] = cb[params.currency];
+        }
+
+        sendResponse(res, 200, {
+            summary:         summary,
+            latest_verdicts: latestVerdicts,
+            latest_bias:     latestBias,
+            runs:            runs
+        });
+        return;
+    }
+
+    // GET /bias-history/latest - Return only current bias (lightweight, for FCC armed panel)
+    if (req.method === 'GET' && req.url === '/bias-history/latest') {
+        sendResponse(res, 200, {
+            pair_verdicts:  getCurrentPairVerdicts(),
+            currency_bias:  getCurrentCurrencyBias(),
+            last_updated:   loadBiasHistory().last_updated
+        });
+        return;
+    }
+
     // PUSH NOTIFICATION ENDPOINTS (v2.5.0)
     // ========================================================================
 
