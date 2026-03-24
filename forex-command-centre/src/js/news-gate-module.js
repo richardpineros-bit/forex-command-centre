@@ -194,6 +194,29 @@
             return cbVerdict;
         }
 
+        // POST-EVENT WAIT CHECK (v1.3.0)
+        // Block pair if a recent HIGH/CRITICAL event fired within its post-wait window
+        var postBlock = scanRecentFiredEvents(pair, now);
+        if (postBlock) {
+            var pbVerdict = {
+                verdict: 'RED',
+                reason: (postBlock.crossPair ? 'CROSS-PAIR ' : '') +
+                    'POST-EVENT WAIT: ' + postBlock.event.title +
+                    ' (' + postBlock.event.currency + ') fired ' +
+                    postBlock.minutesSinceFired + 'm ago ' +
+                    '\u2014 ' + postBlock.postWait + 'm wait, ' +
+                    postBlock.minutesRemaining + 'm remaining',
+                nextEvent: postBlock.event,
+                minutesUntil: -postBlock.minutesSinceFired,
+                minutesRemaining: postBlock.minutesRemaining,
+                safe: false,
+                postEvent: true,
+                crossPair: postBlock.crossPair
+            };
+            logDecision(pair, pbVerdict);
+            return pbVerdict;
+        }
+
         // Find all upcoming events for this pair's currencies
         const upcomingEvents = LIVE_CALENDAR_DATA.events.filter(event => {
             if (event.currency !== baseCurrency && event.currency !== quoteCurrency) return false;
@@ -311,6 +334,82 @@
         if (imp.includes('MEDIUM') || imp.includes('MED')) return 'MEDIUM';
         if (imp.includes('LOW')) return 'LOW';
         return 'MEDIUM';
+    }
+
+    /**
+     * Scan for recently-fired events still within their post-wait window.
+     * Covers both pair-specific and cross-pair critical events.
+     * Returns the worst (longest remaining wait) blocking event, or null.
+     */
+    function scanRecentFiredEvents(pair, now) {
+        var baseCcy  = pair.substring(0, 3);
+        var quoteCcy = pair.substring(3, 6);
+
+        // Maximum lookback = highest postWaitMinutes across all tiers
+        var maxLookbackMs = 0;
+        Object.values(IMPACT_BUFFERS).forEach(function(cfg) {
+            if ((cfg.postWaitMinutes || 0) * 60 * 1000 > maxLookbackMs) {
+                maxLookbackMs = cfg.postWaitMinutes * 60 * 1000;
+            }
+        });
+        var lookbackStart = new Date(now.getTime() - maxLookbackMs);
+
+        var blocking = [];
+
+        LIVE_CALENDAR_DATA.events.forEach(function(event) {
+            if (!event.datetime_utc) return;
+            var eventTime = new Date(event.datetime_utc);
+
+            // Only events that have already fired within the lookback window
+            if (eventTime >= now || eventTime < lookbackStart) return;
+
+            var minutesSinceFired = Math.round((now - eventTime) / 60000);
+            var isCross = false;
+            var postWait = 0;
+            var impact = normaliseImpact(event.impact);
+            var title = event.title || '';
+            var ccy = event.currency || '';
+
+            if (ccy === baseCcy || ccy === quoteCcy) {
+                // Pair-specific event
+                var isCrit = isCriticalEvent(pair, title);
+                if (isCrit) {
+                    postWait = IMPACT_BUFFERS.CRITICAL.postWaitMinutes;
+                } else {
+                    postWait = (IMPACT_BUFFERS[impact] || {}).postWaitMinutes || 0;
+                }
+            } else if (CROSS_PAIR_CRITICAL_CURRENCIES.includes(ccy)) {
+                // Cross-pair critical event
+                if (impact !== 'HIGH') return;
+                var isKnown = CROSS_PAIR_CRITICAL_EVENTS.some(function(frag) {
+                    return title.toLowerCase().includes(frag.toLowerCase());
+                });
+                if (!isKnown) return;
+                postWait = IMPACT_BUFFERS.CRITICAL.postWaitMinutes;
+                isCross = true;
+            } else {
+                return; // Not relevant to this pair
+            }
+
+            if (postWait === 0) return;
+
+            var minutesRemaining = postWait - minutesSinceFired;
+            if (minutesRemaining <= 0) return; // Post-wait elapsed
+
+            blocking.push({
+                event:            event,
+                minutesSinceFired: minutesSinceFired,
+                minutesRemaining: minutesRemaining,
+                postWait:         postWait,
+                crossPair:        isCross
+            });
+        });
+
+        if (blocking.length === 0) return null;
+
+        // Return the one with most time remaining (worst block)
+        blocking.sort(function(a, b) { return b.minutesRemaining - a.minutesRemaining; });
+        return blocking[0];
     }
 
     /**

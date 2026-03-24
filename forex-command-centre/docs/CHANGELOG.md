@@ -1,3 +1,12 @@
+## [v5.0.2] - 2026-03-24
+### Post-Event Wait Period Enforcement
+- `js/news-gate-module.js` v1.3.0: `scanRecentFiredEvents()` blocks pairs after HIGH/CRITICAL events fire, until post-wait elapses
+- Post-wait periods: CRITICAL=60m, HIGH=30m, MEDIUM=15m, LOW=0m (from existing IMPACT_BUFFERS config)
+- Covers pair-specific AND cross-pair events (NFP fires = all pairs blocked for 60m)
+- Returns worst block (longest remaining wait) if multiple events fired
+- Verdict: "CROSS-PAIR POST-EVENT WAIT: NFP (USD) fired 23m ago -- 60m wait, 37m remaining"
+- `postEvent: true` flag on verdict object; `minutesRemaining` field for countdown display
+
 ## [v5.0.1] - 2026-03-24
 ### Cross-Pair CRITICAL News Enforcement
 - `js/news-gate-module.js` v1.2.0: `scanCrossPairCritical()` blocks ALL pairs within 4h of major USD/EUR/GBP events (NFP, CPI, FOMC, PCE, ECB/BoE rate decisions, GDP, Employment Change)
