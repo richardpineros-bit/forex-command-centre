@@ -921,7 +921,9 @@ var server = http.createServer(function(req, res) {
                 volBehaviour: d.volBehaviour || '',
                 volLevel: d.volLevel || '',
                 riskMult: d.riskMult || 1.0,
-                playbook: d.playbook || ''
+                playbook: d.playbook || '',
+                structExt: d.structExt || '',
+                structBars: d.structBars !== undefined ? d.structBars : null
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);

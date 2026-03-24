@@ -1,3 +1,9 @@
+## [v5.0.6] - 2026-03-24
+### Fix: structExt missing from candidates in GET /state
+- `forex-alert-server/index.js`: candidate response builder now includes `structExt` and `structBars`
+- Field was stored in candidates.json but not returned in /state response
+- Armed panel will now show FRESH/DEVELOPING/EXTENDED for candidate pairs
+
 ## [v5.0.5] - 2026-03-24
 ### utcc-crypto: BLOCKED alert type/permission mismatch fix
 - Same fix as v5.0.4 (metals + bonds) applied to crypto
