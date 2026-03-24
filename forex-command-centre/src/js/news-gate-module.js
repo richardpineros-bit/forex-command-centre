@@ -178,16 +178,16 @@
         var crossBlock = scanCrossPairCritical(pair, now, windowEnd);
         if (crossBlock) {
             var cbBuffer = IMPACT_BUFFERS.CRITICAL.bufferHours * 60;
-            var isRed = crossBlock.minutesUntil < cbBuffer;
+            var cbIsRed = crossBlock.minutesUntil < cbBuffer;
             var cbVerdict = {
-                verdict: isRed ? 'RED' : 'YELLOW',
-                reason: (isRed ? 'CROSS-PAIR CRITICAL: ' : 'CAUTION \u2014 CROSS-PAIR: ') +
+                verdict: cbIsRed ? 'RED' : 'YELLOW',
+                reason: (cbIsRed ? 'CROSS-PAIR CRITICAL: ' : 'CAUTION \u2014 CROSS-PAIR: ') +
                     crossBlock.event.title + ' (' + crossBlock.event.currency + ') in ' +
                     formatTime(crossBlock.minutesUntil) +
-                    (isRed ? ' \u2014 ALL pairs blocked (4h buffer)' : ''),
+                    (cbIsRed ? ' \u2014 ALL pairs blocked (4h buffer)' : ''),
                 nextEvent: crossBlock.event,
                 minutesUntil: crossBlock.minutesUntil,
-                safe: !isRed,
+                safe: !cbIsRed,
                 crossPair: true
             };
             logDecision(pair, cbVerdict);
