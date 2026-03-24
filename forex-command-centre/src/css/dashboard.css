@@ -671,7 +671,7 @@ a.armed-pair-row.armed-row-link:active {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 48px;
+    height: 64px;
     background: var(--bg-card);
     border-top: 1px solid var(--border-color);
     display: flex;
@@ -743,7 +743,7 @@ a.armed-pair-row.armed-row-link:active {
 
 @media (max-width: 768px) {
     #quick-access-bar {
-        height: 56px;
+        height: 68px;
         gap: var(--spacing-xs);
         padding: var(--spacing-xs);
     }
