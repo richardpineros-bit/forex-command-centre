@@ -83,6 +83,8 @@
         }
 
         console.log('NewsGateModule v' + MODULE_VERSION + ' initialised');
+        // Start background poller after a short delay (let calendar data load first)
+        setTimeout(startBackgroundPoller, 3000);
         return true;
     }
 
@@ -353,6 +355,88 @@
         } catch (e) {
             console.warn('NewsGateModule: Could not clear audit log', e);
         }
+    }
+
+
+    // -------------------------------------------------------------------------
+    // BACKGROUND NEWS POLLER
+    // Checks armed pairs + open trades every 5 minutes
+    // Fires NEWS_WARNING push if high-impact news is within 2 hours
+    // -------------------------------------------------------------------------
+    var _bgPollInterval = null;
+    var NEWS_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    var NEWS_WARN_HOURS = 2;
+
+    function getPairsToWatch() {
+        var pairs = [];
+
+        // 1. Armed pairs from alert server
+        try {
+            var armedRaw = localStorage.getItem('fcc-armed-state');
+            if (armedRaw) {
+                var armedData = JSON.parse(armedRaw);
+                var armedPairs = armedData.pairs || armedData;
+                if (Array.isArray(armedPairs)) {
+                    armedPairs.forEach(function(p) {
+                        var sym = p.symbol || p.pair || p;
+                        if (typeof sym === 'string' && sym.length === 6) {
+                            pairs.push(sym.toUpperCase());
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn('[NewsPoller] Could not read armed state:', e);
+        }
+
+        // 2. Open trades from journal
+        try {
+            var tradesRaw = localStorage.getItem('ftcc_trades');
+            if (tradesRaw) {
+                var trades = JSON.parse(tradesRaw);
+                trades.filter(function(t) { return t.status === 'open'; })
+                    .forEach(function(t) {
+                        var sym = t.pair || t.symbol;
+                        if (typeof sym === 'string' && sym.length === 6) {
+                            pairs.push(sym.toUpperCase());
+                        }
+                    });
+            }
+        } catch (e) {
+            console.warn('[NewsPoller] Could not read open trades:', e);
+        }
+
+        // Deduplicate
+        return pairs.filter(function(p, i, arr) { return arr.indexOf(p) === i; });
+    }
+
+    function runBackgroundNewsCheck() {
+        if (!window.FCCPush) return;
+        if (!LIVE_CALENDAR_DATA || !LIVE_CALENDAR_DATA.events || LIVE_CALENDAR_DATA.events.length === 0) return;
+
+        var prefs = window.FCCPushPrefs ? window.FCCPushPrefs.get() : {};
+        if (prefs.newsWarning === false) return;
+
+        var pairs = getPairsToWatch();
+        if (pairs.length === 0) return;
+
+        console.log('[NewsPoller] Checking', pairs.length, 'pairs:', pairs.join(', '));
+
+        pairs.forEach(function(pair) {
+            var verdict = window.NewsGateModule.assessTradability(pair, NEWS_WARN_HOURS);
+            if (verdict && verdict.verdict === 'RED' && verdict.nextEvent) {
+                console.log('[NewsPoller] RED verdict for', pair, '-', verdict.reason);
+                // Push is handled inside logDecision (with 15-min cooldown per pair)
+            }
+        });
+    }
+
+    function startBackgroundPoller() {
+        if (_bgPollInterval) return; // already running
+        // Run immediately on start, then every 5 min
+        runBackgroundNewsCheck();
+        _bgPollInterval = setInterval(runBackgroundNewsCheck, NEWS_POLL_INTERVAL_MS);
+        console.log('[NewsPoller] Background news poller started (every 5 min, armed pairs + open trades)');
     }
 
     // Initialise on load
