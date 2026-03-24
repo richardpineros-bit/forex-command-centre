@@ -1,3 +1,12 @@
+## [v5.0.3] - 2026-03-24
+### utcc-energy: isArmedRaw/isArmed governance split (Phase 4 hardening)
+- `utcc-energy.pine`: renamed internal `isArmed` -> `isArmedState` inside SESSION LOCK block
+- Added `isArmedRaw = isArmedState` after lock block (UTCC state only, no governance)
+- Added `isArmed = isArmedRaw and finalPermission != "STAND_DOWN"` governance split after priority resolver
+- `armedDirection` now zeroed cleanly via governance line, not catch-all guards
+- Invariant guard blocks retained as belt-and-suspenders safety net
+- Matches bonds indicator Phase 4 governance hardening pattern exactly
+
 ## [v5.0.2] - 2026-03-24
 ### Post-Event Wait Period Enforcement
 - `js/news-gate-module.js` v1.3.0: `scanRecentFiredEvents()` blocks pairs after HIGH/CRITICAL events fire, until post-wait elapses

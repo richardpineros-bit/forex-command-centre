@@ -860,7 +860,7 @@ rawEfficiency = candleRange > 0 ? candleBody / candleRange : 0
 candleBullish = close > open
 candleBearish = close < open
 
-var bool isArmed = false
+var bool isArmedState = false
 var int armedDirection = 0
 var float armedScore = 0.0
 var string armedSession = ""
@@ -911,31 +911,34 @@ else
 
 if enableSessionLock
     if sessionJustChanged
-        isArmed := false
+        isArmedState := false
         armedDirection := 0
         armedScore := 0.0
         armedSession := ""
         barsAboveThreshold := 0
 
-    if not isArmed and barsAboveThreshold >= upgradePersistence
-        isArmed := true
+    if not isArmedState and barsAboveThreshold >= upgradePersistence
+        isArmedState := true
         armedDirection := trendDirection
         armedScore := overallScore
         armedSession := currentSession
 
-    if isArmed
+    if isArmedState
         scoreBelowDisarm = overallScore < (armedScore - disarmScoreThreshold)
         if scoreBelowDisarm and structuralDamage
-            isArmed := false
+            isArmedState := false
             armedDirection := 0
         if not regimeAllowsArming
-            isArmed := false
+            isArmedState := false
             armedDirection := 0
             disarmReason := "Regime Veto"
 else
-    isArmed := meetsArmCriteria
+    isArmedState := meetsArmCriteria
     armedDirection := trendDirection
     armedScore := overallScore
+
+// UTCC state only -- no governance applied yet
+isArmedRaw = isArmedState
 
 // ============================================================================
 // ALERT TYPE CONSTANTS
@@ -1091,17 +1094,21 @@ else
     resolvedAlertType := ALERT_INFO
 
 // ============================================================================
-// INVARIANT GUARD: No ARMED During Restricted Regimes
+// GOVERNANCE OVERRIDE: isArmed must respect regime veto (Phase 4)
 // ============================================================================
-// Safety net — if resolver logic has a bug, this catches it.
-// ARMED must NEVER appear during COMPRESSION, CHAOS, or OFFSESSION.
+// isArmedRaw reflects UTCC criteria only. isArmed reflects governance.
+// No ARMED state during R-COMPRESSION, R-CHAOS, R-OFFSESSION, or K-LOCKED.
+// This is an invariant. If this leaks, the entire authority model is broken.
+isArmed = isArmedRaw and finalPermission != "STAND_DOWN"
+armedDirection := isArmed ? trendDirection : 0
+
+// Belt-and-suspenders: catch any resolver bugs before alerts fire
 if regimeCode == "R-COMPRESSION" or regimeCode == "R-CHAOS" or regimeCode == "R-OFFSESSION"
     if resolvedAlertType == ALERT_ARMED
         resolvedAlertType := ALERT_BLOCKED
     if finalPermission == "FULL"
         finalPermission := "STAND_DOWN"
 
-// K-LOCKED invariant — ARMED must never appear when risk governor is locked
 if riskGovernorState == "LOCKED"
     if resolvedAlertType == ALERT_ARMED
         resolvedAlertType := ALERT_BLOCKED
