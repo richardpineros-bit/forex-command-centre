@@ -1491,22 +1491,24 @@ var server = http.createServer(function(req, res) {
             if (cb[params.currency]) latestBias[params.currency] = cb[params.currency];
         }
 
-        sendResponse(res, 200, {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
             summary:         summary,
             latest_verdicts: latestVerdicts,
             latest_bias:     latestBias,
             runs:            runs
-        });
+        }));
         return;
     }
 
     // GET /bias-history/latest - Return only current bias (lightweight, for FCC armed panel)
     if (req.method === 'GET' && req.url === '/bias-history/latest') {
-        sendResponse(res, 200, {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
             pair_verdicts:  getCurrentPairVerdicts(),
             currency_bias:  getCurrentCurrencyBias(),
             last_updated:   loadBiasHistory().last_updated
-        });
+        }));
         return;
     }
 
