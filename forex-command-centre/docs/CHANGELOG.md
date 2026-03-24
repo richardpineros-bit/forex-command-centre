@@ -1,3 +1,32 @@
+## [v4.9.1] - 2026-03-24
+
+### Added - News Bias Engine (Session 1)
+
+**forex_calendar_scraper.py (v2.0.0):**
+- `actual` field now captured from FF XML feed for past events
+- `result` field added: BEAT / MISS / INLINE / UNKNOWN (actual vs forecast/previous)
+- Bias scoring engine: per-currency score weighted by impact (High x3, Medium x1) and time decay (1.0 -> 0.2 over 7 days)
+- `bias-history.json` append on every run (90-day rolling window)
+- `currency_bias` and `pair_verdicts` now embedded in `calendar.json` for frontend consumption
+- Canary health check: validates XML feed structure before parsing; aborts and writes `scraper_health.json` if markup changed
+- `--bias-history` CLI flag for custom output path; `--unraid` flag for Docker volume paths
+
+**forex-alert-server/index.js (v2.6.0):**
+- `BIAS_HISTORY_FILE` constant: `/data/bias-history.json`
+- `loadBiasHistory()`, `getCurrentPairVerdicts()`, `getCurrentCurrencyBias()` helper functions
+- `GET /bias-history` endpoint: full history filterable by `?days=30&pair=AUDUSD&currency=AUD`
+- `GET /bias-history/latest` endpoint: lightweight current bias for FCC armed panel
+- `news_bias` snapshot baked into every arm event at webhook time: direction, net_score, strength, confluence (ALIGNED/NEUTRAL/CONFLICTING), size_modifier, base/quote bias
+
+**js/news-gate-module.js:**
+- Background news poller added: checks armed pairs + open journal trades every 5 minutes
+- Fires `NEWS_WARNING` push notification when high-impact news within 2 hours
+- Respects existing 15-minute per-pair push cooldown and user notification preferences
+- Starts automatically 3 seconds after module init (allows calendar data to load first)
+
+**css/base.css:**
+- Added `overflow-x: hidden` to `body` to prevent intermittent desktop layout on Android PWA
+
 ## [v2.6.x+1] - 2026-03-22
 ### Changed (Pine Script -- utcc-energy + utcc-bonds)
 - **struct_ext persistence arming (v2.0 state machine)** -- energy and bonds migrated from simple lockedDirection pattern to metals-canonical state machine
