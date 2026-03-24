@@ -861,6 +861,8 @@ candleBullish = close > open
 candleBearish = close < open
 
 var bool isArmedState = false
+var bool isArmedRaw = false
+var bool isArmed = false
 var int armedDirection = 0
 var float armedScore = 0.0
 var string armedSession = ""
@@ -938,7 +940,7 @@ else
     armedScore := overallScore
 
 // UTCC state only -- no governance applied yet
-isArmedRaw = isArmedState
+isArmedRaw := isArmedState
 
 // ============================================================================
 // ALERT TYPE CONSTANTS
@@ -1099,7 +1101,7 @@ else
 // isArmedRaw reflects UTCC criteria only. isArmed reflects governance.
 // No ARMED state during R-COMPRESSION, R-CHAOS, R-OFFSESSION, or K-LOCKED.
 // This is an invariant. If this leaks, the entire authority model is broken.
-isArmed = isArmedRaw and finalPermission != "STAND_DOWN"
+isArmed := isArmedRaw and finalPermission != "STAND_DOWN"
 armedDirection := isArmed ? trendDirection : 0
 
 // Belt-and-suspenders: catch any resolver bugs before alerts fire
