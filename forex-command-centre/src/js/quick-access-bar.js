@@ -89,9 +89,9 @@ const QuickAccessBar = (function() {
             });
         }
         
-        // Add armed instruments
+        // Add armed instruments (exclude R-OFFSESSION -- shown in watchlist only)
         if (armedInstruments && armedInstruments.length > 0) {
-            armedInstruments.forEach(armed => {
+            armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION'; }).forEach(armed => {
                 const ttlStatus = calculateTTLStatus(armed.timestamp);
                 const dirEmoji = armed.primary && armed.primary.includes('↑') ? '🎯' : armed.primary && armed.primary.includes('↓') ? '🎯' : '◆';
                 const itemClass = ttlStatus.state === 'fomo' ? 'armed-fomo' : 'armed-ready';

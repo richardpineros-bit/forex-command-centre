@@ -235,14 +235,15 @@
         var candidateCount = data.candidateCount || 0;
         var totalCount = armedCount + candidateCount;
 
-        // Update count badge (shows armed count only)
-        countEl.textContent = armedCount;
-        countEl.className = 'armed-panel-count' + (armedCount === 0 ? ' zero' : '');
+        // Update count badge -- active armed only (excludes R-OFFSESSION)
+        var activeArmedCount = (data.pairs || []).filter(function(p) { return p.primary !== 'R-OFFSESSION'; }).length;
+        countEl.textContent = activeArmedCount;
+        countEl.className = 'armed-panel-count' + (activeArmedCount === 0 ? ' zero' : '');
 
         // PWA Badge API — show armed count on app icon
         if ('setAppBadge' in navigator) {
-            if (armedCount > 0) {
-                navigator.setAppBadge(armedCount).catch(function() {});
+            if (activeArmedCount > 0) {
+                navigator.setAppBadge(activeArmedCount).catch(function() {});
             } else {
                 navigator.clearAppBadge().catch(function() {});
             }
@@ -257,38 +258,42 @@
         // --- ARMED INSTRUMENTS section ---
         html += '<div class="armed-section-header">' +
             'Armed Instruments ' +
-            '<span class="armed-section-count' + (armedCount > 0 ? ' armed' : '') + '">' + armedCount + '</span>' +
+            '<span class="armed-section-count' + (activeArmedCount > 0 ? ' armed' : '') + '">' + activeArmedCount + '</span>' +
         '</div>';
 
-        if (armedCount > 0) {
+        // Split armed pairs: R-OFFSESSION goes to watchlist pending section
+        var pairs = data.pairs || [];
+        var activePairs = pairs.filter(function(p) { return p.primary !== 'R-OFFSESSION'; });
+        var offSessionPairs = pairs.filter(function(p) { return p.primary === 'R-OFFSESSION'; });
+
+        if (activePairs.length > 0) {
             html += buildColHeaders();
-            var pairs = data.pairs || [];
-            for (var i = 0; i < pairs.length; i++) {
-                // Green circle for armed: &#x1F7E2;
-                html += buildRow(pairs[i], '&#x1F7E2;');
+            for (var i = 0; i < activePairs.length; i++) {
+                html += buildRow(activePairs[i], '&#x1F7E2;');
             }
         } else {
             html += '<div class="armed-empty">No instruments armed</div>';
         }
 
-        // --- WATCHLIST section (candidates) ---
+        // --- WATCHLIST section (candidates + off-session armed) ---
         var candidates = data.candidates || [];
-        // v4.1.2: Remove candidates that are already in armed list
+        // Remove candidates already in active armed list
         var armedNames = {};
-        var pairs = data.pairs || [];
-        for (var k = 0; k < pairs.length; k++) {
-            if (pairs[k].pair) armedNames[pairs[k].pair] = true;
+        for (var k = 0; k < activePairs.length; k++) {
+            if (activePairs[k].pair) armedNames[activePairs[k].pair] = true;
         }
         candidates = candidates.filter(function(c) { return !armedNames[c.pair]; });
-        if (candidates.length > 0) {
+        var watchlistItems = offSessionPairs.concat(candidates);
+        if (watchlistItems.length > 0) {
             html += '<div class="armed-section-header">' +
                 'Watchlist ' +
-                '<span class="armed-section-count candidate">' + candidates.length + '</span>' +
+                '<span class="armed-section-count candidate">' + watchlistItems.length + '</span>' +
             '</div>';
             html += buildColHeaders();
-            for (var j = 0; j < candidates.length; j++) {
-                // Yellow circle for candidate: &#x1F7E1;
-                html += buildRow(candidates[j], '&#x1F7E1;');
+            for (var j = 0; j < watchlistItems.length; j++) {
+                // Orange circle for off-session armed, yellow for candidates
+                var emoji = offSessionPairs.indexOf(watchlistItems[j]) !== -1 ? '&#x1F7E0;' : '&#x1F7E1;';
+                html += buildRow(watchlistItems[j], emoji);
             }
         }
 
