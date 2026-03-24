@@ -2383,15 +2383,15 @@ if barstate.islast and showAlertDiagnostics
          bgcolor=color.rgb(30, 30, 40), text_halign=text.align_right)
 
 // JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
-f_buildJson_context() =>
+f_buildJson_context(string aType, string aPermission) =>
     string dStr = trendDirection == 1 ? "long" : trendDirection == -1 ? "short" : "none"
     string eClean = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPTIMAL" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACCEPTABLE" : "EXTENDED"
-    string maxRisk = finalPermission == "STAND_DOWN" ? "NONE" : finalPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
-    string maxTrades = finalPermission == "STAND_DOWN" ? "0" : finalPermission == "CONDITIONAL" ? "1" : "3"
+    string maxRisk = aPermission == "STAND_DOWN" ? "NONE" : aPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
+    string maxTrades = aPermission == "STAND_DOWN" ? "0" : aPermission == "CONDITIONAL" ? "1" : "3"
     string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
-    string p = '{"type":"' + resolvedAlertType + '","pair":"' + syminfo.ticker + '","asset_class":"METALS"'
+    string p = '{"type":"' + aType + '","pair":"' + syminfo.ticker + '","asset_class":"METALS"'
     p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
-    p := p + ',"permission":"' + finalPermission + '"'
+    p := p + ',"permission":"' + aPermission + '"'
     p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
     p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
     p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
@@ -2466,7 +2466,7 @@ if useAlertPerBar or useAlertBarClose
                  resolvedAlertType == ALERT_BLOCKED ? EXECUTION_NONE : resolvedExecution,
                  riskCode,
                  math.round(overallScore)
-             ) + "\n" + f_buildJson_context(),
+             ) + "\n" + f_buildJson_context(resolvedAlertType == ALERT_BLOCKED ? ALERT_BLOCKED : ALERT_CANDIDATE, finalPermission),
              alert.freq_once_per_bar
          )
     
@@ -2481,7 +2481,7 @@ if useAlertPerBar or useAlertBarClose
                  resolvedAlertType == ALERT_BLOCKED ? EXECUTION_NONE : resolvedExecution,
                  riskCode,
                  math.round(overallScore)
-             ) + "\n" + f_buildJson_context(),
+             ) + "\n" + f_buildJson_context(resolvedAlertType == ALERT_BLOCKED ? ALERT_BLOCKED : ALERT_CANDIDATE, finalPermission),
              alert.freq_once_per_bar
          )
     
@@ -2496,7 +2496,7 @@ if useAlertPerBar or useAlertBarClose
                  resolvedExecution,
                  riskCode,
                  math.round(overallScore)
-             ) + "\n" + f_buildJson_context(),
+             ) + "\n" + f_buildJson_context(resolvedAlertType, finalPermission),
              alertFreq
          )
     
@@ -2511,7 +2511,7 @@ if useAlertPerBar or useAlertBarClose
                  resolvedExecution,
                  riskCode,
                  math.round(overallScore)
-             ) + "\n" + f_buildJson_context(),
+             ) + "\n" + f_buildJson_context(resolvedAlertType, finalPermission),
              alertFreq
          )
     
@@ -2522,11 +2522,11 @@ if useAlertPerBar or useAlertBarClose
                  syminfo.ticker,
                  primaryReason,
                  contributingStr,
-                 finalPermission,
+                 "STAND_DOWN",
                  EXECUTION_NONE,
                  riskCode,
                  math.round(overallScore)
-             ) + "\n" + f_buildJson_context(),
+             ) + "\n" + f_buildJson_context(ALERT_BLOCKED, "STAND_DOWN"),
              alertFreq
          )
     

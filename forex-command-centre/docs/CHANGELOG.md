@@ -1,3 +1,12 @@
+## [v5.0.4] - 2026-03-24
+### utcc-bonds + utcc-metals: BLOCKED alert type/permission mismatch fix
+- `f_buildJson_context()` now accepts `(aType, aPermission)` params in both indicators
+- Replaces scope-read `resolvedAlertType`/`finalPermission` which were stale at BLOCKED disarm time
+- CANDIDATE calls pass: `(resolvedAlertType == BLOCKED ? BLOCKED : CANDIDATE, finalPermission)`
+- ARMED calls pass: `(resolvedAlertType, finalPermission)`
+- BLOCKED disarm calls pass: `(ALERT_BLOCKED, "STAND_DOWN")` -- no more CANDIDATE JSON on BLOCKED header
+- `utcc-bonds.pine`: `D-SESSION-RESET` added to disarm reason codes -- fixes `D-UNKNOWN` on session change disarms
+
 ## [v5.0.3] - 2026-03-24
 ### utcc-energy: isArmedRaw/isArmed governance split (Phase 4 hardening)
 - `utcc-energy.pine`: renamed internal `isArmed` -> `isArmedState` inside SESSION LOCK block
