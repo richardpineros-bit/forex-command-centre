@@ -144,6 +144,8 @@ self.addEventListener('notificationclick', function(event) {
         targetUrl = '/?tab=daily-context';
     } else if (notifData.type === 'CIRCUIT_BREAKER') {
         targetUrl = '/?tab=dashboard';
+    } else if (notifData.type === 'SCRAPER_ERROR') {
+        targetUrl = '/?tab=daily-context';
     }
 
     event.waitUntil(

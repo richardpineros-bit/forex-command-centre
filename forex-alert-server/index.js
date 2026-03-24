@@ -208,6 +208,21 @@ function pushCircuitBreaker(payload) {
 
 
 
+function pushScraperError(payload) {
+    var message  = payload.message || 'FF calendar markup changed -- verify events manually';
+    var ts       = payload.timestamp || new Date().toISOString();
+    sendPushToAll({
+        title:   'Scraper Alert: Canary Failed',
+        body:    message,
+        icon:    '/icons/icon-192.png',
+        tag:     'scraper-error',
+        vibrate: [300, 100, 300],
+        requireInteraction: true,
+        data:    { type: 'SCRAPER_ERROR', timestamp: ts }
+    }, 'scraperError');
+}
+
+
 // ============================================================================
 // STATE MANAGEMENT - ARMED PAIRS
 // ============================================================================
@@ -1554,6 +1569,10 @@ var server = http.createServer(function(req, res) {
                     res.end(JSON.stringify({ ok: true }));
                 } else if (type === 'CIRCUIT_BREAKER') {
                     pushCircuitBreaker(payload);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true }));
+                } else if (type === 'SCRAPER_ERROR') {
+                    pushScraperError(payload);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ ok: true }));
                 } else {

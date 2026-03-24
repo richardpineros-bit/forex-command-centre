@@ -82,6 +82,7 @@ function startCalendarAutoRefresh() {
 }
 
 // Update calendar status indicator with last-updated time
+// v5.0.0: Also checks scraper_health.json for MARKUP_CHANGED canary failures
 function updateCalendarStatusIndicator(isLoaded) {
     const indicator = document.getElementById('calendar-status-indicator');
     if (!indicator) return;
@@ -111,6 +112,36 @@ function updateCalendarStatusIndicator(isLoaded) {
         indicator.className = 'status-dot offline';
         indicator.title = 'Calendar: Offline - check scraper cron job';
     }
+
+    // Canary check: read scraper_health.json -- red badge overrides if MARKUP_CHANGED
+    checkScraperHealth(indicator);
+}
+
+// Fetch scraper_health.json and flag MARKUP_CHANGED as red badge
+function checkScraperHealth(indicator) {
+    fetch('./scraper_health.json', { cache: 'no-cache' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(health) {
+            if (!health) return;
+            if (health.status === 'MARKUP_CHANGED') {
+                if (indicator) {
+                    indicator.className = 'status-dot offline';
+                    indicator.style.backgroundColor = '#ef4444';
+                    indicator.title = 'SCRAPER ERROR: FF site markup changed ' +
+                        '-- calendar data may be stale. Last run: ' + (health.timestamp || 'unknown');
+                }
+                var _key = 'fcc_canary_warned_' + (health.timestamp || 'x');
+                if (!sessionStorage.getItem(_key)) {
+                    sessionStorage.setItem(_key, '1');
+                    if (typeof showToast === 'function') {
+                        showToast('SCRAPER WARNING: FF markup changed \u2014 verify calendar manually', 'warning', 8000);
+                    }
+                }
+            }
+        })
+        .catch(function() {
+            // scraper_health.json missing = scraper never ran; silently ignore
+        });
 }
 
 // Get upcoming events for a specific currency within X hours

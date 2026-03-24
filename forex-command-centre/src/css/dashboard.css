@@ -754,3 +754,28 @@ a.armed-pair-row.armed-row-link:active {
     }
 }
 
+
+
+/* === NEWS BIAS ROW (armed panel) v5.0.0 === */
+.armed-pair-wrapper {
+    display: block;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 2px;
+}
+.armed-pair-wrapper:last-child { border-bottom: none; }
+.armed-pair-wrapper .armed-row-link { border-bottom: none; margin-bottom: 0; }
+
+.armed-bias-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px 5px 36px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    background: rgba(0,0,0,0.08);
+    flex-wrap: wrap;
+}
+.armed-bias-row.awaiting { color: var(--text-muted); font-style: italic; }
+.armed-bias-ccy { font-weight: 600; }
+.armed-bias-sep { color: var(--text-muted); }
+.armed-bias-net { letter-spacing: 0.02em; }

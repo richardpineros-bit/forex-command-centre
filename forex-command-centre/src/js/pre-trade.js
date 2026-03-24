@@ -259,3 +259,125 @@ function getSessionPairRating(pair) {
 }
 
 // ============================================
+
+
+// ============================================
+// NEWS BIAS CARD (v5.0.0)
+// ============================================
+
+function renderBiasCard(pair) {
+    var card = document.getElementById('news-bias-card');
+    if (!card) return;
+
+    if (!pair) {
+        card.style.display = 'none';
+        return;
+    }
+    card.style.display = '';
+
+    var headerEl  = document.getElementById('bias-card-header');
+    var bodyEl    = document.getElementById('bias-card-body');
+    var detailEl  = document.getElementById('bias-card-detail');
+    var advisoryEl = document.getElementById('bias-size-advisory');
+
+    if (!window.NewsBiasEngine || !window.NewsBiasEngine.hasData()) {
+        if (headerEl) headerEl.textContent = pair + ' \u2014 News Bias';
+        if (bodyEl) bodyEl.innerHTML = '<span style="color:var(--text-muted)">&#x23F3; Awaiting bias data...</span>';
+        if (detailEl) detailEl.style.display = 'none';
+        if (advisoryEl) advisoryEl.style.display = 'none';
+        return;
+    }
+
+    // Get direction from val-direction field if present, else from armed pair direction
+    var dirEl = document.getElementById('val-direction');
+    var utccDir = dirEl ? dirEl.value : '';
+
+    var v = window.NewsBiasEngine.getVerdict(pair, utccDir);
+    if (!v) {
+        if (headerEl) headerEl.textContent = pair + ' \u2014 News Bias';
+        if (bodyEl) bodyEl.innerHTML = '<span style="color:var(--text-muted)">No bias data for ' + pair + '</span>';
+        if (detailEl) detailEl.style.display = 'none';
+        if (advisoryEl) advisoryEl.style.display = 'none';
+        return;
+    }
+
+    var baseCcy  = pair.substring(0, 3);
+    var quoteCcy = pair.substring(3, 6);
+    var base  = v.base_bias  || {};
+    var quote = v.quote_bias || {};
+    var totalEvents = (base.event_count || 0) + (quote.event_count || 0);
+
+    // Header
+    if (headerEl) headerEl.textContent = pair + ' \u2014 News Bias';
+
+    // Confluence colour
+    var confColour = 'var(--text-muted)';
+    if (v.confluence === 'ALIGNED')     confColour = 'var(--color-pass)';
+    if (v.confluence === 'CONFLICTING') confColour = 'var(--color-fail)';
+
+    var baseArrow  = (base.bias  === 'BULLISH') ? '\u25b2' : (base.bias  === 'BEARISH') ? '\u25bc' : '\u25b6';
+    var quoteArrow = (quote.bias === 'BULLISH') ? '\u25b2' : (quote.bias === 'BEARISH') ? '\u25bc' : '\u25b6';
+    var netStr = (v.net_score >= 0 ? '+' : '') + (v.net_score || 0).toFixed(1);
+
+    // Body: summary line
+    var confLabel = (v.direction === 'NEUTRAL' || !utccDir) ? 'NEUTRAL' : v.confluence;
+    if (bodyEl) {
+        bodyEl.innerHTML =
+            '<span class="bias-ccy-pill">' + baseCcy  + ' ' + baseArrow  + ' ' + (base.bias  || 'NEUTRAL') + '</span>' +
+            '<span class="bias-sep"> | </span>' +
+            '<span class="bias-ccy-pill">' + quoteCcy + ' ' + quoteArrow + ' ' + (quote.bias || 'NEUTRAL') + '</span>' +
+            '<span class="bias-sep"> | </span>' +
+            '<span style="color:' + confColour + ';font-weight:700">Net ' + netStr + ' \u2014 ' + confLabel + '</span>' +
+            (totalEvents < 2 ? '<span style="color:var(--text-muted);font-size:0.7rem;display:block;margin-top:2px">Insufficient data \u2014 score may update as week progresses</span>' : '');
+    }
+
+    // Size modifier advisory
+    if (advisoryEl) {
+        if (v.confluence === 'CONFLICTING') {
+            advisoryEl.style.display = '';
+            advisoryEl.innerHTML = '&#x26A0; News conflict detected \u2014 consider reducing to ' +
+                Math.round((v.size_modifier || 0.75) * 100) + '% normal size';
+        } else {
+            advisoryEl.style.display = 'none';
+        }
+    }
+
+    // Expandable detail: events that drove bias
+    if (detailEl) {
+        var allEvents = [];
+        (base.events || []).forEach(function(e) {
+            allEvents.push({ currency: baseCcy, title: e.title || e.name || 'Event', result: e.result || 'UNKNOWN', score: e.score || 0 });
+        });
+        (quote.events || []).forEach(function(e) {
+            allEvents.push({ currency: quoteCcy, title: e.title || e.name || 'Event', result: e.result || 'UNKNOWN', score: e.score || 0 });
+        });
+
+        if (allEvents.length === 0) {
+            detailEl.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;padding:4px 0">No events with actuals yet this week</div>';
+        } else {
+            var rows = allEvents.map(function(e) {
+                var rc = e.score > 0 ? 'var(--color-pass)' : (e.score < 0 ? 'var(--color-fail)' : 'var(--text-muted)');
+                var ra = e.score > 0 ? '\u25b2' : (e.score < 0 ? '\u25bc' : '\u25b6');
+                return '<div class="bias-event-row">' +
+                    '<span class="bias-event-ccy">' + e.currency + '</span>' +
+                    '<span class="bias-event-title">' + e.title + '</span>' +
+                    '<span class="bias-event-result" style="color:' + rc + '">' + ra + ' ' + e.result + '</span>' +
+                '</div>';
+            });
+            detailEl.innerHTML = rows.join('');
+        }
+    }
+}
+
+// Toggle bias card detail panel
+function toggleBiasDetail() {
+    var detail = document.getElementById('bias-card-detail');
+    var btn    = document.getElementById('bias-detail-toggle');
+    if (!detail) return;
+    var isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : 'block';
+    if (btn) btn.textContent = isOpen ? '&#x25BC; Details' : '&#x25B2; Details';
+}
+
+// Expose for val-pair onchange
+window.renderBiasCard = renderBiasCard;

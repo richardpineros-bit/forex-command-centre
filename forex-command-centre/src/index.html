@@ -442,7 +442,7 @@
                 <div class="grid grid-3" style="padding: 0 var(--spacing-md) var(--spacing-md);">
                     <div class="form-group">
                         <label class="form-label">Pair</label>
-                        <select class="form-select" id="val-pair" onchange="checkCooldown(); updateInstitutionalChecklist(); checkCorrelation(); updateSessionPairRating();">
+                        <select class="form-select" id="val-pair" onchange="checkCooldown(); updateInstitutionalChecklist(); checkCorrelation(); updateSessionPairRating(); renderBiasCard(this.value);">
                             <option value="">Select Pair</option>
                             <optgroup label="Core Pairs">
                                 <option value="AUDUSD">AUDUSD</option>
@@ -883,6 +883,21 @@
                 </div>
 
             
+            <!-- v5.0.0: News Bias Card -->
+            <div class="card mb-lg" id="news-bias-card" style="display:none">
+                <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+                    <h2 class="card-title" id="bias-card-header">&#x1F4CA; News Bias</h2>
+                    <button class="btn btn-secondary btn-sm" id="bias-detail-toggle" onclick="toggleBiasDetail()">&#x25BC; Details</button>
+                </div>
+                <div style="padding:var(--spacing-sm) var(--spacing-md)">
+                    <div id="bias-card-body" style="font-size:0.85rem;margin-bottom:var(--spacing-xs)"></div>
+                    <div id="bias-size-advisory" style="display:none;color:#f97316;font-size:0.8rem;font-weight:600;margin-bottom:var(--spacing-xs)"></div>
+                    <div id="bias-card-detail" style="display:none;margin-top:var(--spacing-sm)">
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:4px">Events driving bias this week:</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- v2.12.1: Gate Divider -->
             <div class="pretrade-gate-divider" id="pretrade-gate-divider">
                 <span class="gate-status-pill gate-locked" id="gate-status-pill">
@@ -3149,6 +3164,7 @@
 	<script src="js/circuit-breaker-ui.js"></script>
 	
 	<!-- News Gate Module -->
+	<script src="js/news-bias-engine.js"></script>
 	<script src="js/news-gate-module.js"></script>
 	
 	<!-- Daily Refresh Gate Module -->

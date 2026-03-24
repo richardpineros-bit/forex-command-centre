@@ -2630,3 +2630,36 @@
     }
 }
 
+
+
+/* === NEWS BIAS CARD (pre-trade) v5.0.0 === */
+#news-bias-card .card-header { padding: var(--spacing-sm) var(--spacing-md); }
+.bias-ccy-pill { font-weight: 600; font-size: 0.85rem; }
+.bias-sep { color: var(--text-muted); }
+
+.bias-event-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 0.78rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.bias-event-row:last-child { border-bottom: none; }
+.bias-event-ccy {
+    font-weight: 700;
+    min-width: 30px;
+    color: var(--text-secondary);
+}
+.bias-event-title {
+    flex: 1;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bias-event-result {
+    font-weight: 600;
+    min-width: 70px;
+    text-align: right;
+}

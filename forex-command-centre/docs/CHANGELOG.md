@@ -1,3 +1,15 @@
+## [v5.0.0] - 2026-03-24
+### News Bias Engine + Canary Alerts
+- `js/news-bias-engine.js` (new): polls `/bias-history/latest` every 30 min, exposes `window.NewsBiasEngine.getVerdict(pair)` and `getBias(currency)`, graceful fallback if API unreachable
+- `js/armed-panel.js`: bias sub-row per armed pair showing base/quote currency bias, net score, confluence vs UTCC direction (green=ALIGNED, amber=NEUTRAL, red=CONFLICTING)
+- `js/pre-trade.js`: `renderBiasCard(pair)` renders news bias card in pre-trade tab; expandable events list; size modifier advisory if CONFLICTING
+- `index.html`: bias card HTML injected before gate divider; val-pair onchange calls renderBiasCard; news-bias-engine.js script import added
+- `js/news-impact.js`: `checkScraperHealth()` fetches `./scraper_health.json` -- sets red badge + toast if `status: MARKUP_CHANGED`; runs on every calendar status update
+- `forex-alert-server/index.js`: `pushScraperError()` push function added; `SCRAPER_ERROR` type handled in `/push/notify` endpoint
+- `sw.js`: `SCRAPER_ERROR` notification click routes to `/?tab=daily-context`
+- `css/dashboard.css`: `.armed-pair-wrapper`, `.armed-bias-row` styles
+- `css/pre-trade.css`: `.bias-ccy-pill`, `.bias-event-row`, `.bias-event-title`, `.bias-event-result` styles
+
 ## [v4.9.1] - 2026-03-24
 
 ### Added - News Bias Engine (Session 1)

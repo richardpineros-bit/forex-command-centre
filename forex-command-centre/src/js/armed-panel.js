@@ -22,6 +22,14 @@
         return 'var(--text-muted)';
     }
 
+    // Bias confluence colour helper
+    function biasColour(confluence) {
+        if (!confluence || confluence === 'NEUTRAL') return 'var(--text-muted)';
+        if (confluence === 'ALIGNED')    return 'var(--color-pass)';
+        if (confluence === 'CONFLICTING') return 'var(--color-fail)';
+        return 'var(--text-muted)';
+    }
+
     // ATR behaviour colour helper
     function atrColour(behaviour) {
         if (!behaviour) return 'var(--text-muted)';
@@ -114,6 +122,58 @@
         };
     }
 
+    // Build the bias sub-row for a pair
+    function buildBiasRow(p) {
+        var pair = (p.pair || '').toUpperCase().replace('/', '');
+        var dir  = (p.direction || '').toLowerCase();
+
+        if (!window.NewsBiasEngine || !window.NewsBiasEngine.hasData()) {
+            return '<div class="armed-bias-row awaiting">&#x23F3; News bias: awaiting data</div>';
+        }
+
+        var verdict = window.NewsBiasEngine.getVerdict(pair, dir);
+        if (!verdict) {
+            return '<div class="armed-bias-row awaiting">&#x23F3; News bias: no data for ' + pair + '</div>';
+        }
+
+        // Insufficient data = confidence LOW + event_count < 2
+        var base  = verdict.base_bias  || {};
+        var quote = verdict.quote_bias || {};
+        var totalEvents = (base.event_count || 0) + (quote.event_count || 0);
+        if (totalEvents < 2 && verdict.direction === 'NEUTRAL') {
+            return '<div class="armed-bias-row awaiting">&#x2014; News bias: insufficient data</div>';
+        }
+
+        var baseCcy   = pair.substring(0, 3);
+        var quoteCcy  = pair.substring(3, 6);
+        var baseBias  = base.bias  || 'NEUTRAL';
+        var quoteBias = quote.bias || 'NEUTRAL';
+        var baseArrow  = baseBias  === 'BULLISH' ? '\u25b2' : baseBias  === 'BEARISH' ? '\u25bc' : '\u25b6';
+        var quoteArrow = quoteBias === 'BULLISH' ? '\u25b2' : quoteBias === 'BEARISH' ? '\u25bc' : '\u25b6';
+
+        var conf = verdict.confluence;
+        var confLabel, confColour;
+        if (!dir || verdict.direction === 'NEUTRAL') {
+            confLabel  = 'NEUTRAL';
+            confColour = 'var(--text-muted)';
+        } else {
+            confLabel  = conf;
+            confColour = biasColour(conf);
+        }
+
+        var netStr = (verdict.net_score >= 0 ? '+' : '') + (verdict.net_score || 0).toFixed(1);
+
+        return '<div class="armed-bias-row">' +
+            '<span class="armed-bias-ccy">' + baseCcy + ' ' + baseArrow + ' ' + baseBias + '</span>' +
+            '<span class="armed-bias-sep">|</span>' +
+            '<span class="armed-bias-ccy">' + quoteCcy + ' ' + quoteArrow + ' ' + quoteBias + '</span>' +
+            '<span class="armed-bias-sep">|</span>' +
+            '<span class="armed-bias-net" style="color:' + confColour + ';font-weight:700">' +
+                'Net: ' + netStr + ' ' + confLabel +
+            '</span>' +
+        '</div>';
+    }
+
     // Build a pair row (used for both armed and candidates) - PHASE 5 ENHANCED
     function buildRow(p, emoji) {
         var permCls = permClass(p.permission);
@@ -185,17 +245,21 @@
         }
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
-        return '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
-            '<span class="armed-emoji">' + emoji + '</span>' +
-            '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
-            '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
-            '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
-            '<span class="armed-maxrisk">' + ((p.maxRisk || '').split('|')[0].trim() || '\u2014') + '</span>' +
-            '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
-            '<span class="armed-atr">' + atrHtml + '</span>' +
-            '<span class="armed-struct">' + structHtml + '</span>' +
-            '<span class="armed-age">' + statusHtml + '</span>' +
-        '</a>';
+        var biasRowHtml = buildBiasRow(p);
+        return '<div class="armed-pair-wrapper">' +
+            '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
+                '<span class="armed-emoji">' + emoji + '</span>' +
+                '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
+                '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
+                '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
+                '<span class="armed-maxrisk">' + ((p.maxRisk || '').split('|')[0].trim() || '\u2014') + '</span>' +
+                '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
+                '<span class="armed-atr">' + atrHtml + '</span>' +
+                '<span class="armed-struct">' + structHtml + '</span>' +
+                '<span class="armed-age">' + statusHtml + '</span>' +
+            '</a>' +
+            biasRowHtml +
+        '</div>';
     }
 
 
