@@ -2563,15 +2563,15 @@ riskContext = weekendRiskDetected ? "Reduced liquidity" :
 playbookShort = str.contains(currentPlaybook, "CONTINUATION") ? "CONTINUATION" : str.contains(currentPlaybook, "DEEP PULLBACK") ? "DEEP PULLBACK" : str.contains(currentPlaybook, "OBSERVATION") ? "OBSERVATION" : str.contains(currentPlaybook, "STAND DOWN") ? "STAND DOWN" : "NO TRADE"
 
 // JSON payload builder (v2.6.1: adds vol_behaviour + vol_level)
-f_buildJson_context() =>
+f_buildJson_context(string aType, string aPermission) =>
     string dStr = trendDirection == 1 ? "long" : trendDirection == -1 ? "short" : "none"
     string eClean = str.contains(entryZoneQuality, "HOT") ? "HOT" : str.contains(entryZoneQuality, "OPTIMAL") ? "OPTIMAL" : str.contains(entryZoneQuality, "ACCEPTABLE") ? "ACCEPTABLE" : "EXTENDED"
-    string maxRisk = finalPermission == "STAND_DOWN" ? "NONE" : finalPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
-    string maxTrades = finalPermission == "STAND_DOWN" ? "0" : finalPermission == "CONDITIONAL" ? "1" : "3"
+    string maxRisk = aPermission == "STAND_DOWN" ? "NONE" : aPermission == "CONDITIONAL" ? "0.25R" : "1.0R"
+    string maxTrades = aPermission == "STAND_DOWN" ? "0" : aPermission == "CONDITIONAL" ? "1" : "3"
     string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
-    string p = '{"type":"' + resolvedAlertType + '","pair":"' + syminfo.ticker + '","asset_class":"CRYPTO"'
+    string p = '{"type":"' + aType + '","pair":"' + syminfo.ticker + '","asset_class":"CRYPTO"'
     p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
-    p := p + ',"permission":"' + finalPermission + '"'
+    p := p + ',"permission":"' + aPermission + '"'
     p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
     p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
     p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
@@ -2640,19 +2640,19 @@ else
 
 if useAlertPerBar or useAlertBarClose
     if enableContextCandidate and contextJustCandidateLong
-        alert(f_buildAlert(candidateAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, candidateExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(), alert.freq_once_per_bar)
+        alert(f_buildAlert(candidateAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, candidateExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(candidateAlertType, finalPermission), alert.freq_once_per_bar)
     
     if enableContextCandidate and contextJustCandidateShort
-        alert(f_buildAlert(candidateAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, candidateExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(), alert.freq_once_per_bar)
+        alert(f_buildAlert(candidateAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, candidateExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(candidateAlertType, finalPermission), alert.freq_once_per_bar)
     
     if enableContextArmed and contextJustArmedLong and barstate.isconfirmed
-        alert(f_buildAlert(resolvedAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, resolvedExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(), alertFreq)
+        alert(f_buildAlert(resolvedAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, resolvedExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(resolvedAlertType, finalPermission), alertFreq)
     
     if enableContextArmed and contextJustArmedShort and barstate.isconfirmed
-        alert(f_buildAlert(resolvedAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, resolvedExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(), alertFreq)
+        alert(f_buildAlert(resolvedAlertType, syminfo.ticker, primaryReason, contributingStr, finalPermission, resolvedExecution, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(resolvedAlertType, finalPermission), alertFreq)
     
     if enableContextDisarmed and contextJustDisarmed and barstate.isconfirmed
-        alert(f_buildAlert(ALERT_BLOCKED, syminfo.ticker, primaryReason, contributingStr, finalPermission, EXECUTION_NONE, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(), alertFreq)
+        alert(f_buildAlert(ALERT_BLOCKED, syminfo.ticker, primaryReason, contributingStr, "STAND_DOWN", EXECUTION_NONE, riskCode, math.round(overallScore)) + "\n" + f_buildJson_context(ALERT_BLOCKED, "STAND_DOWN"), alertFreq)
     
     if enableSessionReset and sessionResetEvent
         alert(f_buildAlert(ALERT_INFO, syminfo.ticker, "SESSION_RESET", currentSession, "NONE", EXECUTION_NONE, riskCode, math.round(overallScore)), alert.freq_once_per_bar)

@@ -1,3 +1,11 @@
+## [v5.0.5] - 2026-03-24
+### utcc-crypto: BLOCKED alert type/permission mismatch fix
+- Same fix as v5.0.4 (metals + bonds) applied to crypto
+- `f_buildJson_context(aType, aPermission)` params added -- stops scope-reading stale `resolvedAlertType`/`finalPermission`
+- BLOCKED disarm call now passes `(ALERT_BLOCKED, "STAND_DOWN")` explicitly
+- `f_buildAlert` BLOCKED call also hardened: `finalPermission` -> `"STAND_DOWN"`
+- Indices and forex confirmed clean (use `f_buildJson` with explicit params, no scope-reading bug)
+
 ## [v5.0.4] - 2026-03-24
 ### utcc-bonds + utcc-metals: BLOCKED alert type/permission mismatch fix
 - `f_buildJson_context()` now accepts `(aType, aPermission)` params in both indicators
