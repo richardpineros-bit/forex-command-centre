@@ -1995,7 +1995,7 @@ f_buildJson_context(string aType, string aPermission) =>
     string rsiCount = trendDirection == 1 ? str.tostring(rsiBullCount) : str.tostring(rsiBearCount)
     string p = '{"type":"' + aType + '","pair":"' + syminfo.ticker + '","asset_class":"BONDS"'
     p := p + ',"primary":"' + primaryReason + '","contributing":"' + contributingStr + '"'
-    p := p + ',"permission":"' + aPermission + ''
+    p := p + ',"permission":"' + aPermission + '"'
     p := p + ',"execution":{"max_risk":"' + maxRisk + '","max_trades":' + maxTrades + '}'
     p := p + ',"context":{"direction":"' + dStr + '","score":' + str.tostring(math.round(overallScore))
     p := p + ',"criteria":' + str.tostring(criteriaMet) + ',"entry":"' + eClean + '"'
