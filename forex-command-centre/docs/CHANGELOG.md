@@ -1,3 +1,13 @@
+## [v5.0.8] - 2026-03-25
+### forex_calendar_scraper.py v3.1.0 — backfill 30 days of history
+- Added `--backfill` flag to scrape past 4 weeks (configurable via `--backfill-weeks`)
+- Stable `run_id` per week (`backfill_YYYYMMDD`) prevents duplicate runs on re-run
+- Rate limiting: 2s delay between FF requests
+- Uses end-of-week Friday as `run_time` for correct time-decay scoring on historical data
+- Skips weeks with zero actuals (too old or future)
+- Canary check warns but does not abort on past weeks
+- Run once manually: `python3 forex_calendar_scraper.py --unraid --backfill`
+
 ## [v5.0.7] - 2026-03-25
 ### forex_calendar_scraper.py v3.0.0 — HTML scraping, real actuals
 - Switch data source from FF XML feed to FF website HTML scraping

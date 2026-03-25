@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ForexFactory Economic Calendar Scraper v3.0.0
+ForexFactory Economic Calendar Scraper v3.1.0
 Switches from FF XML feed (no actuals) to FF website HTML scraping.
 BEAT/MISS/INLINE sourced directly from FF CSS classes (better/worse).
 
@@ -10,12 +10,16 @@ Cron (Unraid User Scripts, every 6 hours):
     0 */6 * * * /usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/forex_calendar_scraper.py --unraid
 
 Changelog:
+    v3.1.0 - --backfill flag: scrapes past 4 weeks to populate 30 days of history
     v3.0.0 - Switch to HTML scraping; actuals from FF CSS classes; UNRAID_BIAS path fix
     v2.0.0 - actual field; bias scoring; bias-history.json; canary check
     v1.0.0 - initial release
+
+Backfill usage (run once manually):
+    python3 forex_calendar_scraper.py --unraid --backfill
 """
 
-import argparse, json, re, sys, os
+import argparse, json, re, sys, os, time
 from datetime import datetime, timedelta
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -305,9 +309,9 @@ def load_bias_history(path):
             print(f"Warning: bias history read failed: {e}", file=sys.stderr)
     return {"schema_version":"1.0.0","created":datetime.utcnow().isoformat()+"Z","runs":[]}
 
-def append_bias_run(history, events, bias_map, pair_verdicts):
-    now = datetime.utcnow()
-    cutoff = now - timedelta(days=90)
+def append_bias_run(history, events, bias_map, pair_verdicts, run_time=None):
+    now = run_time or datetime.utcnow()
+    cutoff = datetime.utcnow() - timedelta(days=90)
 
     event_results = []
     for e in events:
@@ -315,7 +319,7 @@ def append_bias_run(history, events, bias_map, pair_verdicts):
             dt_str = e.get("datetime_utc")
             if dt_str:
                 try:
-                    if datetime.fromisoformat(dt_str.replace("Z","")) < now:
+                    if datetime.fromisoformat(dt_str.replace("Z","")) < datetime.utcnow():
                         event_results.append({
                             "id": f"{e['currency'].lower()}-{e['title'].lower().replace(' ','-')[:20]}-{dt_str[:10]}",
                             "title":e["title"],"currency":e["currency"],"impact":e["impact"],
@@ -368,6 +372,59 @@ def save_calendar(events, path, bias_map=None, pair_verdicts=None):
     with open(path,"w",encoding="utf-8") as f: json.dump(data,f,indent=2,ensure_ascii=False)
     print(f"Calendar: {len(events)} events -> {path}")
 
+
+# ── Backfill helpers ───────────────────────────────────────────────────────
+def get_past_week_urls(n_weeks=4):
+    """Return list of (url, week_sunday_dt) for the past n_weeks, oldest first."""
+    MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
+    now = datetime.utcnow()
+    # Find most recent Sunday (FF week starts Sunday)
+    weekday = now.weekday()  # Mon=0 ... Sun=6
+    days_since_sunday = (weekday + 1) % 7
+    current_sunday = (now - timedelta(days=days_since_sunday)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    urls = []
+    for i in range(n_weeks, 0, -1):  # oldest first
+        week_sunday = current_sunday - timedelta(weeks=i)
+        month_str = MONTHS[week_sunday.month - 1]
+        url = f"https://www.forexfactory.com/calendar?week={month_str}{week_sunday.day}.{week_sunday.year}"
+        urls.append((url, week_sunday))
+    return urls
+
+def run_id_for_week(week_sunday):
+    return f"backfill_{week_sunday.strftime('%Y%m%d')}"
+
+def week_already_backfilled(history, week_sunday):
+    rid = run_id_for_week(week_sunday)
+    return any(r.get("run_id") == rid for r in history.get("runs", []))
+
+def backfill_week(url, week_sunday, history, bias_path):
+    print(f"  Fetching {url}...")
+    html_content = fetch_html_feed(url)
+    health = check_feed_canaries(html_content)
+    if health["status"] != "OK":
+        print(f"  WARNING: Canary fail for {url} — skipping", file=sys.stderr)
+        return history
+    events = parse_calendar_html(html_content)
+    with_actuals = len([e for e in events if e.get("actual")])
+    high_events  = len([e for e in events if e.get("impact") == "High"])
+    print(f"  {len(events)} events | {high_events} high | {with_actuals} with actuals")
+    if with_actuals == 0:
+        print(f"  No actuals — skipping")
+        return history
+    # Use Friday end-of-week as run_time for correct time-decay scoring
+    run_time = week_sunday + timedelta(days=5, hours=23, minutes=59)
+    now = datetime.utcnow()
+    bias_map = calculate_currency_bias(events, now)
+    for cur, d in sorted(bias_map.items()):
+        print(f"    {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} events]")
+    pair_verdicts = calculate_pair_verdicts(bias_map)
+    history = append_bias_run(history, events, bias_map, pair_verdicts, run_time=run_time)
+    history["runs"][-1]["run_id"] = run_id_for_week(week_sunday)
+    history["runs"][-1]["backfill"] = True
+    save_bias_history(history, bias_path)
+    return history
+
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
     SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -377,16 +434,36 @@ def main():
     DEFAULT_BIAS  = os.path.join(PROJECT_ROOT,'data','bias-history.json')
     UNRAID_BIAS   = '/mnt/user/appdata/trading-state/data/bias-history.json'  # v3 fix
 
-    parser = argparse.ArgumentParser(description="FCC Calendar Scraper v3.0.0")
+    parser = argparse.ArgumentParser(description="FCC Calendar Scraper v3.1.0")
     parser.add_argument("--output",       "-o", default=DEFAULT_OUT)
     parser.add_argument("--backup-path",        default=DEFAULT_BAK)
     parser.add_argument("--bias-history",       default=DEFAULT_BIAS)
     parser.add_argument("--unraid",             action="store_true",
                         help="Use Unraid host paths")
+    parser.add_argument("--backfill",           action="store_true",
+                        help="Scrape past 4 weeks to populate 30 days of history")
+    parser.add_argument("--backfill-weeks",     type=int, default=4,
+                        dest="backfill_weeks",
+                        help="Number of past weeks to backfill (default: 4)")
     parser.add_argument("--print",        "-p", action="store_true", dest="print_output")
     args = parser.parse_args()
 
     bias_path = UNRAID_BIAS if args.unraid else args.bias_history
+
+    # ── Backfill mode ──────────────────────────────────────────────────────
+    if args.backfill:
+        print(f"BACKFILL MODE: scraping past {args.backfill_weeks} weeks...")
+        history = load_bias_history(bias_path)
+        past_weeks = get_past_week_urls(args.backfill_weeks)
+        for url, week_sunday in past_weeks:
+            if week_already_backfilled(history, week_sunday):
+                print(f"  Skipping {url} (already backfilled)")
+                continue
+            history = backfill_week(url, week_sunday, history, bias_path)
+            time.sleep(2)
+        print(f"Backfill complete: {history.get('run_count',0)} total runs in history")
+        print("Done.")
+        return
 
     print(f"Fetching {FF_CALENDAR_URL}...")
     html_content = fetch_html_feed(FF_CALENDAR_URL)
