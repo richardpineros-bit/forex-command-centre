@@ -1,3 +1,9 @@
+## [v5.0.9] - 2026-03-26
+### Fix: news-bias-engine.js field name mismatch
+- Engine was reading `data.pair_verdicts` and `data.currency_bias`
+- API returns `data.latest_verdicts` and `data.latest_bias`
+- Two-line fix — news bias now populates correctly in armed panel and pre-trade card
+
 ## [v5.0.8] - 2026-03-25
 ### forex_calendar_scraper.py v3.1.0 — backfill 30 days of history
 - Added `--backfill` flag to scrape past 4 weeks (configurable via `--backfill-weeks`)
