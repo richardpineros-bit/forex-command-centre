@@ -364,6 +364,7 @@ body {
     <div class="tab" onclick="showTab('timing',this)">Timing</div>
     <div class="tab" onclick="showTab('quality',this)">Setup Quality</div>
     <div class="tab" onclick="showTab('events',this)">Raw Events</div>
+    <div class="tab" onclick="showTab('newsbias',this);loadNewsBias()">News Bias</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -438,6 +439,43 @@ body {
     <div class="card">
         <div class="card-header"><span class="card-title">&#x1F4DC; All Arm Events</span><span class="card-meta" id="evcount"></span></div>
         <div class="card-body" id="events-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+</div>
+
+
+<!-- NEWS BIAS -->
+<div class="page" id="tab-newsbias">
+    <div class="card mb">
+        <div class="card-header"><span class="card-title">&#x1F4CA; Current Currency Bias</span><span class="card-meta" id="nb-meta"></span></div>
+        <div class="card-body" id="nb-bias-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+    <div class="card mb">
+        <div class="card-header"><span class="card-title">&#x1F4C5; Weekly Bias Timeline</span><span class="card-meta">Direction week by week</span></div>
+        <div class="card-body" id="nb-timeline-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><span class="card-title">&#x1F4F0; Economic Event Log</span><span class="card-meta" id="nb-evcount"></span></div>
+        <div class="card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <select id="nb-filter-cur" onchange="renderNbEvents()" style="background:var(--bg-tertiary);border:1px solid var(--border-primary);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Currencies</option>
+                    <option>USD</option><option>EUR</option><option>GBP</option><option>JPY</option>
+                    <option>AUD</option><option>NZD</option><option>CAD</option><option>CHF</option>
+                </select>
+                <select id="nb-filter-res" onchange="renderNbEvents()" style="background:var(--bg-tertiary);border:1px solid var(--border-primary);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Results</option>
+                    <option value="BEAT">BEAT</option>
+                    <option value="MISS">MISS</option>
+                    <option value="INLINE">INLINE</option>
+                </select>
+                <select id="nb-filter-imp" onchange="renderNbEvents()" style="background:var(--bg-tertiary);border:1px solid var(--border-primary);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Impact</option>
+                    <option value="High">High Only</option>
+                    <option value="Medium">Medium+</option>
+                </select>
+            </div>
+            <div id="nb-events-body"><div class="loading">&#x23F3;</div></div>
+        </div>
     </div>
 </div>
 
@@ -813,6 +851,166 @@ function renderEvents(data) {
 }
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
+
+// -- NEWS BIAS ----------------------------------------------------------------
+var nbData = null;
+var nbLoaded = false;
+
+function loadNewsBias() {
+    if (nbLoaded) return;
+    fetch(API_BASE + '/bias-history')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            nbData = d;
+            nbLoaded = true;
+            renderNbBias();
+            renderNbTimeline();
+            renderNbEvents();
+        })
+        .catch(function(e){
+            document.getElementById('nb-bias-body').innerHTML =
+                '<div style="color:var(--color-fail);font-size:0.8rem;">Failed to load: ' + e.message + '</div>';
+        });
+}
+
+function nbBiasCls(bias) {
+    if (!bias) return '';
+    if (bias.indexOf('BULLISH') >= 0) return 'text-pass';
+    if (bias.indexOf('BEARISH') >= 0) return 'text-fail';
+    return 'text-muted';
+}
+function nbBiasArrow(bias) {
+    if (!bias) return '\u25CF';
+    if (bias.indexOf('STRONGLY_BULLISH') >= 0) return '\u25B2\u25B2';
+    if (bias.indexOf('BULLISH') >= 0) return '\u25B2';
+    if (bias.indexOf('STRONGLY_BEARISH') >= 0) return '\u25BC\u25BC';
+    if (bias.indexOf('BEARISH') >= 0) return '\u25BC';
+    return '\u25CF';
+}
+
+function renderNbBias() {
+    var lb = (nbData && nbData.latest_bias) || {};
+    var lu = nbData && nbData.last_updated
+        ? new Date(nbData.last_updated).toLocaleString('en-AU',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+        : '';
+    var metaEl = document.getElementById('nb-meta');
+    if (metaEl && lu) metaEl.textContent = 'Updated ' + lu;
+    var CURRENCIES = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;">';
+    CURRENCIES.forEach(function(cur) {
+        var d = lb[cur];
+        var bias  = d ? d.bias  : 'NEUTRAL';
+        var score = d ? ((d.score > 0 ? '+' : '') + d.score) : '0';
+        var conf  = d ? d.confidence : 'LOW';
+        var cnt   = d ? d.event_count : 0;
+        var cls   = nbBiasCls(bias);
+        var arrow = nbBiasArrow(bias);
+        var shortBias = bias ? bias.replace('STRONGLY_','') : 'NEUTRAL';
+        var barW  = d ? Math.min(100, Math.abs(d.score) / 6 * 100) : 0;
+        var barCol = (bias && bias.indexOf('BULL') >= 0) ? 'var(--color-pass)' :
+                     (bias && bias.indexOf('BEAR') >= 0) ? 'var(--color-fail)' : 'var(--text-muted)';
+        html += '<div style="background:var(--bg-tertiary);border:1px solid var(--border-primary);border-radius:6px;padding:10px;">' +
+            '<div class="mono" style="font-size:1rem;font-weight:700;margin-bottom:4px;">' + cur + '</div>' +
+            '<div class="' + cls + '" style="font-size:0.72rem;font-weight:600;margin-bottom:6px;">' + arrow + ' ' + shortBias + '</div>' +
+            '<div style="height:4px;background:var(--bg-primary);border-radius:2px;margin-bottom:6px;overflow:hidden;">' +
+            '<div style="width:' + barW + '%;height:100%;background:' + barCol + ';border-radius:2px;"></div></div>' +
+            '<div class="text-muted mono" style="font-size:0.62rem;display:flex;gap:6px;">' +
+            '<span>' + score + '</span><span>' + conf + '</span><span>' + cnt + 'ev</span></div>' +
+            '</div>';
+    });
+    html += '</div>';
+    document.getElementById('nb-bias-body').innerHTML = html;
+}
+
+function renderNbTimeline() {
+    var runs = ((nbData && nbData.runs) || []).slice().reverse();
+    if (!runs.length) {
+        document.getElementById('nb-timeline-body').innerHTML =
+            '<div class="text-muted" style="font-size:0.8rem;padding:8px;">No runs yet.</div>';
+        return;
+    }
+    var CURRENCIES = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
+    var html = '<div style="overflow-x:auto;"><table class="data-table" style="min-width:400px;">';
+    html += '<thead><tr><th>CCY</th>';
+    runs.forEach(function(r) {
+        var d   = new Date(r.timestamp);
+        var lbl = d.toLocaleDateString('en-AU',{day:'2-digit',month:'short'});
+        var bf  = r.backfill ? ' <span style="font-size:0.55rem;background:var(--bg-primary);border-radius:3px;padding:1px 3px;color:var(--text-muted);">BF</span>' : '';
+        html += '<th style="text-align:center;white-space:nowrap;font-size:0.65rem;">' + lbl + bf + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+    CURRENCIES.forEach(function(cur) {
+        html += '<tr><td class="mono" style="font-weight:700;">' + cur + '</td>';
+        runs.forEach(function(r) {
+            var cb = (r.currency_bias || {})[cur];
+            if (!cb) {
+                html += '<td style="text-align:center;color:var(--text-muted);font-size:0.8rem;">-</td>';
+            } else {
+                var cls   = nbBiasCls(cb.bias);
+                var arrow = nbBiasArrow(cb.bias);
+                var score = (cb.score > 0 ? '+' : '') + cb.score;
+                html += '<td class="' + cls + ' mono" style="text-align:center;font-size:0.7rem;" title="' + cb.bias + ' (' + score + ')">' +
+                    arrow + '<br><span style="font-size:0.58rem;">' + score + '</span></td>';
+            }
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('nb-timeline-body').innerHTML = html;
+}
+
+function renderNbEvents() {
+    var filterCur = (document.getElementById('nb-filter-cur') || {}).value || '';
+    var filterRes = (document.getElementById('nb-filter-res') || {}).value || '';
+    var filterImp = (document.getElementById('nb-filter-imp') || {}).value || '';
+    var seen = {}; var all = [];
+    ((nbData && nbData.runs) || []).forEach(function(r) {
+        (r.event_results || []).forEach(function(e) {
+            if (!seen[e.id]) { seen[e.id] = true; all.push(e); }
+        });
+    });
+    all.sort(function(a,b){ return (b.datetime_utc||'').localeCompare(a.datetime_utc||''); });
+    var filtered = all.filter(function(e) {
+        if (filterCur && e.currency !== filterCur) return false;
+        if (filterRes && e.result   !== filterRes) return false;
+        if (filterImp === 'High'   && e.impact !== 'High') return false;
+        if (filterImp === 'Medium' && e.impact === 'Low')  return false;
+        return true;
+    });
+    var cntEl = document.getElementById('nb-evcount');
+    if (cntEl) cntEl.textContent = filtered.length + ' events';
+    if (!filtered.length) {
+        document.getElementById('nb-events-body').innerHTML =
+            '<div class="text-muted" style="font-size:0.8rem;padding:8px;">No events match filters.</div>';
+        return;
+    }
+    var impCol = {High:'var(--color-fail)',Medium:'var(--color-warning)',Low:'var(--text-muted)'};
+    var resCol = {BEAT:'var(--color-pass)',MISS:'var(--color-fail)',INLINE:'var(--text-muted)'};
+    var cols   = '90px 44px 44px 52px 1fr 58px 58px 52px';
+    var hdr = '<div class="event-row" style="grid-template-columns:' + cols + ';border-bottom:1px solid var(--border-secondary);padding-bottom:8px;">' +
+        ['Date','UTC','CCY','Impact','Event','Actual','Fcst','Result'].map(function(h){
+            return '<span class="card-title">' + h + '</span>';
+        }).join('') + '</div>';
+    var rows = filtered.map(function(e) {
+        var dt = e.datetime_utc ? e.datetime_utc.substring(0,10) : '---';
+        var tm = e.datetime_utc ? e.datetime_utc.substring(11,16) : '---';
+        var ic = impCol[e.impact] || 'var(--text-muted)';
+        var rc = resCol[e.result] || 'var(--text-muted)';
+        return '<div class="event-row" style="grid-template-columns:' + cols + ';">' +
+            '<span class="mono text-muted" style="font-size:0.65rem;">' + dt + '</span>' +
+            '<span class="mono text-muted" style="font-size:0.65rem;">' + tm + '</span>' +
+            '<strong class="mono" style="font-size:0.7rem;">' + (e.currency||'--') + '</strong>' +
+            '<span style="color:' + ic + ';font-size:0.65rem;font-weight:600;">' + (e.impact||'--') + '</span>' +
+            '<span style="font-size:0.72rem;">' + (e.title||'--') + '</span>' +
+            '<span class="mono" style="font-size:0.7rem;font-weight:600;">' + (e.actual||'--') + '</span>' +
+            '<span class="mono text-muted" style="font-size:0.68rem;">' + (e.forecast||'--') + '</span>' +
+            '<span style="color:' + rc + ';font-size:0.7rem;font-weight:700;">' + (e.result||'--') + '</span>' +
+            '</div>';
+    }).join('');
+    document.getElementById('nb-events-body').innerHTML =
+        '<div class="event-list" style="max-height:500px;overflow-y:auto;">' + hdr + rows + '</div>';
+}
+
 function loadData() {
     var dot = document.getElementById('sdot');
     var txt = document.getElementById('stxt');

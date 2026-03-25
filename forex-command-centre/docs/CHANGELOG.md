@@ -1,3 +1,12 @@
+## [v5.1.1] - 2026-03-26
+### arm-history-dashboard: News Bias tab
+- New "News Bias" 6th tab in arm-history-dashboard.html
+- Section 1: Current Currency Bias — 8-currency grid with score bars, arrow indicators, confidence
+- Section 2: Weekly Bias Timeline — table showing week-by-week direction per currency, BF marker for backfill runs
+- Section 3: Economic Event Log — all captured releases from bias-history, filterable by currency/result/impact, 500px scrollable
+- Lazy loaded on first tab click — no extra requests on page load
+- Matches exact dark/light theme, font, card, and table patterns of existing dashboard
+
 ## [v5.1.0] - 2026-03-26
 ### Intel Hub — Pairs Intelligence Dashboard
 - New "Intel Hub" tab (desktop + mobile nav) between Performance and Reference
