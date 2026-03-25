@@ -19,8 +19,8 @@
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var data = await resp.json();
             _cache = {
-                pair_verdicts:  data.pair_verdicts  || {},
-                currency_bias:  data.currency_bias  || {},
+                pair_verdicts:  data.latest_verdicts || {},
+                currency_bias:  data.latest_bias     || {},
                 last_updated:   data.last_updated   || null,
                 fetched_at:     Date.now()
             };
