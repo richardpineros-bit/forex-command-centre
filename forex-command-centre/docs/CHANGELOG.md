@@ -1,3 +1,15 @@
+## [v5.1.0] - 2026-03-26
+### Intel Hub — Pairs Intelligence Dashboard
+- New "Intel Hub" tab (desktop + mobile nav) between Performance and Reference
+- `js/bias-history-hub.js` — new module, fetches `/bias-history` on tab open
+- Section 1: Current Currency Bias — 8-currency grid with score bars, confidence, event count
+- Section 2: Weekly Bias Timeline — table showing week-by-week direction per currency, BF marker for backfill runs
+- Section 3: Economic Event Log — all captured releases, filterable by currency/result/impact, sticky headers, 500px scrollable
+- All sections collapsible, refresh button
+- `css/regime.css` — full Intel Hub styles added
+- `index.html` — removed Quick News Bias Lookup panel (replaced by Intel Hub)
+- `js/news-impact.js` — removed dead quick-bias functions
+
 ## [v5.0.9] - 2026-03-26
 ### Fix: news-bias-engine.js field name mismatch
 - Engine was reading `data.pair_verdicts` and `data.currency_bias`

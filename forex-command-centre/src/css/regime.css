@@ -3379,3 +3379,319 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+
+/* ============================================
+   INTELLIGENCE HUB STYLES (bias-history-hub)
+   ============================================ */
+
+.intel-hub {
+    padding: var(--spacing-md);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.intel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.intel-header-title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.intel-refresh-btn {
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+.intel-refresh-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+/* Sections */
+.intel-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+    overflow: hidden;
+}
+
+.intel-section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-tertiary);
+    transition: background 0.15s;
+}
+.intel-section-header:hover { background: var(--bg-secondary); }
+
+.intel-section-icon { font-size: 1rem; }
+.intel-section-title { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); flex: 1; }
+.intel-section-toggle { color: var(--text-muted); font-size: 0.75rem; }
+
+.intel-section-body {
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+/* Loading / Error */
+.intel-loading {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: var(--spacing-sm);
+}
+.intel-loading-full {
+    text-align: center;
+    padding: var(--spacing-lg);
+}
+.intel-error {
+    color: var(--color-fail);
+    padding: var(--spacing-md);
+    font-size: 0.85rem;
+}
+.intel-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: var(--spacing-md) 0;
+    font-style: italic;
+}
+
+/* ── Section 1: Current Bias ── */
+.intel-bias-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-md);
+}
+
+.intel-bias-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.intel-bias-card {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+}
+
+.intel-bias-currency {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.intel-bias-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.intel-bias-bar-wrap {
+    height: 4px;
+    background: var(--bg-primary);
+    border-radius: 2px;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+
+.intel-bias-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.intel-bias-meta-row {
+    display: flex;
+    gap: var(--spacing-sm);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+}
+
+/* Bull / Bear / Neutral card theming */
+.intel-bias-bull {
+    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.06);
+}
+.intel-bias-bull .intel-bias-currency { color: var(--color-pass); }
+.intel-bias-bull .intel-bias-label    { color: var(--color-pass); }
+.intel-bias-bull .intel-bias-bar      { background: var(--color-pass); }
+
+.intel-bias-bear {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.06);
+}
+.intel-bias-bear .intel-bias-currency { color: var(--color-fail); }
+.intel-bias-bear .intel-bias-label    { color: var(--color-fail); }
+.intel-bias-bear .intel-bias-bar      { background: var(--color-fail); }
+
+.intel-bias-neutral .intel-bias-bar   { background: var(--text-muted); }
+
+/* ── Section 2: Timeline ── */
+.intel-timeline-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.intel-timeline-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    min-width: 400px;
+}
+
+.intel-timeline-table th {
+    padding: 6px 10px;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.intel-tl-cur {
+    text-align: left !important;
+    font-weight: 700;
+    color: var(--text-primary) !important;
+    padding-right: var(--spacing-md) !important;
+    position: sticky;
+    left: 0;
+    background: var(--bg-secondary);
+    z-index: 1;
+}
+
+.intel-tl-cell {
+    text-align: center;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+.intel-tl-none { color: var(--text-muted); }
+.intel-tl-cell.intel-bias-bull { color: var(--color-pass); }
+.intel-tl-cell.intel-bias-bear { color: var(--color-fail); }
+
+.intel-tl-backfill {
+    font-size: 0.6rem;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    padding: 1px 3px;
+    color: var(--text-muted);
+}
+
+/* ── Section 3: Event Log ── */
+.intel-event-filters {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.intel-filter-select {
+    min-width: 130px;
+    max-width: 160px;
+    font-size: 0.8rem;
+    padding: 5px 8px;
+}
+
+.intel-event-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.intel-event-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.intel-event-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    min-width: 600px;
+}
+
+.intel-event-table th {
+    padding: 7px 10px;
+    text-align: left;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+    background: var(--bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+}
+
+.intel-event-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(var(--border-color-rgb, 255,255,255), 0.05);
+    vertical-align: middle;
+}
+
+.intel-event-table tr:hover td { background: var(--bg-tertiary); }
+
+.intel-ev-date   { font-weight: 500; white-space: nowrap; }
+.intel-ev-time   { color: var(--text-muted); white-space: nowrap; }
+.intel-ev-cur    { font-weight: 700; }
+.intel-ev-title  { max-width: 220px; }
+.intel-ev-actual { font-weight: 600; }
+.intel-ev-forecast { color: var(--text-muted); }
+
+/* Impact badges */
+.intel-impact {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.intel-impact-high { background: rgba(239,68,68,0.15); color: var(--color-fail); }
+.intel-impact-med  { background: rgba(245,158,11,0.15); color: var(--color-warning); }
+.intel-impact-low  { background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* Result badges */
+.intel-result {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+.intel-result-beat   { background: rgba(34,197,94,0.15);  color: var(--color-pass); }
+.intel-result-miss   { background: rgba(239,68,68,0.15);  color: var(--color-fail); }
+.intel-result-inline { background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+    .intel-bias-grid { grid-template-columns: repeat(2, 1fr); }
+    .intel-section-body { padding: var(--spacing-sm); }
+    .intel-filter-select { min-width: 100px; font-size: 0.75rem; }
+}
