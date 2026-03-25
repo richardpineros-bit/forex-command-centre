@@ -1,37 +1,56 @@
 #!/usr/bin/env python3
 """
-ForexFactory Economic Calendar Scraper v2.0.0
-Adds: actual field capture, bias scoring, bias-history.json, canary health check.
+ForexFactory Economic Calendar Scraper v3.0.0
+Switches from FF XML feed (no actuals) to FF website HTML scraping.
+BEAT/MISS/INLINE sourced directly from FF CSS classes (better/worse).
+
+Requires: pip install beautifulsoup4 --break-system-packages
 
 Cron (Unraid User Scripts, every 6 hours):
     0 */6 * * * /usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/forex_calendar_scraper.py --unraid
 
 Changelog:
+    v3.0.0 - Switch to HTML scraping; actuals from FF CSS classes; UNRAID_BIAS path fix
     v2.0.0 - actual field; bias scoring; bias-history.json; canary check
     v1.0.0 - initial release
 """
 
 import argparse, json, re, sys, os
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    print("ERROR: beautifulsoup4 required. Run: pip install beautifulsoup4 --break-system-packages", file=sys.stderr)
+    sys.exit(1)
+
 # ── Constants ──────────────────────────────────────────────────────────────
-FF_CALENDAR_URL  = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+FF_CALENDAR_URL  = "https://www.forexfactory.com/calendar?week=this"
 FOREX_CURRENCIES = ["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"]
 IMPACT_LEVELS    = {"High":3,"Medium":2,"Low":1,"Holiday":0}
 IMPACT_WEIGHTS   = {"High":3.0,"Medium":1.0,"Low":0.0}
 TIME_DECAY       = [(24,1.0),(48,0.7),(72,0.4),(168,0.2),(9999,0.0)]
-CANARY_TAGS      = ["event","title","country","impact","forecast","previous"]
 PAIRS            = ["AUDUSD","USDJPY","EURUSD","GBPUSD","EURJPY","GBPJPY",
                     "AUDJPY","NZDJPY","NZDUSD","USDCAD","USDCHF","EURGBP"]
 
+# FF impact icon CSS class -> impact level name
+IMPACT_CSS_MAP = {
+    "icon--ff-impact-red": "High",
+    "icon--ff-impact-ora": "Medium",
+    "icon--ff-impact-yel": "Low",
+    "icon--ff-impact-gra": "Holiday",
+}
+
 # ── Canary ─────────────────────────────────────────────────────────────────
-def check_feed_canaries(xml_content):
-    missing = [t for t in CANARY_TAGS if f"<{t}" not in xml_content]
+def check_feed_canaries(html_content):
+    """Check FF HTML structure is intact."""
+    required = ["calendar__table", "calendar__actual", "calendar__currency",
+                "calendar__event-title", "data-event-id"]
+    missing = [m for m in required if m not in html_content]
     if missing:
-        return {"status":"MARKUP_CHANGED","message":f"Missing tags: {missing}",
+        return {"status":"MARKUP_CHANGED","message":f"Missing markers: {missing}",
                 "missing_tags":missing,"checked_at":datetime.utcnow().isoformat()+"Z"}
     return {"status":"OK","message":"Feed structure validated","missing_tags":[],
             "checked_at":datetime.utcnow().isoformat()+"Z"}
@@ -45,12 +64,17 @@ def save_health(health, output_dir):
         print(f"Warning: health write failed: {e}", file=sys.stderr)
 
 # ── Fetch ──────────────────────────────────────────────────────────────────
-def fetch_xml_feed(url):
-    headers = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+def fetch_html_feed(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
     try:
         req = Request(url, headers=headers)
         with urlopen(req, timeout=30) as r:
-            return r.read().decode("windows-1252", errors="replace")
+            return r.read().decode("utf-8", errors="replace")
     except HTTPError as e:
         print(f"HTTP {e.code}: {e.reason}", file=sys.stderr); sys.exit(1)
     except URLError as e:
@@ -59,9 +83,10 @@ def fetch_xml_feed(url):
         print(f"Fetch error: {e}", file=sys.stderr); sys.exit(1)
 
 # ── Time parsing ───────────────────────────────────────────────────────────
-def parse_time_to_24h(time_str, date_str):
+def parse_time_to_24h(time_str, base_dt):
+    """Parse FF time string (e.g. '7:30pm') into 24h and UTC/AEST datetimes."""
     empty = {"time_24h":"All Day","datetime_utc":None,"datetime_aest":None}
-    if not time_str or time_str.strip().lower() in ["","all day","tentative"]:
+    if not time_str or time_str.strip().lower() in ["","all day","tentative","-"]:
         return empty
     try:
         s = time_str.strip().lower().replace(" ","")
@@ -71,67 +96,129 @@ def parse_time_to_24h(time_str, date_str):
         h = int(parts[0]); m = int(parts[1]) if len(parts)>1 else 0
         if is_pm and h!=12: h+=12
         elif not is_pm and h==12: h=0
-        dp = date_str.split("-")
-        et = datetime(int(dp[2]),int(dp[0]),int(dp[1]),h,m)
+        # base_dt is the day in UTC; time is ET (UTC-5 assumed, matches v2 behaviour)
+        et = base_dt.replace(hour=h, minute=m, second=0, microsecond=0)
         utc = et + timedelta(hours=5)
         aest = utc + timedelta(hours=10)
         return {"time_24h":f"{h:02d}:{m:02d}","time_et":time_str,
                 "datetime_utc":utc.isoformat()+"Z","datetime_aest":aest.isoformat()}
-    except Exception as e:
+    except Exception:
         return {"time_24h":time_str,"datetime_utc":None,"datetime_aest":None}
 
-# ── Actual value parsing ───────────────────────────────────────────────────
-def parse_numeric(val):
-    if not val: return None
-    try: return float(re.sub(r'[%KkMmBb,]','',val.strip()))
-    except: return None
+# ── Impact extraction ──────────────────────────────────────────────────────
+def extract_impact(td):
+    """Get impact level from the FF impact icon CSS class."""
+    if not td: return "Low"
+    span = td.find("span", class_=True)
+    if not span: return "Low"
+    for css_class, level in IMPACT_CSS_MAP.items():
+        if css_class in span.get("class",[]):
+            return level
+    return "Low"
 
-def determine_result(actual_str, forecast_str, previous_str):
-    actual = parse_numeric(actual_str)
-    if actual is None: return "UNKNOWN"
-    compare = parse_numeric(forecast_str) or parse_numeric(previous_str)
-    if compare is None: return "UNKNOWN"
-    diff = actual - compare
-    pct  = abs(diff/compare) if compare!=0 else abs(diff)
-    if pct < 0.05: return "INLINE"
-    return "BEAT" if diff > 0 else "MISS"
-
-# ── XML parsing ────────────────────────────────────────────────────────────
-def parse_calendar_xml(xml_content):
+# ── HTML parsing ───────────────────────────────────────────────────────────
+def parse_calendar_html(html_content):
+    """Parse FF calendar HTML and return list of event dicts."""
+    soup = BeautifulSoup(html_content, "html.parser")
     events = []
-    try: root = ET.fromstring(xml_content)
-    except ET.ParseError as e:
-        print(f"XML parse error: {e}", file=sys.stderr); sys.exit(1)
+    current_day_dt = None  # datetime for current day (UTC midnight)
 
-    for elem in root.findall("event"):
+    # Find all calendar rows
+    rows = soup.find_all("tr", attrs={"data-event-id": True})
+
+    for row in rows:
         try:
-            title    = elem.findtext("title","").strip()
-            country  = elem.findtext("country","").strip()
-            date     = elem.findtext("date","").strip()
-            time_str = elem.findtext("time","").strip()
-            impact   = elem.findtext("impact","").strip()
-            forecast = elem.findtext("forecast","").strip()
-            previous = elem.findtext("previous","").strip()
-            actual   = elem.findtext("actual","").strip()   # v2.0 addition
-            url      = elem.findtext("url","").strip()
+            # Update current date if this row carries a day dateline
+            dateline = row.get("data-day-dateline")
+            if dateline:
+                try:
+                    current_day_dt = datetime.utcfromtimestamp(int(dateline))
+                except Exception:
+                    pass
 
-            if country not in FOREX_CURRENCIES: continue
+            # Currency
+            currency_td = row.find("td", class_="calendar__currency")
+            currency = currency_td.get_text(strip=True) if currency_td else ""
+            if currency not in FOREX_CURRENCIES:
+                continue
 
-            ti     = parse_time_to_24h(time_str, date)
-            result = determine_result(actual,forecast,previous) if actual else None
+            # Impact
+            impact_td = row.find("td", class_="calendar__impact")
+            impact = extract_impact(impact_td)
+
+            # Skip low-weight events for efficiency (still parse, scoring handles weight)
+            # Title
+            title_span = row.find("span", class_="calendar__event-title")
+            title = title_span.get_text(strip=True) if title_span else ""
+
+            # Time
+            time_td = row.find("td", class_="calendar__time")
+            time_str = time_td.get_text(strip=True) if time_td else ""
+
+            # Actual — CSS class tells us BEAT/MISS directly
+            actual_td = row.find("td", class_="calendar__actual")
+            actual_str = None
+            result = None
+            if actual_td:
+                actual_span = actual_td.find("span")
+                if actual_span:
+                    actual_str = actual_span.get_text(strip=True)
+                    if actual_str:
+                        span_classes = actual_span.get("class", [])
+                        if "better" in span_classes:
+                            result = "BEAT"
+                        elif "worse" in span_classes:
+                            result = "MISS"
+                        else:
+                            result = "INLINE"
+
+            # Forecast
+            forecast_td = row.find("td", class_="calendar__forecast")
+            forecast_str = None
+            if forecast_td:
+                forecast_span = forecast_td.find("span")
+                if forecast_span:
+                    forecast_str = forecast_span.get_text(strip=True) or None
+
+            # Previous
+            previous_td = row.find("td", class_="calendar__previous")
+            previous_str = None
+            if previous_td:
+                previous_span = previous_td.find("span")
+                if previous_span:
+                    # Strip revision icon text
+                    prev_text = previous_span.get_text(strip=True)
+                    previous_str = prev_text or None
+
+            # Date string for output
+            date_str = current_day_dt.strftime("%m-%d-%Y") if current_day_dt else ""
+
+            # Parse time
+            ti = parse_time_to_24h(time_str, current_day_dt) if current_day_dt else {
+                "time_24h": time_str, "datetime_utc": None, "datetime_aest": None
+            }
 
             events.append({
-                "title":title,"currency":country,"date":date,
-                "time_et":time_str,"time_24h":ti.get("time_24h"),
-                "datetime_utc":ti.get("datetime_utc"),"datetime_aest":ti.get("datetime_aest"),
-                "impact":impact,"impact_level":IMPACT_LEVELS.get(impact,0),
-                "forecast":forecast or None,"previous":previous or None,
-                "actual":actual or None,"result":result,"url":url  # v2.0 additions
+                "title":        title,
+                "currency":     currency,
+                "date":         date_str,
+                "time_et":      time_str,
+                "time_24h":     ti.get("time_24h"),
+                "datetime_utc": ti.get("datetime_utc"),
+                "datetime_aest":ti.get("datetime_aest"),
+                "impact":       impact,
+                "impact_level": IMPACT_LEVELS.get(impact, 0),
+                "forecast":     forecast_str,
+                "previous":     previous_str,
+                "actual":       actual_str or None,
+                "result":       result,
+                "url":          None,
             })
+
         except Exception as e:
             print(f"Event parse error: {e}", file=sys.stderr)
 
-    events.sort(key=lambda x:(x.get("datetime_utc") or "9999", x.get("currency","")))
+    events.sort(key=lambda x: (x.get("datetime_utc") or "9999", x.get("currency", "")))
     return events
 
 # ── Bias scoring ───────────────────────────────────────────────────────────
@@ -149,7 +236,7 @@ def calculate_currency_bias(events, now):
         currency = event.get("currency"); impact = event.get("impact")
         result   = event.get("result");   actual = event.get("actual")
         dt_str   = event.get("datetime_utc")
-        if not actual or not result or result=="UNKNOWN": continue
+        if not actual or not result or result in ("UNKNOWN", None): continue
         if IMPACT_WEIGHTS.get(impact,0)==0: continue
         if not dt_str: continue
         try: event_dt = datetime.fromisoformat(dt_str.replace("Z",""))
@@ -224,7 +311,7 @@ def append_bias_run(history, events, bias_map, pair_verdicts):
 
     event_results = []
     for e in events:
-        if e.get("actual") and e.get("result") and e.get("result")!="UNKNOWN":
+        if e.get("actual") and e.get("result") and e.get("result") not in ("UNKNOWN", None):
             dt_str = e.get("datetime_utc")
             if dt_str:
                 try:
@@ -238,12 +325,12 @@ def append_bias_run(history, events, bias_map, pair_verdicts):
                 except: pass
 
     run = {
-        "run_id":   now.strftime("%Y%m%d_%H%M%S"),
-        "timestamp":now.isoformat()+"Z",
-        "event_results":event_results,
-        "currency_bias":{k:{"score":v["score"],"bias":v["bias"],"confidence":v["confidence"],
-                            "event_count":v["event_count"]} for k,v in bias_map.items()},
-        "pair_verdicts":pair_verdicts
+        "run_id":    now.strftime("%Y%m%d_%H%M%S"),
+        "timestamp": now.isoformat()+"Z",
+        "event_results": event_results,
+        "currency_bias": {k:{"score":v["score"],"bias":v["bias"],"confidence":v["confidence"],
+                             "event_count":v["event_count"]} for k,v in bias_map.items()},
+        "pair_verdicts": pair_verdicts
     }
 
     history["runs"].append(run)
@@ -262,9 +349,12 @@ def save_bias_history(history, path):
 # ── Calendar save ──────────────────────────────────────────────────────────
 def save_calendar(events, path, bias_map=None, pair_verdicts=None):
     data = {
-        "last_updated":datetime.utcnow().isoformat()+"Z",
-        "schema_version":"2.0.0","source":"ForexFactory",
-        "feed_url":FF_CALENDAR_URL,"event_count":len(events),"events":events
+        "last_updated":   datetime.utcnow().isoformat()+"Z",
+        "schema_version": "2.0.0",
+        "source":         "ForexFactory",
+        "feed_url":       FF_CALENDAR_URL,
+        "event_count":    len(events),
+        "events":         events
     }
     if bias_map:
         data["currency_bias"] = {k:{"score":v["score"],"bias":v["bias"],
@@ -280,37 +370,38 @@ def save_calendar(events, path, bias_map=None, pair_verdicts=None):
 
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
-    SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR,'..','..'))
+    SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT  = os.path.abspath(os.path.join(SCRIPT_DIR,'..','..'))
     DEFAULT_OUT   = os.path.join(PROJECT_ROOT,'src','calendar.json')
     DEFAULT_BAK   = os.path.join(PROJECT_ROOT,'data','calendar.json')
     DEFAULT_BIAS  = os.path.join(PROJECT_ROOT,'data','bias-history.json')
-    UNRAID_BIAS   = '/data/bias-history.json'
+    UNRAID_BIAS   = '/mnt/user/appdata/trading-state/data/bias-history.json'  # v3 fix
 
-    parser = argparse.ArgumentParser(description="FCC Calendar Scraper v2.0.0")
+    parser = argparse.ArgumentParser(description="FCC Calendar Scraper v3.0.0")
     parser.add_argument("--output",       "-o", default=DEFAULT_OUT)
     parser.add_argument("--backup-path",        default=DEFAULT_BAK)
     parser.add_argument("--bias-history",       default=DEFAULT_BIAS)
     parser.add_argument("--unraid",             action="store_true",
-                        help="Use /data/ Docker volume paths")
+                        help="Use Unraid host paths")
     parser.add_argument("--print",        "-p", action="store_true", dest="print_output")
     args = parser.parse_args()
 
     bias_path = UNRAID_BIAS if args.unraid else args.bias_history
 
     print(f"Fetching {FF_CALENDAR_URL}...")
-    xml_content = fetch_xml_feed(FF_CALENDAR_URL)
+    html_content = fetch_html_feed(FF_CALENDAR_URL)
 
     print("Canary check...")
-    health = check_feed_canaries(xml_content)
+    health = check_feed_canaries(html_content)
     save_health(health, os.path.dirname(DEFAULT_OUT))
     if health["status"] != "OK":
         print(f"ABORT: {health['message']}", file=sys.stderr); sys.exit(2)
 
     print("Parsing events...")
-    events = parse_calendar_xml(xml_content)
+    events = parse_calendar_html(html_content)
     with_actuals = len([e for e in events if e.get("actual")])
-    print(f"  {len(events)} events | {len([e for e in events if e['impact']=='High'])} high | {with_actuals} with actuals")
+    high_events  = len([e for e in events if e.get("impact")=="High"])
+    print(f"  {len(events)} events | {high_events} high | {with_actuals} with actuals")
 
     print("Scoring bias...")
     now = datetime.utcnow()

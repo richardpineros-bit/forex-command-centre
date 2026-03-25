@@ -1,3 +1,17 @@
+## [v5.0.7] - 2026-03-25
+### forex_calendar_scraper.py v3.0.0 — HTML scraping, real actuals
+- Switch data source from FF XML feed to FF website HTML scraping
+- FF XML feed has no `<actual>` field — actuals only exist on the website
+- BEAT/MISS/INLINE now sourced directly from FF CSS classes (`better`/`worse`) — no calculation needed
+- Time parsing rewritten: uses `data-day-dateline` Unix timestamp + parsed hours/minutes
+  - Timezone-agnostic — works correctly regardless of server location
+  - German PMI (7:30pm local) → 08:30 UTC verified correct
+  - AUD CPI (11:30am local) → 00:30 UTC verified correct
+- `UNRAID_BIAS` path fixed: `/data/bias-history.json` → `/mnt/user/appdata/trading-state/data/bias-history.json`
+  - Previous path was Docker-internal — scraper was writing to wrong location on host
+- Canary check updated for HTML structure markers instead of XML tags
+- Requires: `pip install beautifulsoup4 --break-system-packages`
+
 ## [v5.0.6] - 2026-03-24
 ### Fix: structExt missing from candidates in GET /state
 - `forex-alert-server/index.js`: candidate response builder now includes `structExt` and `structBars`
