@@ -1,3 +1,10 @@
+## [v5.1.4] - 2026-03-26
+### Fix: heatmap session normalisation
+- Session values from Pine Script are inconsistent: NY, Tokyo, Asian, Off-Hours, London, London/EU, Cash Session, US Prime etc.
+- `arm-history-dashboard.html`: normalise all session variants to 3 buckets (TOKYO/LONDON/NY) before heatmap render
+- `index.js`: same normalisation in tally builder so pair breakdown sessions are consistent
+- Mapping: Tokyo/Asian/Off-Hours -> TOKYO | London/London/EU/EU/London -> LONDON | NY/US Session/US Prime/US Pre-NYMEX/NYMEX Prime/Cash Session -> NY
+
 ## [v5.1.3] - 2026-03-26
 ### Fix: arm-history dashboard stats + heatmap, Intel quick access button
 - `index.js`: direction case fix in tally — events store lowercase `long`/`short`, tally was checking uppercase `LONG`/`SHORT`. Long bias, 5/5 quality, impaired arms now count correctly

@@ -1647,8 +1647,13 @@ var server = http.createServer(function(req, res) {
             // Score
             if (e.score) t.scores.push(e.score);
 
-            // Session
-            if (e.session) t.sessions[e.session] = (t.sessions[e.session] || 0) + 1;
+            // Session (normalise to 3 buckets)
+            var SESSION_NORM = {'Tokyo':'TOKYO','Asian':'TOKYO','Off-Hours':'TOKYO',
+                'London':'LONDON','London/EU':'LONDON','EU/London':'LONDON',
+                'NY':'NY','US Session':'NY','US Prime':'NY','US Pre-NYMEX':'NY',
+                'NYMEX Prime':'NY','Cash Session':'NY'};
+            var normSess = e.session ? (SESSION_NORM[e.session] || e.session) : '';
+            if (normSess) t.sessions[normSess] = (t.sessions[normSess] || 0) + 1;
 
             // Entry zone
             if (e.entryZone) t.zones[e.entryZone] = (t.zones[e.entryZone] || 0) + 1;

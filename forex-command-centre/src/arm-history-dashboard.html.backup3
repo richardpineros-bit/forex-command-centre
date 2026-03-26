@@ -632,22 +632,6 @@ function renderHeatmap(data) {
     var tally    = (data.tally||[]).slice(0,14);
     var sessions = ['TOKYO','LONDON','NY'];
     var labels   = ['Tokyo','London','NY'];
-    // Session normalisation map
-    var SESSION_MAP = {
-        'Tokyo':'TOKYO','Asian':'TOKYO','Off-Hours':'TOKYO',
-        'London':'LONDON','London/EU':'LONDON','EU/London':'LONDON',
-        'NY':'NY','US Session':'NY','US Prime':'NY','US Pre-NYMEX':'NY',
-        'NYMEX Prime':'NY','Cash Session':'NY'
-    };
-    // Remap tally sessions to 3 buckets
-    tally.forEach(function(t) {
-        var norm = {TOKYO:0,LONDON:0,NY:0};
-        Object.keys(t.sessions||{}).forEach(function(s) {
-            var bucket = SESSION_MAP[s];
-            if (bucket) norm[bucket] += t.sessions[s];
-        });
-        t.sessions = norm;
-    });
     if (!tally.length) { document.getElementById('heatmap-body').innerHTML = empty('No data'); return; }
     var gmax = 0;
     tally.forEach(function(t){ sessions.forEach(function(s){ var v=(t.sessions&&t.sessions[s])||0; if(v>gmax)gmax=v; }); });
