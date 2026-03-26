@@ -1,3 +1,11 @@
+## [v5.1.7] - 2026-03-27
+### Fix: te_scraper.py v1.0.1 — cell position and parsing fixes
+- **Cell positions**: switched from hardcoded cells[3/4/5] to `cells[-3/-2/-1]` (last-3 approach) — position-independent regardless of date col rowspan variation
+- **Field rename**: `date` → `time_et` (cells[0] is time not date)
+- **Importance**: fixed star detection — now excludes `glyphicon-star-empty`, checks `data-importance` attr first
+- **Bonds canary**: relaxed — removed `calendar-table` requirement (bonds page may not have it)
+- **clean_val**: now rejects stray 2-letter uppercase strings (country codes leaking into value cells)
+
 ## [v5.1.6] - 2026-03-27
 ### New: te_scraper.py v1.0.0 — Trading Economics macro briefing layer
 - New script: `backend/scripts/te_scraper.py`

@@ -23,6 +23,9 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
+    v1.0.1 - Fix cell positions (use last-3 cells for actual/forecast/previous); fix importance
+             star detection (exclude glyphicon-star-empty); relax bonds canary; rename date→time_et;
+             clean_val now rejects stray 2-letter country codes leaking into value cells
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
 """
 
@@ -40,7 +43,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 # G10 currencies we care about
 G10_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"]
@@ -125,7 +128,8 @@ def canary_calendar(html):
 
 def canary_bonds(html):
     """Check TE bonds page has expected structure."""
-    markers = ["data-symbol", "data-country", "calendar-table"]
+    # Relaxed: bonds page may not have 'calendar-table' — just needs data rows
+    markers = ["data-symbol", "data-country"]
     missing = [m for m in markers if m not in html]
     if missing:
         return False, f"Bonds canary FAIL — missing: {missing}"
@@ -145,21 +149,22 @@ def canary_fx(html):
 
 def parse_importance(row):
     """Extract importance level (1-3) from TE calendar row."""
-    # TE uses <td class="calendar-importance"> with <i> stars
-    # Some versions use <td class="importance">
-    for class_name in ("calendar-importance", "importance"):
-        td = row.find("td", class_=class_name)
-        if td:
-            stars = td.find_all("i", class_=lambda c: c and "glyphicon-star" in c)
-            if stars:
-                return len(stars)
-    # Fallback: check data-importance attribute on the row
+    # Check data-importance attribute on the row first (most reliable)
     imp = row.get("data-importance")
     if imp:
         try:
             return int(imp)
         except (ValueError, TypeError):
             pass
+
+    # TE uses <i class="glyphicon glyphicon-star"> for filled stars
+    # and <i class="glyphicon glyphicon-star-empty"> for empty stars
+    # Count only FILLED stars (not empty)
+    all_stars = row.find_all("i", class_=lambda c: c and "glyphicon-star" in c)
+    filled = [s for s in all_stars if "star-empty" not in " ".join(s.get("class", []))]
+    if filled:
+        return len(filled)
+
     return 1  # default low
 
 
@@ -222,35 +227,43 @@ def parse_calendar_page(html, bond_mode=False):
             if len(cells) < 4:
                 continue
 
-            # Cell layout varies but generally: date, country, event, actual, forecast, previous
-            # We use data attributes for country/event (already extracted above)
-            # Find cells by content position
-            date_td     = cells[0] if len(cells) > 0 else None
+            # TE cell layout (confirmed from live output):
+            # cells[0]  = time (ET) — shown as "02:00 PM"
+            # cells[1..n-4] = country, importance, event+period (variable due to rowspan on date col)
+            # cells[-3] = actual value
+            # cells[-2] = forecast value
+            # cells[-1] = previous value
+            # Using last-3 approach is position-independent regardless of date col rowspan.
+
+            time_td     = cells[0]
             actual_td   = None
             forecast_td = None
             previous_td = None
 
-            # Try to find labelled cells first
+            # Try class-based first (works if TE uses semantic classes)
             actual_td   = row.find("td", class_=lambda c: c and "actual"   in c.lower())
             forecast_td = row.find("td", class_=lambda c: c and "forecast" in c.lower())
             previous_td = row.find("td", class_=lambda c: c and "previous" in c.lower())
 
-            # Fallback to positional (TE typical order: date, country, event, actual, forecast, previous)
-            if not actual_td and len(cells) >= 4:
-                actual_td   = cells[3] if len(cells) > 3 else None
-                forecast_td = cells[4] if len(cells) > 4 else None
-                previous_td = cells[5] if len(cells) > 5 else None
+            # Fallback: last 3 cells (robust against variable prefix columns)
+            if not actual_td and len(cells) >= 6:
+                actual_td   = cells[-3]
+                forecast_td = cells[-2]
+                previous_td = cells[-1]
 
             actual_val   = parse_cell_text(actual_td)
             forecast_val = parse_cell_text(forecast_td)
             previous_val = parse_cell_text(previous_td)
-            date_val     = parse_cell_text(date_td)
+            time_val     = parse_cell_text(time_td)
 
-            # Clean up values — TE sometimes returns "\xa0" or "-"
+            # Clean up values — TE sometimes returns "\xa0", "-", or country codes
             def clean_val(v):
                 if not v:
                     return None
                 v = v.strip().replace("\xa0", "").replace("\u00a0", "")
+                # Reject 2-letter country codes leaking into value cells
+                if len(v) == 2 and v.isupper():
+                    return None
                 return v if v not in ("-", "", "NA", "N/A") else None
 
             actual_val   = clean_val(actual_val)
@@ -266,7 +279,7 @@ def parse_calendar_page(html, bond_mode=False):
                     "country":     row.get("data-country", "").strip(),
                     "event":       event,
                     "category":    cat,
-                    "date":        date_val,
+                    "time_et":     time_val,
                     "actual":      actual_val,
                     "forecast":    forecast_val,
                     "previous":    previous_val,
@@ -281,7 +294,7 @@ def parse_calendar_page(html, bond_mode=False):
                     "symbol":      symbol,
                     "event":       event,
                     "category":    cat,
-                    "date":        date_val,
+                    "time_et":     time_val,
                     "actual":      actual_val,
                     "forecast":    forecast_val,
                     "previous":    previous_val,
