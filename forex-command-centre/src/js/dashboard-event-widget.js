@@ -449,7 +449,46 @@
 
         html += '</div>';
 
+        // ── Bond Auctions (from TE snapshot) ──────────────────────────────
+        var bondHtml = buildBondSection();
+        if (bondHtml) html += bondHtml;
+
         container.innerHTML = html;
+    }
+
+    function buildBondSection() {
+        if (!window.TE_SNAPSHOT_DATA) return null;
+        var auctions = window.TE_SNAPSHOT_DATA.bond_auctions || [];
+        if (auctions.length === 0) return null;
+
+        var now = new Date();
+        var html = '<div style="margin-top:12px;border-top:1px solid var(--border-color,#eee);padding-top:8px;">';
+        html += '<div style="padding:4px 12px 6px;font-size:0.75rem;color:var(--text-muted,#666);text-transform:uppercase;">&#x1F4B0; Bond Auctions</div>';
+
+        auctions.forEach(function(a) {
+            var symbol   = a.symbol || '';
+            var event    = a.event  || symbol;
+            var time     = a.time_et || '';
+            var actual   = a.actual   || null;
+            var forecast = a.forecast || null;
+            var previous = a.previous || null;
+
+            html += '<div style="padding:6px 12px;border-left:3px solid #6c757d;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color,#eee);">';
+            html += '<span style="background:var(--bg-secondary,#e9ecef);color:var(--text-primary,#333);padding:2px 5px;border-radius:3px;font-size:0.68rem;font-weight:600;min-width:52px;text-align:center;">' + symbol + '</span>';
+            html += '<div style="flex:1;min-width:0;">';
+            html += '<div style="font-weight:600;font-size:0.82rem;color:var(--text-primary,#333);">' + event + '</div>';
+            if (time) html += '<div style="font-size:0.72rem;color:var(--text-muted,#888);">' + time + ' ET</div>';
+            html += '</div>';
+            html += '<div style="text-align:right;font-size:0.72rem;line-height:1.5;flex-shrink:0;">';
+            if (actual)   html += '<div style="color:var(--text-muted,#888);">A: <strong style="color:var(--text-primary,#333);">' + actual   + '</strong></div>';
+            if (forecast) html += '<div style="color:var(--text-muted,#888);">F: <strong>' + forecast + '</strong></div>';
+            if (previous) html += '<div style="color:var(--text-muted,#888);">P: ' + previous + '</div>';
+            html += '</div>';
+            html += '</div>';
+        });
+
+        html += '</div>';
+        return html;
     }
 
     document.addEventListener('DOMContentLoaded', function() {

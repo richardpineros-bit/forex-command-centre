@@ -1,3 +1,30 @@
+## [v5.1.9] - 2026-03-27
+### New: TE Macro Briefing — dashboard card + Intel Hub tab
+**Alert server (index.js v2.6.0):**
+- New `GET /te-snapshot` endpoint — serves `te-snapshot.json` with 8h staleness check, fail-closed (404 if file missing)
+
+**FCC Dashboard (index.html):**
+- New `#te-briefing-container` div above Next CRITICAL Event widget
+- Renders FX snapshot as inline paragraph (pair, rate, daily %) with timestamp
+- Event/bond count pills below paragraph
+- Stale data warning banner if scraper hasn't run in 8h+
+
+**js/te-briefing.js (new, v1.0.0):**
+- Polls `GET /te-snapshot` every 30 minutes (same cadence as news-bias-engine)
+- Stores `window.TE_SNAPSHOT_DATA` for consumption by dashboard-event-widget
+- Triggers `DashboardEventWidget.updateEventDisplay()` after load (picks up bond auctions)
+
+**js/dashboard-event-widget.js (v2.2.0):**
+- Bond auctions from `window.TE_SNAPSHOT_DATA` appended below CRITICAL events list
+- New `buildBondSection()` function — symbol, event, time ET, actual/forecast/previous
+
+**arm-history-dashboard.html:**
+- New 7th tab: &#x1F310; Macro (lazy loaded, same pattern as News Bias tab)
+- FX Snapshot table: all 7 pairs, rate, daily %, status
+- G10 Events table: filterable by currency and impact level, 500px scrollable
+- Bond Auctions table: symbol, event, time ET, actual/forecast/previous
+- `loadTEBriefing()` / `renderTEFX()` / `renderTEEvents()` / `renderTEBonds()` functions added
+
 ## [v5.1.8] - 2026-03-27
 ### Fix: te_scraper.py v1.0.2 — importance scale matches ForexFactory
 - `parse_importance` default changed from 1 → 0 (no stars = Holiday/Unknown, matches FF `Holiday=0`)

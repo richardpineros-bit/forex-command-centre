@@ -15,8 +15,9 @@ const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.j
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.5.0';
+const VERSION = '2.6.0';
 const CHANGES = [
+    '2.6.0 - GET /te-snapshot: serve te-snapshot.json (Trading Economics macro briefing) with 8h staleness check',
     '2.5.0 - PWA push notifications: ARMED, FOMO cleared (1hr), news gate, circuit breaker',
     '2.4.1 - CRITICAL: All data file paths moved from /app/ to /data/ (mounted volume) — arm-history.json, structure.json, armed.json, utcc-alerts.json, candidates.json now survive container restarts',
     '2.4.0 - Arm History expansion: capture full UTCC context (playbook, mtf, criteria, volBehaviour, volLevel, rsi, riskMult, riskState, maxRisk, dayOfWeek, hour, weekNumber)',
@@ -1586,6 +1587,45 @@ var server = http.createServer(function(req, res) {
                 res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
             }
         });
+        return;
+    }
+
+    // ========================================================================
+    // TE SNAPSHOT ENDPOINT (v2.6.0)
+    // ========================================================================
+
+    // GET /te-snapshot - Return Trading Economics macro briefing snapshot
+    // Reads te-snapshot.json written by te_scraper.py (every 6h)
+    // Returns: { last_updated, summary, today_events, bond_auctions, fx_snapshot, health, stale }
+    if (req.method === 'GET' && req.url === '/te-snapshot') {
+        var teFile = process.env.TE_SNAPSHOT_FILE || '/data/te-snapshot.json';
+        var STALE_HOURS = 8; // warn if older than 8h (scraper runs every 6h, allow 2h margin)
+        try {
+            if (!fs.existsSync(teFile)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: false,
+                    error: 'te-snapshot.json not found. Run te_scraper.py --unraid first.',
+                    last_updated: null,
+                    stale: true
+                }));
+                return;
+            }
+            var teRaw = fs.readFileSync(teFile, 'utf8');
+            var teData = JSON.parse(teRaw);
+            // Staleness check
+            var isStale = true;
+            if (teData.last_updated) {
+                var ageMs = Date.now() - new Date(teData.last_updated).getTime();
+                isStale = ageMs > (STALE_HOURS * 60 * 60 * 1000);
+            }
+            teData.stale = isStale;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(teData));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'te-snapshot read error: ' + e.message, stale: true }));
+        }
         return;
     }
 
