@@ -1,3 +1,10 @@
+## [v5.1.2] - 2026-03-26
+### Cleanup: remove Intel Hub tab from main FCC app
+- Removed "Intel Hub" tab from desktop and mobile nav
+- Removed tab section from index.html
+- Removed bias-history-hub.js script import
+- Functionality lives in arm-history-dashboard.html News Bias tab instead
+
 ## [v5.1.1] - 2026-03-26
 ### arm-history-dashboard: News Bias tab
 - New "News Bias" 6th tab in arm-history-dashboard.html
