@@ -1,3 +1,10 @@
+## [v5.1.3] - 2026-03-26
+### Fix: arm-history dashboard stats + heatmap, Intel quick access button
+- `index.js`: direction case fix in tally — events store lowercase `long`/`short`, tally was checking uppercase `LONG`/`SHORT`. Long bias, 5/5 quality, impaired arms now count correctly
+- `arm-history-dashboard.html`: direction case fix in renderStats (same issue)
+- `arm-history-dashboard.html`: heatmap session keys fixed — API returns `NY` not `NEW_YORK`
+- `index.html`: "&#x1F9E0; Intel" quick access link added to Armed Instruments panel header — opens arm-history-dashboard.html in new tab
+
 ## [v5.1.2] - 2026-03-26
 ### Cleanup: remove Intel Hub tab from main FCC app
 - Removed "Intel Hub" tab from desktop and mobile nav

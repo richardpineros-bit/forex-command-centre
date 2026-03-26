@@ -569,7 +569,7 @@ function renderStats(data) {
     var topCnt  = tally[0] ? tally[0].total : 0;
     var sc  = events.filter(function(e){return e.score>0;}).map(function(e){return e.score;});
     var avg = sc.length ? Math.round(sc.reduce(function(a,b){return a+b;},0)/sc.length) : 0;
-    var longs   = events.filter(function(e){ var d=(e.direction||'').toUpperCase(); return d==='LONG'||d==='BULL'; }).length;
+    var longs   = events.filter(function(e){return e.direction==='LONG'||e.direction==='BULL';}).length;
     var longPct = total > 0 ? Math.round((longs/total)*100) : 0;
     var full5   = events.filter(function(e){return e.criteria>=5;}).length;
     var qPct    = total > 0 ? Math.round((full5/total)*100) : 0;
@@ -630,7 +630,7 @@ function renderFreq(data) {
 // ── HEATMAP ───────────────────────────────────────────────────────────────────
 function renderHeatmap(data) {
     var tally    = (data.tally||[]).slice(0,14);
-    var sessions = ['TOKYO','LONDON','NY'];
+    var sessions = ['TOKYO','LONDON','NEW_YORK'];
     var labels   = ['Tokyo','London','NY'];
     if (!tally.length) { document.getElementById('heatmap-body').innerHTML = empty('No data'); return; }
     var gmax = 0;

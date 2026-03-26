@@ -1640,8 +1640,9 @@ var server = http.createServer(function(req, res) {
             t.total++;
 
             // Direction
-            if (e.direction === 'LONG' || e.direction === 'BULL') t.long++;
-            if (e.direction === 'SHORT' || e.direction === 'BEAR') t.short++;
+            var dir = (e.direction || '').toUpperCase();
+            if (dir === 'LONG' || dir === 'BULL') t.long++;
+            if (dir === 'SHORT' || dir === 'BEAR') t.short++;
 
             // Score
             if (e.score) t.scores.push(e.score);
