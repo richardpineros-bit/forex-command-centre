@@ -23,9 +23,9 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
-    v1.0.1 - Fix cell positions (use last-3 cells for actual/forecast/previous); fix importance
-             star detection (exclude glyphicon-star-empty); relax bonds canary; rename date→time_et;
-             clean_val now rejects stray 2-letter country codes leaking into value cells
+    v1.0.2 - importance default changed 1→0 to match FF scale (High=3,Medium=2,Low=1,Holiday=0);
+             added impact_level field (numeric, mirrors FF output)
+    v1.0.1 - Fix cell positions; fix importance star detection; relax bonds canary; rename date→time_et
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
 """
 
@@ -43,7 +43,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 # G10 currencies we care about
 G10_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"]
@@ -148,8 +148,11 @@ def canary_fx(html):
 # ── Calendar parser ───────────────────────────────────────────────────────────
 
 def parse_importance(row):
-    """Extract importance level (1-3) from TE calendar row."""
-    # Check data-importance attribute on the row first (most reliable)
+    """
+    Extract importance level from TE calendar row.
+    Scale matches ForexFactory: High=3, Medium=2, Low=1, Unknown/Holiday=0
+    """
+    # Check data-importance attribute first (most reliable)
     imp = row.get("data-importance")
     if imp:
         try:
@@ -157,15 +160,13 @@ def parse_importance(row):
         except (ValueError, TypeError):
             pass
 
-    # TE uses <i class="glyphicon glyphicon-star"> for filled stars
-    # and <i class="glyphicon glyphicon-star-empty"> for empty stars
-    # Count only FILLED stars (not empty)
+    # Count filled glyphicon stars (exclude star-empty)
     all_stars = row.find_all("i", class_=lambda c: c and "glyphicon-star" in c)
     filled = [s for s in all_stars if "star-empty" not in " ".join(s.get("class", []))]
     if filled:
-        return len(filled)
+        return len(filled)  # 1, 2, or 3 — maps directly to Low/Medium/High
 
-    return 1  # default low
+    return 0  # no stars found = Holiday or unknown (matches FF Holiday=0)
 
 
 def importance_to_label(imp):
@@ -272,35 +273,39 @@ def parse_calendar_page(html, bond_mode=False):
 
             importance   = parse_importance(row)
             impact_label = importance_to_label(importance)
+            # impact_level mirrors ForexFactory: High=3, Medium=2, Low=1, Holiday/Unknown=0
+            impact_level = importance
 
             if bond_mode:
                 entry = {
-                    "symbol":      symbol,
-                    "country":     row.get("data-country", "").strip(),
-                    "event":       event,
-                    "category":    cat,
-                    "time_et":     time_val,
-                    "actual":      actual_val,
-                    "forecast":    forecast_val,
-                    "previous":    previous_val,
-                    "importance":  importance,
-                    "impact":      impact_label,
-                    "scraped_at":  now_utc,
+                    "symbol":       symbol,
+                    "country":      row.get("data-country", "").strip(),
+                    "event":        event,
+                    "category":     cat,
+                    "time_et":      time_val,
+                    "actual":       actual_val,
+                    "forecast":     forecast_val,
+                    "previous":     previous_val,
+                    "importance":   importance,
+                    "impact":       impact_label,
+                    "impact_level": impact_level,
+                    "scraped_at":   now_utc,
                 }
             else:
                 entry = {
-                    "currency":    currency,
-                    "country":     row.get("data-country", "").strip(),
-                    "symbol":      symbol,
-                    "event":       event,
-                    "category":    cat,
-                    "time_et":     time_val,
-                    "actual":      actual_val,
-                    "forecast":    forecast_val,
-                    "previous":    previous_val,
-                    "importance":  importance,
-                    "impact":      impact_label,
-                    "scraped_at":  now_utc,
+                    "currency":     currency,
+                    "country":      row.get("data-country", "").strip(),
+                    "symbol":       symbol,
+                    "event":        event,
+                    "category":     cat,
+                    "time_et":      time_val,
+                    "actual":       actual_val,
+                    "forecast":     forecast_val,
+                    "previous":     previous_val,
+                    "importance":   importance,
+                    "impact":       impact_label,
+                    "impact_level": impact_level,
+                    "scraped_at":   now_utc,
                 }
 
             events.append(entry)

@@ -1,3 +1,8 @@
+## [v5.1.8] - 2026-03-27
+### Fix: te_scraper.py v1.0.2 — importance scale matches ForexFactory
+- `parse_importance` default changed from 1 → 0 (no stars = Holiday/Unknown, matches FF `Holiday=0`)
+- Added `impact_level` numeric field to event dicts (mirrors FF's `impact_level`: High=3, Medium=2, Low=1, Holiday=0)
+
 ## [v5.1.7] - 2026-03-27
 ### Fix: te_scraper.py v1.0.1 — cell position and parsing fixes
 - **Cell positions**: switched from hardcoded cells[3/4/5] to `cells[-3/-2/-1]` (last-3 approach) — position-independent regardless of date col rowspan variation
