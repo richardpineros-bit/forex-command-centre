@@ -1,3 +1,14 @@
+## [v5.1.5] - 2026-03-26
+### forex_calendar_scraper.py v3.2.0 — multi-site scraping
+- Added `--all-sites` flag: scrapes forexfactory + metalsmine + energyexch + cryptocraft
+- SITE_CONFIGS dict: per-site URL, currency whitelist, canary required flag
+- Forex site: canary required (aborts on failure). Sister sites: warn + skip on failure
+- Extended PAIRS list: metals (XAUUSD XAGUSD XPTUSD XCUUSD), energy (WTICOUSD BCOUSD NATGASUSD), crypto (BTCUSD ETHUSD BCHUSD LTCUSD MBTCUSD)
+- source_site field added to events and event_results for data provenance
+- --backfill now supports --all-sites flag (backfills all 4 sites per week)
+- 1s delay between sites (rate limiting), 2s between weeks
+- Cron update: add --all-sites to existing command
+
 ## [v5.1.4] - 2026-03-26
 ### Fix: heatmap session normalisation
 - Session values from Pine Script are inconsistent: NY, Tokyo, Asian, Off-Hours, London, London/EU, Cash Session, US Prime etc.

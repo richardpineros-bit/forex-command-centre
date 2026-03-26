@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """
-ForexFactory Economic Calendar Scraper v3.1.0
-Switches from FF XML feed (no actuals) to FF website HTML scraping.
-BEAT/MISS/INLINE sourced directly from FF CSS classes (better/worse).
+ForexFactory Economic Calendar Scraper v3.2.0
+Multi-site scraping: forex + metals + energy + crypto sister sites.
 
 Requires: pip install beautifulsoup4 --break-system-packages
 
 Cron (Unraid User Scripts, every 6 hours):
-    0 */6 * * * /usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/forex_calendar_scraper.py --unraid
+    0 */6 * * * /usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/forex_calendar_scraper.py --unraid --all-sites
+
+Backfill last 30 days (run once manually):
+    python3 forex_calendar_scraper.py --unraid --backfill [--all-sites]
 
 Changelog:
+    v3.2.0 - --all-sites flag: scrape metals/energy/crypto sister sites; extended PAIRS list
     v3.1.0 - --backfill flag: scrapes past 4 weeks to populate 30 days of history
     v3.0.0 - Switch to HTML scraping; actuals from FF CSS classes; UNRAID_BIAS path fix
     v2.0.0 - actual field; bias scoring; bias-history.json; canary check
     v1.0.0 - initial release
-
-Backfill usage (run once manually):
-    python3 forex_calendar_scraper.py --unraid --backfill
 """
 
 import argparse, json, re, sys, os, time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
@@ -30,16 +30,50 @@ except ImportError:
     print("ERROR: beautifulsoup4 required. Run: pip install beautifulsoup4 --break-system-packages", file=sys.stderr)
     sys.exit(1)
 
-# ── Constants ──────────────────────────────────────────────────────────────
-FF_CALENDAR_URL  = "https://www.forexfactory.com/calendar?week=this"
-FOREX_CURRENCIES = ["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"]
-IMPACT_LEVELS    = {"High":3,"Medium":2,"Low":1,"Holiday":0}
-IMPACT_WEIGHTS   = {"High":3.0,"Medium":1.0,"Low":0.0}
-TIME_DECAY       = [(24,1.0),(48,0.7),(72,0.4),(168,0.2),(9999,0.0)]
-PAIRS            = ["AUDUSD","USDJPY","EURUSD","GBPUSD","EURJPY","GBPJPY",
-                    "AUDJPY","NZDJPY","NZDUSD","USDCAD","USDCHF","EURGBP"]
+# ── Site configs ────────────────────────────────────────────────────────────
+# currencies=None means accept any non-empty currency from that site
+SITE_CONFIGS = {
+    "forex": {
+        "url":       "https://www.forexfactory.com/calendar?week=this",
+        "currencies": ["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"],
+        "canary_required": True,
+    },
+    "metals": {
+        "url":       "https://www.metalsmine.com/calendar",
+        "currencies": None,  # accept all
+        "canary_required": False,
+    },
+    "energy": {
+        "url":       "https://www.energyexch.com/calendar",
+        "currencies": None,
+        "canary_required": False,
+    },
+    "crypto": {
+        "url":       "https://www.cryptocraft.com/calendar",
+        "currencies": None,
+        "canary_required": False,
+    },
+}
 
-# FF impact icon CSS class -> impact level name
+# ── Instruments we trade (for pair verdict calculation) ─────────────────────
+FOREX_CURRENCIES = ["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"]
+
+IMPACT_LEVELS  = {"High":3,"Medium":2,"Low":1,"Holiday":0}
+IMPACT_WEIGHTS = {"High":3.0,"Medium":1.0,"Low":0.0}
+TIME_DECAY     = [(24,1.0),(48,0.7),(72,0.4),(168,0.2),(9999,0.0)]
+
+PAIRS = [
+    # Forex
+    "AUDUSD","USDJPY","EURUSD","GBPUSD","EURJPY","GBPJPY",
+    "AUDJPY","NZDJPY","NZDUSD","USDCAD","USDCHF","EURGBP",
+    # Metals
+    "XAUUSD","XAGUSD","XPTUSD","XCUUSD",
+    # Energy
+    "WTICOUSD","BCOUSD","NATGASUSD",
+    # Crypto
+    "BTCUSD","ETHUSD","BCHUSD","LTCUSD","MBTCUSD",
+]
+
 IMPACT_CSS_MAP = {
     "icon--ff-impact-red": "High",
     "icon--ff-impact-ora": "Medium",
@@ -47,9 +81,8 @@ IMPACT_CSS_MAP = {
     "icon--ff-impact-gra": "Holiday",
 }
 
-# ── Canary ─────────────────────────────────────────────────────────────────
+# ── Canary ──────────────────────────────────────────────────────────────────
 def check_feed_canaries(html_content):
-    """Check FF HTML structure is intact."""
     required = ["calendar__table", "calendar__actual", "calendar__currency",
                 "calendar__event-title", "data-event-id"]
     missing = [m for m in required if m not in html_content]
@@ -67,7 +100,7 @@ def save_health(health, output_dir):
     except Exception as e:
         print(f"Warning: health write failed: {e}", file=sys.stderr)
 
-# ── Fetch ──────────────────────────────────────────────────────────────────
+# ── Fetch ───────────────────────────────────────────────────────────────────
 def fetch_html_feed(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -79,16 +112,11 @@ def fetch_html_feed(url):
         req = Request(url, headers=headers)
         with urlopen(req, timeout=30) as r:
             return r.read().decode("utf-8", errors="replace")
-    except HTTPError as e:
-        print(f"HTTP {e.code}: {e.reason}", file=sys.stderr); sys.exit(1)
-    except URLError as e:
-        print(f"URL Error: {e.reason}", file=sys.stderr); sys.exit(1)
-    except Exception as e:
-        print(f"Fetch error: {e}", file=sys.stderr); sys.exit(1)
+    except (HTTPError, URLError, Exception) as e:
+        raise RuntimeError(f"Fetch failed for {url}: {e}")
 
-# ── Time parsing ───────────────────────────────────────────────────────────
-def parse_time_to_24h(time_str, base_dt):
-    """Parse FF time string (e.g. '7:30pm') into 24h and UTC/AEST datetimes."""
+# ── Time parsing ─────────────────────────────────────────────────────────────
+def parse_time_to_utc(time_str, dateline_ts):
     empty = {"time_24h":"All Day","datetime_utc":None,"datetime_aest":None}
     if not time_str or time_str.strip().lower() in ["","all day","tentative","-"]:
         return empty
@@ -100,18 +128,16 @@ def parse_time_to_24h(time_str, base_dt):
         h = int(parts[0]); m = int(parts[1]) if len(parts)>1 else 0
         if is_pm and h!=12: h+=12
         elif not is_pm and h==12: h=0
-        # base_dt is the day in UTC; time is ET (UTC-5 assumed, matches v2 behaviour)
-        et = base_dt.replace(hour=h, minute=m, second=0, microsecond=0)
-        utc = et + timedelta(hours=5)
-        aest = utc + timedelta(hours=10)
+        event_utc_ts = dateline_ts + h * 3600 + m * 60
+        utc_dt  = datetime.fromtimestamp(event_utc_ts, tz=timezone.utc).replace(tzinfo=None)
+        aest_dt = utc_dt + timedelta(hours=10)
         return {"time_24h":f"{h:02d}:{m:02d}","time_et":time_str,
-                "datetime_utc":utc.isoformat()+"Z","datetime_aest":aest.isoformat()}
+                "datetime_utc":utc_dt.isoformat()+"Z","datetime_aest":aest_dt.isoformat()}
     except Exception:
         return {"time_24h":time_str,"datetime_utc":None,"datetime_aest":None}
 
-# ── Impact extraction ──────────────────────────────────────────────────────
+# ── Impact extraction ────────────────────────────────────────────────────────
 def extract_impact(td):
-    """Get impact level from the FF impact icon CSS class."""
     if not td: return "Low"
     span = td.find("span", class_=True)
     if not span: return "Low"
@@ -120,112 +146,137 @@ def extract_impact(td):
             return level
     return "Low"
 
-# ── HTML parsing ───────────────────────────────────────────────────────────
-def parse_calendar_html(html_content):
-    """Parse FF calendar HTML and return list of event dicts."""
+# ── HTML parsing ─────────────────────────────────────────────────────────────
+def parse_calendar_html(html_content, allowed_currencies=None, source_site="forex"):
+    """Parse FF-platform calendar HTML. allowed_currencies=None accepts all."""
     soup = BeautifulSoup(html_content, "html.parser")
     events = []
-    current_day_dt = None  # datetime for current day (UTC midnight)
+    current_dateline = None
+    current_date_str = ""
 
-    # Find all calendar rows
     rows = soup.find_all("tr", attrs={"data-event-id": True})
 
     for row in rows:
         try:
-            # Update current date if this row carries a day dateline
-            dateline = row.get("data-day-dateline")
-            if dateline:
+            dl = row.get("data-day-dateline")
+            if dl:
                 try:
-                    current_day_dt = datetime.utcfromtimestamp(int(dateline))
+                    current_dateline = int(dl)
+                    dt_utc = datetime.fromtimestamp(current_dateline, tz=timezone.utc)
+                    current_date_str = dt_utc.strftime("%m-%d-%Y")
                 except Exception:
                     pass
 
-            # Currency
             currency_td = row.find("td", class_="calendar__currency")
             currency = currency_td.get_text(strip=True) if currency_td else ""
-            if currency not in FOREX_CURRENCIES:
+            if not currency:
+                continue
+            if allowed_currencies is not None and currency not in allowed_currencies:
                 continue
 
-            # Impact
             impact_td = row.find("td", class_="calendar__impact")
             impact = extract_impact(impact_td)
 
-            # Skip low-weight events for efficiency (still parse, scoring handles weight)
-            # Title
             title_span = row.find("span", class_="calendar__event-title")
             title = title_span.get_text(strip=True) if title_span else ""
 
-            # Time
             time_td = row.find("td", class_="calendar__time")
             time_str = time_td.get_text(strip=True) if time_td else ""
 
-            # Actual — CSS class tells us BEAT/MISS directly
             actual_td = row.find("td", class_="calendar__actual")
             actual_str = None
             result = None
             if actual_td:
                 actual_span = actual_td.find("span")
                 if actual_span:
-                    actual_str = actual_span.get_text(strip=True)
+                    actual_str = actual_span.get_text(strip=True) or None
                     if actual_str:
-                        span_classes = actual_span.get("class", [])
-                        if "better" in span_classes:
-                            result = "BEAT"
-                        elif "worse" in span_classes:
-                            result = "MISS"
-                        else:
-                            result = "INLINE"
+                        classes = actual_span.get("class", [])
+                        if "better" in classes:   result = "BEAT"
+                        elif "worse" in classes:  result = "MISS"
+                        else:                      result = "INLINE"
 
-            # Forecast
             forecast_td = row.find("td", class_="calendar__forecast")
             forecast_str = None
             if forecast_td:
-                forecast_span = forecast_td.find("span")
-                if forecast_span:
-                    forecast_str = forecast_span.get_text(strip=True) or None
+                fs = forecast_td.find("span")
+                if fs: forecast_str = fs.get_text(strip=True) or None
 
-            # Previous
             previous_td = row.find("td", class_="calendar__previous")
             previous_str = None
             if previous_td:
-                previous_span = previous_td.find("span")
-                if previous_span:
-                    # Strip revision icon text
-                    prev_text = previous_span.get_text(strip=True)
-                    previous_str = prev_text or None
+                ps = previous_td.find("span")
+                if ps: previous_str = ps.get_text(strip=True) or None
 
-            # Date string for output
-            date_str = current_day_dt.strftime("%m-%d-%Y") if current_day_dt else ""
-
-            # Parse time
-            ti = parse_time_to_24h(time_str, current_day_dt) if current_day_dt else {
+            ti = parse_time_to_utc(time_str, current_dateline) if current_dateline else {
                 "time_24h": time_str, "datetime_utc": None, "datetime_aest": None
             }
 
             events.append({
-                "title":        title,
-                "currency":     currency,
-                "date":         date_str,
-                "time_et":      time_str,
-                "time_24h":     ti.get("time_24h"),
-                "datetime_utc": ti.get("datetime_utc"),
-                "datetime_aest":ti.get("datetime_aest"),
-                "impact":       impact,
-                "impact_level": IMPACT_LEVELS.get(impact, 0),
-                "forecast":     forecast_str,
-                "previous":     previous_str,
-                "actual":       actual_str or None,
-                "result":       result,
-                "url":          None,
+                "title":         title,
+                "currency":      currency,
+                "source_site":   source_site,
+                "date":          current_date_str,
+                "time_et":       time_str,
+                "time_24h":      ti.get("time_24h"),
+                "datetime_utc":  ti.get("datetime_utc"),
+                "datetime_aest": ti.get("datetime_aest"),
+                "impact":        impact,
+                "impact_level":  IMPACT_LEVELS.get(impact, 0),
+                "forecast":      forecast_str,
+                "previous":      previous_str,
+                "actual":        actual_str,
+                "result":        result,
+                "url":           None,
             })
 
         except Exception as e:
-            print(f"Event parse error: {e}", file=sys.stderr)
+            print(f"Event parse error ({source_site}): {e}", file=sys.stderr)
 
     events.sort(key=lambda x: (x.get("datetime_utc") or "9999", x.get("currency", "")))
     return events
 
-# ── Bias scoring ───────────────────────────────────────────────────────────
+# ── Fetch all sites ──────────────────────────────────────────────────────────
+def fetch_all_sites(output_dir):
+    """Fetch forex + metals + energy + crypto, merge events. Returns (events, health)."""
+    all_events = []
+    worst_health = {"status":"OK","message":"All feeds OK","missing_tags":[],
+                    "checked_at":datetime.utcnow().isoformat()+"Z"}
+
+    for site_name, cfg in SITE_CONFIGS.items():
+        url = cfg["url"]
+        print(f"Fetching {site_name}: {url}...")
+        try:
+            html = fetch_html_feed(url)
+        except RuntimeError as e:
+            print(f"  WARNING: {e}", file=sys.stderr)
+            if cfg["canary_required"]:
+                worst_health = {"status":"MARKUP_CHANGED","message":str(e),
+                                "missing_tags":[],"checked_at":datetime.utcnow().isoformat()+"Z"}
+            continue
+
+        health = check_feed_canaries(html)
+        if health["status"] != "OK":
+            print(f"  Canary FAIL for {site_name}: {health['message']}", file=sys.stderr)
+            if cfg["canary_required"]:
+                save_health(health, output_dir)
+                print(f"ABORT: required site {site_name} failed canary", file=sys.stderr)
+                sys.exit(2)
+            else:
+                print(f"  Skipping {site_name} (non-critical)", file=sys.stderr)
+                continue
+
+        events = parse_calendar_html(html, allowed_currencies=cfg["currencies"], source_site=site_name)
+        with_actuals = len([e for e in events if e.get("actual")])
+        print(f"  {len(events)} events | {with_actuals} with actuals")
+        all_events.extend(events)
+        time.sleep(1)  # polite rate limiting between sites
+
+    all_events.sort(key=lambda x: (x.get("datetime_utc") or "9999", x.get("currency", "")))
+    save_health(worst_health, output_dir)
+    return all_events
+
+# ── Bias scoring ─────────────────────────────────────────────────────────────
 def get_decay(hours_ago):
     for threshold, mult in TIME_DECAY:
         if hours_ago <= threshold: return mult
@@ -257,7 +308,8 @@ def calculate_currency_bias(events, now):
         scores[currency]["events"].append({
             "title":event.get("title"),"impact":impact,"result":result,
             "actual":actual,"forecast":event.get("forecast"),"previous":event.get("previous"),
-            "hours_ago":round(hours_ago,1),"score":round(final,2)
+            "hours_ago":round(hours_ago,1),"score":round(final,2),
+            "source_site":event.get("source_site","forex")
         })
 
     bias_map = {}
@@ -300,7 +352,7 @@ def calculate_pair_verdicts(bias_map):
         }
     return verdicts
 
-# ── Bias history ───────────────────────────────────────────────────────────
+# ── Bias history ──────────────────────────────────────────────────────────────
 def load_bias_history(path):
     if os.path.exists(path):
         try:
@@ -321,10 +373,11 @@ def append_bias_run(history, events, bias_map, pair_verdicts, run_time=None):
                 try:
                     if datetime.fromisoformat(dt_str.replace("Z","")) < datetime.utcnow():
                         event_results.append({
-                            "id": f"{e['currency'].lower()}-{e['title'].lower().replace(' ','-')[:20]}-{dt_str[:10]}",
+                            "id":f"{e['currency'].lower()}-{e['title'].lower().replace(' ','-')[:20]}-{dt_str[:10]}",
                             "title":e["title"],"currency":e["currency"],"impact":e["impact"],
                             "actual":e["actual"],"forecast":e.get("forecast"),
-                            "previous":e.get("previous"),"result":e["result"],"datetime_utc":dt_str
+                            "previous":e.get("previous"),"result":e["result"],"datetime_utc":dt_str,
+                            "source_site":e.get("source_site","forex")
                         })
                 except: pass
 
@@ -350,13 +403,12 @@ def save_bias_history(history, path):
     with open(path,"w",encoding="utf-8") as f: json.dump(history,f,indent=2,ensure_ascii=False)
     print(f"Bias history: {history.get('run_count',0)} runs -> {path}")
 
-# ── Calendar save ──────────────────────────────────────────────────────────
+# ── Calendar save ─────────────────────────────────────────────────────────────
 def save_calendar(events, path, bias_map=None, pair_verdicts=None):
     data = {
         "last_updated":   datetime.utcnow().isoformat()+"Z",
         "schema_version": "2.0.0",
-        "source":         "ForexFactory",
-        "feed_url":       FF_CALENDAR_URL,
+        "source":         "ForexFactory+Sisters",
         "event_count":    len(events),
         "events":         events
     }
@@ -366,119 +418,137 @@ def save_calendar(events, path, bias_map=None, pair_verdicts=None):
                                  for k,v in bias_map.items()}
     if pair_verdicts:
         data["pair_verdicts"] = pair_verdicts
-
     d = os.path.dirname(path)
     if d and not os.path.exists(d): os.makedirs(d)
     with open(path,"w",encoding="utf-8") as f: json.dump(data,f,indent=2,ensure_ascii=False)
     print(f"Calendar: {len(events)} events -> {path}")
 
-
-# ── Backfill helpers ───────────────────────────────────────────────────────
-def get_past_week_urls(n_weeks=4):
-    """Return list of (url, week_sunday_dt) for the past n_weeks, oldest first."""
+# ── Backfill helpers ──────────────────────────────────────────────────────────
+def get_past_week_urls(n_weeks=4, all_sites=False):
     MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
     now = datetime.utcnow()
-    # Find most recent Sunday (FF week starts Sunday)
-    weekday = now.weekday()  # Mon=0 ... Sun=6
+    weekday = now.weekday()
     days_since_sunday = (weekday + 1) % 7
     current_sunday = (now - timedelta(days=days_since_sunday)).replace(
         hour=0, minute=0, second=0, microsecond=0)
-    urls = []
-    for i in range(n_weeks, 0, -1):  # oldest first
+    weeks = []
+    for i in range(n_weeks, 0, -1):
         week_sunday = current_sunday - timedelta(weeks=i)
         month_str = MONTHS[week_sunday.month - 1]
-        url = f"https://www.forexfactory.com/calendar?week={month_str}{week_sunday.day}.{week_sunday.year}"
-        urls.append((url, week_sunday))
-    return urls
+        suffix = f"{month_str}{week_sunday.day}.{week_sunday.year}"
+        if all_sites:
+            site_urls = [
+                (f"https://www.forexfactory.com/calendar?week={suffix}", "forex"),
+                (f"https://www.metalsmine.com/calendar?week={suffix}",   "metals"),
+                (f"https://www.energyexch.com/calendar?week={suffix}",   "energy"),
+                (f"https://www.cryptocraft.com/calendar?week={suffix}",  "crypto"),
+            ]
+        else:
+            site_urls = [(f"https://www.forexfactory.com/calendar?week={suffix}", "forex")]
+        weeks.append((site_urls, week_sunday))
+    return weeks
 
-def run_id_for_week(week_sunday):
-    return f"backfill_{week_sunday.strftime('%Y%m%d')}"
+def run_id_for_week(week_sunday, all_sites=False):
+    suffix = "_allsites" if all_sites else ""
+    return f"backfill_{week_sunday.strftime('%Y%m%d')}{suffix}"
 
-def week_already_backfilled(history, week_sunday):
-    rid = run_id_for_week(week_sunday)
-    return any(r.get("run_id") == rid for r in history.get("runs", []))
+def week_already_backfilled(history, week_sunday, all_sites=False):
+    rid = run_id_for_week(week_sunday, all_sites)
+    # Also accept old backfill IDs without suffix
+    old_rid = f"backfill_{week_sunday.strftime('%Y%m%d')}"
+    return any(r.get("run_id") in (rid, old_rid) for r in history.get("runs", []))
 
-def backfill_week(url, week_sunday, history, bias_path):
-    print(f"  Fetching {url}...")
-    html_content = fetch_html_feed(url)
-    health = check_feed_canaries(html_content)
-    if health["status"] != "OK":
-        print(f"  WARNING: Canary fail for {url} — skipping", file=sys.stderr)
+def backfill_week(site_urls, week_sunday, history, bias_path, all_sites=False):
+    all_events = []
+    for url, site_name in site_urls:
+        print(f"  Fetching {site_name}: {url}...")
+        try:
+            html = fetch_html_feed(url)
+        except RuntimeError as e:
+            print(f"  WARNING: {e} — skipping {site_name}", file=sys.stderr)
+            continue
+        health = check_feed_canaries(html)
+        if health["status"] != "OK":
+            print(f"  Canary fail for {site_name} — skipping", file=sys.stderr)
+            continue
+        cfg = SITE_CONFIGS.get(site_name, {})
+        events = parse_calendar_html(html, allowed_currencies=cfg.get("currencies"), source_site=site_name)
+        with_actuals = len([e for e in events if e.get("actual")])
+        print(f"    {len(events)} events | {with_actuals} with actuals")
+        all_events.extend(events)
+        time.sleep(1)
+
+    if not any(e.get("actual") for e in all_events):
+        print(f"  No actuals across all sites — skipping")
         return history
-    events = parse_calendar_html(html_content)
-    with_actuals = len([e for e in events if e.get("actual")])
-    high_events  = len([e for e in events if e.get("impact") == "High"])
-    print(f"  {len(events)} events | {high_events} high | {with_actuals} with actuals")
-    if with_actuals == 0:
-        print(f"  No actuals — skipping")
-        return history
-    # Use Friday end-of-week as run_time for correct time-decay scoring
+
     run_time = week_sunday + timedelta(days=5, hours=23, minutes=59)
     now = datetime.utcnow()
-    bias_map = calculate_currency_bias(events, now)
+    bias_map = calculate_currency_bias(all_events, now)
     for cur, d in sorted(bias_map.items()):
-        print(f"    {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} events]")
+        print(f"    {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} ev]")
     pair_verdicts = calculate_pair_verdicts(bias_map)
-    history = append_bias_run(history, events, bias_map, pair_verdicts, run_time=run_time)
-    history["runs"][-1]["run_id"] = run_id_for_week(week_sunday)
+    history = append_bias_run(history, all_events, bias_map, pair_verdicts, run_time=run_time)
+    history["runs"][-1]["run_id"] = run_id_for_week(week_sunday, all_sites)
     history["runs"][-1]["backfill"] = True
     save_bias_history(history, bias_path)
     return history
 
-# ── Main ───────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
     PROJECT_ROOT  = os.path.abspath(os.path.join(SCRIPT_DIR,'..','..'))
     DEFAULT_OUT   = os.path.join(PROJECT_ROOT,'src','calendar.json')
     DEFAULT_BAK   = os.path.join(PROJECT_ROOT,'data','calendar.json')
     DEFAULT_BIAS  = os.path.join(PROJECT_ROOT,'data','bias-history.json')
-    UNRAID_BIAS   = '/mnt/user/appdata/trading-state/data/bias-history.json'  # v3 fix
+    UNRAID_BIAS   = '/mnt/user/appdata/trading-state/data/bias-history.json'
 
-    parser = argparse.ArgumentParser(description="FCC Calendar Scraper v3.1.0")
-    parser.add_argument("--output",       "-o", default=DEFAULT_OUT)
-    parser.add_argument("--backup-path",        default=DEFAULT_BAK)
-    parser.add_argument("--bias-history",       default=DEFAULT_BIAS)
-    parser.add_argument("--unraid",             action="store_true",
-                        help="Use Unraid host paths")
-    parser.add_argument("--backfill",           action="store_true",
-                        help="Scrape past 4 weeks to populate 30 days of history")
-    parser.add_argument("--backfill-weeks",     type=int, default=4,
-                        dest="backfill_weeks",
-                        help="Number of past weeks to backfill (default: 4)")
-    parser.add_argument("--print",        "-p", action="store_true", dest="print_output")
+    parser = argparse.ArgumentParser(description="FCC Calendar Scraper v3.2.0")
+    parser.add_argument("--output",         "-o", default=DEFAULT_OUT)
+    parser.add_argument("--backup-path",          default=DEFAULT_BAK)
+    parser.add_argument("--bias-history",         default=DEFAULT_BIAS)
+    parser.add_argument("--unraid",               action="store_true")
+    parser.add_argument("--all-sites",            action="store_true", dest="all_sites",
+                        help="Also scrape metals/energy/crypto sister sites")
+    parser.add_argument("--backfill",             action="store_true")
+    parser.add_argument("--backfill-weeks",       type=int, default=4, dest="backfill_weeks")
+    parser.add_argument("--print",          "-p", action="store_true", dest="print_output")
     args = parser.parse_args()
 
-    bias_path = UNRAID_BIAS if args.unraid else args.bias_history
+    bias_path  = UNRAID_BIAS if args.unraid else args.bias_history
+    output_dir = os.path.dirname(DEFAULT_OUT)
 
-    # ── Backfill mode ──────────────────────────────────────────────────────
+    # ── Backfill mode ─────────────────────────────────────────────────────────
     if args.backfill:
-        print(f"BACKFILL MODE: scraping past {args.backfill_weeks} weeks...")
+        print(f"BACKFILL MODE: {args.backfill_weeks} weeks {'(all sites)' if args.all_sites else '(forex only)'}...")
         history = load_bias_history(bias_path)
-        past_weeks = get_past_week_urls(args.backfill_weeks)
-        for url, week_sunday in past_weeks:
-            if week_already_backfilled(history, week_sunday):
-                print(f"  Skipping {url} (already backfilled)")
+        past_weeks = get_past_week_urls(args.backfill_weeks, all_sites=args.all_sites)
+        for site_urls, week_sunday in past_weeks:
+            if week_already_backfilled(history, week_sunday, args.all_sites):
+                print(f"  Skipping {week_sunday.strftime('%Y-%m-%d')} (already backfilled)")
                 continue
-            history = backfill_week(url, week_sunday, history, bias_path)
+            history = backfill_week(site_urls, week_sunday, history, bias_path, args.all_sites)
             time.sleep(2)
-        print(f"Backfill complete: {history.get('run_count',0)} total runs in history")
+        print(f"Backfill complete: {history.get('run_count',0)} total runs")
         print("Done.")
         return
 
-    print(f"Fetching {FF_CALENDAR_URL}...")
-    html_content = fetch_html_feed(FF_CALENDAR_URL)
+    # ── Normal run ────────────────────────────────────────────────────────────
+    if args.all_sites:
+        events = fetch_all_sites(output_dir)
+    else:
+        url = SITE_CONFIGS["forex"]["url"]
+        print(f"Fetching {url}...")
+        html = fetch_html_feed(url)
+        health = check_feed_canaries(html)
+        save_health(health, output_dir)
+        if health["status"] != "OK":
+            print(f"ABORT: {health['message']}", file=sys.stderr); sys.exit(2)
+        events = parse_calendar_html(html, allowed_currencies=SITE_CONFIGS["forex"]["currencies"], source_site="forex")
 
-    print("Canary check...")
-    health = check_feed_canaries(html_content)
-    save_health(health, os.path.dirname(DEFAULT_OUT))
-    if health["status"] != "OK":
-        print(f"ABORT: {health['message']}", file=sys.stderr); sys.exit(2)
-
-    print("Parsing events...")
-    events = parse_calendar_html(html_content)
     with_actuals = len([e for e in events if e.get("actual")])
     high_events  = len([e for e in events if e.get("impact")=="High"])
-    print(f"  {len(events)} events | {high_events} high | {with_actuals} with actuals")
+    print(f"Total: {len(events)} events | {high_events} high | {with_actuals} with actuals")
 
     print("Scoring bias...")
     now = datetime.utcnow()
