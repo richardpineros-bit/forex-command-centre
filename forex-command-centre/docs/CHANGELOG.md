@@ -1,3 +1,20 @@
+## [v5.1.6] - 2026-03-27
+### New: te_scraper.py v1.0.0 — Trading Economics macro briefing layer
+- New script: `backend/scripts/te_scraper.py`
+- PURPOSE: Complements FF scraper (bias scoring). TE scraper = daily macro context layer.
+- Scrapes three TE sources:
+  - `tradingeconomics.com/calendar` → G10 economic events (USD/EUR/GBP/JPY/AUD/NZD/CAD/CHF)
+  - `tradingeconomics.com/calendar/bonds` → Bond auctions (USB10Y, USB02Y, USB05Y, USB30Y, DE10Y, UK10Y, JP10Y)
+  - `tradingeconomics.com/{country}/currency` → FX snapshot for 7 major pairs (rate, daily %)
+- Output: `te-snapshot.json` with sections: today_events, bond_auctions, fx_snapshot, health, summary
+- OUTPUT PATH (VERIFY ON UNRAID): `/mnt/user/appdata/trading-state/data/te-snapshot.json`
+  - The data/ dir is created by FF scraper on first run — confirm it exists before first TE run
+- Flags: `--unraid`, `--skip-fx`, `--skip-bonds`, `--print`, `--quiet`
+- Cron: same 6h schedule as FF scraper — `0 */6 * * *`
+- Canary checks on all three scraped pages; graceful degradation if any section fails
+- Polite rate limiting: 2s between FX pages, 2s between sections
+- Architecture: two separate scrapers, two separate outputs — TE does NOT replace FF
+
 ## [v5.1.5] - 2026-03-26
 ### forex_calendar_scraper.py v3.2.0 — multi-site scraping
 - Added `--all-sites` flag: scrapes forexfactory + metalsmine + energyexch + cryptocraft
