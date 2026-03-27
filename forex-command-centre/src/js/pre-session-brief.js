@@ -130,7 +130,7 @@
         var parts = [];
 
         // 1. Currency bias direction (from FF bias engine)
-        var biasCur = bias && bias.currency_bias;
+        var biasCur = bias && (bias.currency_bias || bias.latest_bias);
         if (biasCur) {
             var bullish = [], bearish = [];
             ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'].forEach(function(c) {
@@ -192,9 +192,9 @@
         }
 
         // Session pair recommendation
-        if (session && bias && bias.pair_verdicts) {
+        if (session && bias && (bias.pair_verdicts || bias.latest_verdicts)) {
             var clean = session.pairs.filter(function(pair) {
-                var v = bias.pair_verdicts[pair];
+                var v = (bias.pair_verdicts || bias.latest_verdicts)[pair];
                 return v && (v.direction === 'BULLISH' || v.direction === 'BEARISH') && v.strength !== 'WEAK';
             });
             if (clean.length) parts.push('Cleaner pairs this session: ' + clean.join(', ') + '.');
@@ -223,7 +223,7 @@
 
     // ── Bias chips ────────────────────────────────────────────────────────
     function buildBiasChips(bias) {
-        var biasCur = bias && bias.currency_bias;
+        var biasCur = bias && (bias.currency_bias || bias.latest_bias);
         if (!biasCur || !Object.keys(biasCur).length) return '';
         var ARROW  = { STRONGLY_BULLISH:'&#x2B06;&#x2B06;', BULLISH:'&#x2B06;', NEUTRAL:'&#x27A1;', BEARISH:'&#x2B07;', STRONGLY_BEARISH:'&#x2B07;&#x2B07;' };
         var COLOUR = { STRONGLY_BULLISH:'#28a745', BULLISH:'#28a745', NEUTRAL:'#6c757d', BEARISH:'#dc3545', STRONGLY_BEARISH:'#dc3545' };
@@ -254,7 +254,7 @@
 
     // ── Session pairs chips ───────────────────────────────────────────────
     function buildPairsChips(bias, session) {
-        var verdicts = bias && bias.pair_verdicts;
+        var verdicts = bias && (bias.pair_verdicts || bias.latest_verdicts);
         if (!verdicts) return '';
         return session.pairs.map(function(pair) {
             var v = verdicts[pair];
