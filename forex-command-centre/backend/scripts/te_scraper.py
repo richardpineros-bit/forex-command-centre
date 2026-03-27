@@ -293,10 +293,12 @@ def parse_calendar_page(html, bond_mode=False):
             previous_val = clean_val(previous_val)
             forecast_val = clean_val(forecast_val)
 
-            # importance always 0 — TE does not expose stars in HTML
+            # TE does not expose importance stars in HTML
+            # Bond auctions default to Medium — they always have real market relevance
+            # Calendar events stay Unknown (0) unless we can infer from category
             importance   = 0
-            impact_label = "Unknown"
-            impact_level = 0
+            impact_label = "Medium" if bond_mode else "Unknown"
+            impact_level = 2        if bond_mode else 0
 
             # Both calendar and bond events use same structure
             # bond events get is_bond=True for display differentiation if needed
