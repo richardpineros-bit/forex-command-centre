@@ -791,6 +791,80 @@ def save_snapshot(snapshot, path):
     print(f"Snapshot saved -> {path}")
 
 
+# ── TE Backfill ───────────────────────────────────────────────────────────────
+
+def get_te_past_week_urls(n_weeks=4):
+    """Generate TE calendar week URLs for the past n_weeks. Same Sunday-anchored logic as FF."""
+    MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
+    now = datetime.utcnow()
+    days_since_sunday = (now.weekday() + 1) % 7
+    current_sunday = (now - timedelta(days=days_since_sunday)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    weeks = []
+    for i in range(n_weeks, 0, -1):
+        week_sunday = current_sunday - timedelta(weeks=i)
+        month_str   = MONTHS[week_sunday.month - 1]
+        suffix      = f"{month_str}{week_sunday.day}.{week_sunday.year}"
+        url         = f"{BASE_URL}/calendar?week={suffix}"
+        weeks.append((url, week_sunday))
+    return weeks
+
+
+def te_week_already_backfilled(history, week_sunday):
+    rid = f"backfill_{week_sunday.strftime('%Y%m%d')}_te"
+    return any(r.get("run_id") == rid for r in history.get("runs", []))
+
+
+def backfill_te_week(url, week_sunday, history, bias_path, verbose=True):
+    """Scrape one week of TE calendar, score bias, append to shared bias-history.json."""
+    if verbose:
+        print(f"  TE fetching: {url}...")
+    try:
+        html = fetch_html(url)
+    except RuntimeError as e:
+        print(f"  WARNING: {e} — skipping", file=sys.stderr)
+        return history
+
+    ok, msg = canary_calendar(html)
+    if not ok:
+        print(f"  {msg} — skipping", file=sys.stderr)
+        return history
+
+    events = parse_calendar_page(html, bond_mode=False)
+    with_actual = [e for e in events if e.get("actual")]
+    if verbose:
+        print(f"    {len(events)} events | {len(with_actual)} with actuals")
+
+    if not with_actual:
+        print(f"    No actuals — skipping week")
+        return history
+
+    # Normalise and score
+    normalised = normalize_te_events_for_bias(events)
+    with_result = [e for e in normalised if e.get("result") in ("BEAT","MISS","INLINE")]
+    if not with_result:
+        print(f"    No scoreable events — skipping week")
+        return history
+
+    # Use end-of-week timestamp for backfill (same as FF)
+    run_time = week_sunday + timedelta(days=5, hours=23, minutes=59)
+    now = datetime.utcnow()
+    bias_map      = calculate_te_currency_bias(normalised, now)
+    pair_verdicts = calculate_te_pair_verdicts(bias_map)
+
+    if verbose:
+        for cur, d in sorted(bias_map.items()):
+            print(f"    {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} ev]")
+
+    history = append_te_bias_run(history, normalised, bias_map, pair_verdicts)
+    # Override run_id and timestamp to mark as backfill
+    history["runs"][-1]["run_id"]    = f"backfill_{week_sunday.strftime('%Y%m%d')}_te"
+    history["runs"][-1]["timestamp"] = run_time.isoformat() + "Z"
+    history["runs"][-1]["backfill"]  = True
+    save_bias_history(history, bias_path)
+    return history
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -805,6 +879,10 @@ def main():
                         help="Output path for te-snapshot.json")
     parser.add_argument("--unraid", action="store_true",
                         help=f"Write to Unraid path: {UNRAID_OUTPUT}")
+    parser.add_argument("--backfill", action="store_true",
+                        help="Backfill past N weeks of TE calendar into bias-history.json")
+    parser.add_argument("--backfill-weeks", type=int, default=4, dest="backfill_weeks",
+                        help="Number of weeks to backfill (default: 4)")
     parser.add_argument("--skip-fx", action="store_true", dest="skip_fx",
                         help="Skip FX snapshot scraping (faster, for testing)")
     parser.add_argument("--skip-bonds", action="store_true", dest="skip_bonds",
@@ -820,6 +898,22 @@ def main():
     DEFAULT_BIAS = os.path.join(os.path.dirname(output_path), "bias-history.json")
     bias_path = UNRAID_BIAS if args.unraid else DEFAULT_BIAS
     verbose = not args.quiet
+
+    # ── Backfill mode ─────────────────────────────────────────────────────────
+    if args.backfill:
+        print(f"TE BACKFILL MODE: {args.backfill_weeks} weeks...")
+        history    = load_bias_history(bias_path)
+        past_weeks = get_te_past_week_urls(args.backfill_weeks)
+        for url, week_sunday in past_weeks:
+            if te_week_already_backfilled(history, week_sunday):
+                print(f"  Skipping {week_sunday.strftime('%Y-%m-%d')} (already backfilled)")
+                continue
+            print(f"  Week: {week_sunday.strftime('%Y-%m-%d')}")
+            history = backfill_te_week(url, week_sunday, history, bias_path, verbose=verbose)
+            time.sleep(2)
+        print(f"TE backfill complete: {history.get('run_count', 0)} total runs in bias history")
+        print("Done.")
+        return
 
     if verbose:
         print(f"Trading Economics Scraper v{VERSION}")

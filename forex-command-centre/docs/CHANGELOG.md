@@ -1,3 +1,8 @@
+## [v5.2.7] - 2026-03-27
+### New: TE backfill — 4 weeks of TE calendar data into bias-history.json
+- **te_scraper.py v1.2.0**: `--backfill` and `--backfill-weeks` flags added; `get_te_past_week_urls()`, `te_week_already_backfilled()`, `backfill_te_week()` helpers; uses same Sunday-anchored week URL pattern as FF (`tradingeconomics.com/calendar?week=mar1.2026`); skips weeks already backfilled; 2s delay between weeks; scores BEAT/MISS from surprise_dir; appends to shared bias-history.json with run_id `backfill_YYYYMMDD_te`
+- **forex_calendar_scraper.py v3.3.2**: FF `--backfill` now automatically chains to TE backfill via subprocess after FF weeks complete — one command restores everything
+
 ## [v5.2.6] - 2026-03-27
 ### Fix: File locking on bias-history.json — prevents race condition
 - Both `forex_calendar_scraper.py` (v3.3.1) and `te_scraper.py` (v1.1.1) now use `fcntl.flock`

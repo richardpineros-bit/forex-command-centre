@@ -592,7 +592,21 @@ def main():
                 continue
             history = backfill_week(site_urls, week_sunday, history, bias_path, args.all_sites)
             time.sleep(2)
-        print(f"Backfill complete: {history.get('run_count',0)} total runs")
+        print(f"FF backfill complete: {history.get('run_count',0)} total runs")
+
+        # ── TE backfill — same weeks, same bias file ───────────────────────
+        te_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "te_scraper.py")
+        if os.path.exists(te_script):
+            print(f"\nStarting TE backfill ({args.backfill_weeks} weeks)...")
+            import subprocess
+            cmd = [sys.executable, te_script, "--backfill",
+                   f"--backfill-weeks={args.backfill_weeks}"]
+            if args.unraid:
+                cmd.append("--unraid")
+            subprocess.run(cmd, check=False)
+        else:
+            print(f"te_scraper.py not found at {te_script} — skipping TE backfill")
+
         print("Done.")
         return
 
