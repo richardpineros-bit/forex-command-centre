@@ -23,6 +23,10 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
+    v1.2.0 - Index snapshots: 13 instruments (US30/NAS100/SPX500/UK100/JP225/etc) scraped
+             from TE stock market pages; INDEX_SENTIMENT map routes risk-on/off to G10 currencies;
+             index signals fed as synthetic Low-impact events into bias scoring; --skip-indices flag;
+             IMPACT_WEIGHTS["Low"]=0.3 so index signals contribute without dominating
     v1.1.0 - Bias scoring: TE actuals fed into shared bias-history.json alongside FF runs;
              normalize_te_events_for_bias() maps event→title, surprise_dir→result,
              time_et→datetime_utc (ET+4=UTC), defaults impact to Medium (conservative);
@@ -85,6 +89,41 @@ FX_PAGES = {
     "NZDUSD": ("new-zealand",    "NZD"),
     "USDCAD": ("canada",         "CAD"),
     "USDCHF": ("switzerland",    "CHF"),
+}
+
+# Index instrument -> (TE slug, sentiment_group)
+# sentiment_group drives which G10 currencies get the risk-on/off signal
+INDEX_PAGES = {
+    "US30USD":   ("united-states/dow-jones",       "risk_us"),
+    "US2000USD": ("united-states/russell-2000",    "risk_us"),
+    "SPX500USD": ("united-states/stock-market",    "risk_us"),
+    "NAS100USD": ("united-states/nasdaq",          "risk_us"),
+    "UK100GBP":  ("united-kingdom/stock-market",   "risk_eu"),
+    "JP225YJPY": ("japan/stock-market",            "risk_asia"),
+    "JP225USD":  ("japan/stock-market",            "risk_asia"),
+    "HK33HKD":   ("hong-kong/stock-market",        "risk_asia"),
+    "FR40EUR":   ("france/stock-market",           "risk_eu"),
+    "EU50EUR":   ("euro-area/stock-market",        "risk_eu"),
+    "DE30EUR":   ("germany/stock-market",          "risk_eu"),
+    "CN50USD":   ("china/stock-market",            "risk_asia"),
+    "AU200AUD":  ("australia/stock-market",        "risk_asia"),
+}
+
+# Risk sentiment -> G10 currency impact
+# Index up (risk-on) -> bullish for risk currencies, bearish for safe havens
+INDEX_SENTIMENT = {
+    "risk_us": {
+        "up":   {"bullish": ["AUD","NZD","CAD"], "bearish": ["JPY","CHF"]},
+        "down": {"bullish": ["JPY","CHF"],        "bearish": ["AUD","NZD","CAD"]},
+    },
+    "risk_eu": {
+        "up":   {"bullish": ["EUR","GBP"],        "bearish": ["CHF"]},
+        "down": {"bullish": ["CHF"],              "bearish": ["EUR","GBP"]},
+    },
+    "risk_asia": {
+        "up":   {"bullish": ["AUD","NZD"],        "bearish": ["JPY"]},
+        "down": {"bullish": ["JPY"],              "bearish": ["AUD","NZD"]},
+    },
 }
 
 BASE_URL      = "https://tradingeconomics.com"
@@ -413,7 +452,7 @@ def parse_fx_page(html, pair, currency):
 # TE events default to Medium impact — TE doesn't expose stars but events with
 # actuals are always market-relevant. Conservative weighting.
 
-IMPACT_WEIGHTS = {"High": 3.0, "Medium": 1.0, "Low": 0.0}
+IMPACT_WEIGHTS = {"High": 3.0, "Medium": 1.0, "Low": 0.3, "Unknown": 0.0}
 TIME_DECAY     = [(24, 1.0), (48, 0.7), (72, 0.4), (168, 0.2), (9999, 0.0)]
 
 PAIRS = [
@@ -755,9 +794,108 @@ def scrape_fx_snapshots(verbose=True):
     return snapshots
 
 
-# ── Output ────────────────────────────────────────────────────────────────────
+# ── Index snapshot scraper ────────────────────────────────────────────────────
 
-def build_snapshot(events, fx_snapshots, health):
+def parse_index_page(html, instrument, sentiment_group):
+    """
+    Parse a TE stock market page for current value, daily %, and direction.
+    Uses meta description: 'fell to 6472 points..., losing 0.08% from previous session'
+    """
+    result = {
+        "instrument":      instrument,
+        "sentiment_group": sentiment_group,
+        "value":           None,
+        "daily_pct":       None,
+        "direction":       None,   # "up" or "down"
+        "summary":         None,
+        "scraped_at":      datetime.utcnow().isoformat() + "Z",
+        "status":          "OK",
+    }
+    try:
+        # Extract last value from TEChartsMeta JS var
+        m = re.search(r'"last"\s*:\s*([\d.]+)', html)
+        if m:
+            result["value"] = m.group(1)
+
+        # Extract daily % and direction from meta description
+        meta = re.search(r'<meta[^>]+name="description"[^>]+content="([^"]+)"', html)
+        if meta:
+            desc = meta.group(1)
+            result["summary"] = desc[:300]
+            # Match "gaining X%" or "losing X%" or "up X%" or "down X%"
+            pct_m = re.search(
+                r'(gaining|losing|up|down|rising|falling)\s+([\d.]+)%',
+                desc, re.IGNORECASE
+            )
+            if pct_m:
+                word = pct_m.group(1).lower()
+                pct  = float(pct_m.group(2))
+                if word in ("gaining", "up", "rising"):
+                    result["direction"]  = "up"
+                    result["daily_pct"]  = f"+{pct:.2f}%"
+                else:
+                    result["direction"]  = "down"
+                    result["daily_pct"]  = f"-{pct:.2f}%"
+
+        # Fallback: first % in page (usually daily change)
+        if not result["daily_pct"]:
+            pct_m = re.search(r'([-+]?\d+\.\d+)\s*%', html)
+            if pct_m:
+                val = float(pct_m.group(1))
+                if abs(val) < 10:
+                    result["direction"] = "up" if val >= 0 else "down"
+                    result["daily_pct"] = f"{val:+.2f}%"
+
+    except Exception as e:
+        result["status"] = f"PARSE_ERROR: {e}"
+
+    if not result["value"] and not result["daily_pct"]:
+        result["status"] = "DATA_NOT_FOUND"
+
+    return result
+
+
+def scrape_index_snapshots(verbose=True):
+    """Scrape TE stock market pages for all tracked indices."""
+    snapshots = {}
+    for instrument, (slug, sentiment_group) in INDEX_PAGES.items():
+        url = f"{BASE_URL}/{slug}"
+        if verbose:
+            print(f"  Fetching index: {instrument} ({url}) ...")
+        try:
+            html = fetch_html(url)
+        except RuntimeError as e:
+            print(f"    ERROR: {e}", file=sys.stderr)
+            snapshots[instrument] = {
+                "instrument": instrument, "sentiment_group": sentiment_group,
+                "value": None, "daily_pct": None, "direction": None,
+                "status": f"FETCH_ERROR: {e}",
+                "scraped_at": datetime.utcnow().isoformat() + "Z",
+            }
+            time.sleep(1)
+            continue
+
+        if len(html) < 5000:
+            snapshots[instrument] = {
+                "instrument": instrument, "sentiment_group": sentiment_group,
+                "value": None, "daily_pct": None, "direction": None,
+                "status": "BLOCKED",
+                "scraped_at": datetime.utcnow().isoformat() + "Z",
+            }
+            time.sleep(1)
+            continue
+
+        snap = parse_index_page(html, instrument, sentiment_group)
+        snapshots[instrument] = snap
+        if verbose:
+            val = snap.get("value") or "N/A"
+            pct = snap.get("daily_pct") or "N/A"
+            print(f"    {instrument}: {val}  {pct}  [{snap['status']}]")
+        time.sleep(2)
+
+    return snapshots
+
+def build_snapshot(events, fx_snapshots, health, index_snapshots=None):
     """Assemble the final te-snapshot.json structure. Bond auctions are merged into events."""
     now = datetime.utcnow().isoformat() + "Z"
 
@@ -783,8 +921,9 @@ def build_snapshot(events, fx_snapshots, health):
             "bonds_with_actual":  len([e for e in bond_events if e.get("actual")]),
             "fx_pairs_ok":        f"{fx_ok}/{fx_tot}",
         },
-        "today_events":   events,   # includes bond auctions (is_bond=True)
-        "fx_snapshot":    fx_snapshots,
+        "today_events":    events,
+        "fx_snapshot":     fx_snapshots,
+        "index_snapshot":  index_snapshots or {},
     }
 
 
@@ -894,6 +1033,8 @@ def main():
                         help="Skip FX snapshot scraping (faster, for testing)")
     parser.add_argument("--skip-bonds", action="store_true", dest="skip_bonds",
                         help="Skip bond auction scraping")
+    parser.add_argument("--skip-indices", action="store_true", dest="skip_indices",
+                        help="Skip index snapshot scraping")
     parser.add_argument("--print", "-p", action="store_true", dest="print_output",
                         help="Print JSON to stdout instead of writing file")
     parser.add_argument("--quiet", "-q", action="store_true",
@@ -961,8 +1102,21 @@ def main():
             "pairs_total": len(fx_snapshots),
         }
 
+    # ── Index Snapshots ───────────────────────────────────────────────────────
+    index_snapshots = {}
+    if not args.skip_indices:
+        if verbose:
+            print("Fetching index snapshots...")
+        index_snapshots = scrape_index_snapshots(verbose=verbose)
+        idx_ok = sum(1 for v in index_snapshots.values() if v.get("status") == "OK")
+        health["indices"] = {
+            "status": "OK" if idx_ok > 0 else "ALL_FAILED",
+            "indices_ok": idx_ok,
+            "indices_total": len(index_snapshots),
+        }
+
     # ── Assemble & save snapshot ──────────────────────────────────────────────
-    snapshot = build_snapshot(events, fx_snapshots, health)
+    snapshot = build_snapshot(events, fx_snapshots, health, index_snapshots)
 
     if verbose:
         print("-" * 50)
@@ -973,22 +1127,60 @@ def main():
     else:
         save_snapshot(snapshot, output_path)
 
-    # ── Bias scoring — feed TE actuals into shared bias-history.json ──────────
+    # ── Bias scoring — feed TE actuals + index sentiment into bias-history.json
     if not args.print_output:
         normalised = normalize_te_events_for_bias(events)
-        with_result = [e for e in normalised if e.get("result") in ("BEAT","MISS","INLINE")]
+
+        # Add index sentiment as synthetic events
+        index_events = []
+        for instrument, snap in index_snapshots.items():
+            direction = snap.get("direction")  # "up" or "down"
+            sg = snap.get("sentiment_group")
+            if not direction or not sg or snap.get("status") != "OK":
+                continue
+            sentiment = INDEX_SENTIMENT.get(sg, {}).get(direction, {})
+            for fx_cur in sentiment.get("bullish", []):
+                index_events.append({
+                    "title":        f"{instrument} index {direction}",
+                    "currency":     fx_cur,
+                    "impact":       "Low",     # indices = indirect signal, low weight
+                    "result":       "BEAT",
+                    "actual":       snap.get("daily_pct", ""),
+                    "forecast":     None,
+                    "previous":     None,
+                    "datetime_utc": datetime.utcnow().isoformat() + "Z",
+                    "source_site":  "te_index",
+                    "is_bond":      False,
+                })
+            for fx_cur in sentiment.get("bearish", []):
+                index_events.append({
+                    "title":        f"{instrument} index {direction}",
+                    "currency":     fx_cur,
+                    "impact":       "Low",
+                    "result":       "MISS",
+                    "actual":       snap.get("daily_pct", ""),
+                    "forecast":     None,
+                    "previous":     None,
+                    "datetime_utc": datetime.utcnow().isoformat() + "Z",
+                    "source_site":  "te_index",
+                    "is_bond":      False,
+                })
+
+        all_normalised = normalised + index_events
+        with_result = [e for e in all_normalised if e.get("result") in ("BEAT","MISS","INLINE")]
+
         if with_result:
             if verbose:
-                print(f"Scoring TE bias: {len(with_result)} events with results...")
+                print(f"Scoring TE bias: {len(normalised)} events + {len(index_events)} index signals...")
             now = datetime.utcnow()
-            bias_map      = calculate_te_currency_bias(normalised, now)
+            bias_map      = calculate_te_currency_bias(all_normalised, now)
             pair_verdicts = calculate_te_pair_verdicts(bias_map)
             if verbose:
                 for cur, d in sorted(bias_map.items()):
                     print(f"  {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} events]")
                 print(f"  {len(pair_verdicts)} pair verdicts calculated")
             history = load_bias_history(bias_path)
-            history = append_te_bias_run(history, normalised, bias_map, pair_verdicts)
+            history = append_te_bias_run(history, all_normalised, bias_map, pair_verdicts)
             save_bias_history(history, bias_path)
         else:
             if verbose:

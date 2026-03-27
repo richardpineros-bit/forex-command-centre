@@ -1,3 +1,14 @@
+## [v5.3.1] - 2026-03-27
+### New: Index snapshots + risk sentiment bias (te_scraper.py v1.2.0)
+- **INDEX_PAGES**: 13 instruments mapped to TE stock market slugs — US30USD, US2000USD, SPX500USD, NAS100USD, UK100GBP, JP225YJPY, JP225USD, HK33HKD, FR40EUR, EU50EUR, DE30EUR, CN50USD, AU200AUD
+- **INDEX_SENTIMENT**: risk-on/off map — US indices up → AUD/NZD/CAD bullish, JPY/CHF bearish; EU indices → EUR/GBP; Asia indices → AUD/NZD/JPY
+- **parse_index_page()**: extracts value + daily % from TE meta description ("fell to X, losing Y%")
+- **scrape_index_snapshots()**: scrapes all 13 pages, 2s delay between requests
+- **index_snapshot** key added to te-snapshot.json output
+- **Bias scoring**: index moves create synthetic Low-impact events fed into calculate_te_currency_bias
+- **IMPACT_WEIGHTS["Low"] = 0.3**: indices contribute signal without dominating G10 event data
+- **--skip-indices** flag for testing without index scraping
+
 ## [v5.3.0] - 2026-03-27
 ### New: Full commodity + bond bias engine — sister sites fixed
 **forex_calendar_scraper.py v3.4.0:**
