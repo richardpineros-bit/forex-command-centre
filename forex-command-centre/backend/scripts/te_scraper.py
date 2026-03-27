@@ -92,8 +92,8 @@ FX_PAGES = {
 }
 
 # Index instrument -> (TE slug, sentiment_group)
-# Note: US30/US2000/NAS100 TE pages require browser fingerprinting — not scrapeable
-# SPX500 covers US equity sentiment; EU/Asia indices cover the rest
+# Only indices whose TE pages are scrapeable drive bias scoring
+# SPX500 covers risk_us sentiment — US30/NAS100/US2000 pages require browser fingerprinting
 INDEX_PAGES = {
     "SPX500USD": ("united-states/stock-market",    "risk_us"),
     "UK100GBP":  ("united-kingdom/stock-market",   "risk_eu"),
@@ -105,6 +105,14 @@ INDEX_PAGES = {
     "DE30EUR":   ("germany/stock-market",          "risk_eu"),
     "CN50USD":   ("china/stock-market",            "risk_asia"),
     "AU200AUD":  ("australia/stock-market",        "risk_asia"),
+}
+
+# All 13 instruments shown in dashboard — includes 3 that can't be scraped from TE
+# (US30/NAS100/US2000 require browser fingerprinting — displayed but not bias-scored)
+INDEX_DISPLAY_EXTRAS = {
+    "US30USD":   ("united-states/dow-jones",    "risk_us"),
+    "NAS100USD": ("united-states/nasdaq",       "risk_us"),
+    "US2000USD": ("united-states/russell-2000", "risk_us"),
 }
 
 # Risk sentiment -> G10 currency impact
@@ -854,12 +862,21 @@ def parse_index_page(html, instrument, sentiment_group):
 
 
 def scrape_index_snapshots(verbose=True):
-    """Scrape TE stock market pages for all tracked indices."""
+    """Scrape TE stock market pages for all tracked indices.
+    INDEX_PAGES = bias-scoring indices (confirmed scrapeable).
+    INDEX_DISPLAY_EXTRAS = display-only (attempted but not used for bias).
+    """
     snapshots = {}
-    for instrument, (slug, sentiment_group) in INDEX_PAGES.items():
+
+    # Merge both for scraping — display extras marked display_only=True
+    all_pages = {**{k: (s, g, False) for k,(s,g) in INDEX_PAGES.items()},
+                 **{k: (s, g, True)  for k,(s,g) in INDEX_DISPLAY_EXTRAS.items()}}
+
+    for instrument, (slug, sentiment_group, display_only) in all_pages.items():
         url = f"{BASE_URL}/{slug}"
         if verbose:
-            print(f"  Fetching index: {instrument} ({url}) ...")
+            tag = " (display only)" if display_only else ""
+            print(f"  Fetching index: {instrument}{tag} ({url}) ...")
         try:
             html = fetch_html(url)
         except RuntimeError as e:
@@ -867,7 +884,7 @@ def scrape_index_snapshots(verbose=True):
             snapshots[instrument] = {
                 "instrument": instrument, "sentiment_group": sentiment_group,
                 "value": None, "daily_pct": None, "direction": None,
-                "status": f"FETCH_ERROR: {e}",
+                "status": f"FETCH_ERROR: {e}", "display_only": display_only,
                 "scraped_at": datetime.utcnow().isoformat() + "Z",
             }
             time.sleep(1)
@@ -877,13 +894,14 @@ def scrape_index_snapshots(verbose=True):
             snapshots[instrument] = {
                 "instrument": instrument, "sentiment_group": sentiment_group,
                 "value": None, "daily_pct": None, "direction": None,
-                "status": "BLOCKED",
+                "status": "BLOCKED", "display_only": display_only,
                 "scraped_at": datetime.utcnow().isoformat() + "Z",
             }
             time.sleep(1)
             continue
 
         snap = parse_index_page(html, instrument, sentiment_group)
+        snap["display_only"] = display_only
         snapshots[instrument] = snap
         if verbose:
             val = snap.get("value") or "N/A"
@@ -1132,6 +1150,8 @@ def main():
         # Add index sentiment as synthetic events
         index_events = []
         for instrument, snap in index_snapshots.items():
+            if snap.get("display_only"):
+                continue  # display only — not used for bias scoring
             direction = snap.get("direction")  # "up" or "down"
             sg = snap.get("sentiment_group")
             if not direction or not sg or snap.get("status") != "OK":
