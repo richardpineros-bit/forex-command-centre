@@ -251,7 +251,8 @@ def parse_calendar_page(html, bond_mode=False):
             if bond_mode:
                 if country not in G10_BOND_COUNTRIES:
                     continue
-                currency = None
+                # Map country → currency same as calendar events
+                currency = COUNTRY_TO_CURRENCY.get(country, "")
             else:
                 currency = COUNTRY_TO_CURRENCY.get(country)
                 if not currency:
@@ -294,39 +295,25 @@ def parse_calendar_page(html, bond_mode=False):
             impact_label = "Unknown"
             impact_level = 0
 
-            if bond_mode:
-                entry = {
-                    "symbol":       symbol,
-                    "country":      row.get("data-country", "").strip(),
-                    "event":        event,
-                    "category":     cat,
-                    "time_et":      time_val,
-                    "actual":       actual_val,
-                    "forecast":     forecast_val,
-                    "previous":     previous_val,
-                    "importance":   importance,
-                    "impact":       impact_label,
-                    "impact_level": impact_level,
-                    "scraped_at":   now_utc,
-                    **calculate_surprise(actual_val, forecast_val),
-                }
-            else:
-                entry = {
-                    "currency":     currency,
-                    "country":      row.get("data-country", "").strip(),
-                    "symbol":       symbol,
-                    "event":        event,
-                    "category":     cat,
-                    "time_et":      time_val,
-                    "actual":       actual_val,
-                    "forecast":     forecast_val,
-                    "previous":     previous_val,
-                    "importance":   importance,
-                    "impact":       impact_label,
-                    "impact_level": impact_level,
-                    "scraped_at":   now_utc,
-                    **calculate_surprise(actual_val, forecast_val),
-                }
+            # Both calendar and bond events use same structure
+            # bond events get is_bond=True for display differentiation if needed
+            entry = {
+                "currency":     currency,
+                "country":      row.get("data-country", "").strip(),
+                "symbol":       symbol,
+                "event":        event,
+                "category":     cat,
+                "time_et":      time_val,
+                "actual":       actual_val,
+                "forecast":     forecast_val,
+                "previous":     previous_val,
+                "importance":   importance,
+                "impact":       impact_label,
+                "impact_level": impact_level,
+                "scraped_at":   now_utc,
+                "is_bond":      bond_mode,
+                **calculate_surprise(actual_val, forecast_val),
+            }
 
             events.append(entry)
 
@@ -511,17 +498,15 @@ def scrape_fx_snapshots(verbose=True):
 
 # ── Output ────────────────────────────────────────────────────────────────────
 
-def build_snapshot(events, auctions, fx_snapshots, health):
-    """Assemble the final te-snapshot.json structure."""
+def build_snapshot(events, fx_snapshots, health):
+    """Assemble the final te-snapshot.json structure. Bond auctions are merged into events."""
     now = datetime.utcnow().isoformat() + "Z"
 
-    # Summary counts
-    high_events = [e for e in events   if e.get("impact") == "High"]
-    med_events  = [e for e in events   if e.get("impact") == "Medium"]
-    with_actual = [e for e in events   if e.get("actual")]
-    bond_actual = [b for b in auctions if b.get("actual")]
+    high_events  = [e for e in events if e.get("impact") == "High"]
+    med_events   = [e for e in events if e.get("impact") == "Medium"]
+    with_actual  = [e for e in events if e.get("actual")]
+    bond_events  = [e for e in events if e.get("is_bond")]
 
-    # FX snapshot status summary
     fx_ok  = sum(1 for v in fx_snapshots.values() if v.get("status") == "OK")
     fx_tot = len(fx_snapshots)
 
@@ -531,16 +516,15 @@ def build_snapshot(events, auctions, fx_snapshots, health):
         "last_updated":   now,
         "health":         health,
         "summary": {
-            "total_events":      len(events),
-            "high_impact":       len(high_events),
-            "medium_impact":     len(med_events),
+            "total_events":       len(events),
+            "high_impact":        len(high_events),
+            "medium_impact":      len(med_events),
             "events_with_actual": len(with_actual),
-            "bond_auctions":     len(auctions),
-            "bonds_with_actual": len(bond_actual),
-            "fx_pairs_ok":       f"{fx_ok}/{fx_tot}",
+            "bond_auctions":      len(bond_events),
+            "bonds_with_actual":  len([e for e in bond_events if e.get("actual")]),
+            "fx_pairs_ok":        f"{fx_ok}/{fx_tot}",
         },
-        "today_events":   events,
-        "bond_auctions":  auctions,
+        "today_events":   events,   # includes bond auctions (is_bond=True)
         "fx_snapshot":    fx_snapshots,
     }
 
@@ -599,11 +583,13 @@ def main():
     health["calendar"] = cal_health
     time.sleep(2)
 
-    # ── Bonds ─────────────────────────────────────────────────────────────────
-    auctions = []
+    # ── Bonds — merge into events list ───────────────────────────────────────
     if not args.skip_bonds:
         auctions, bond_health = scrape_bonds(verbose=verbose)
         health["bonds"] = bond_health
+        events.extend(auctions)  # bonds are now just events with is_bond=True
+        if verbose:
+            print(f"  Merged {len(auctions)} bond auctions into events")
         time.sleep(2)
 
     # ── FX Snapshot ───────────────────────────────────────────────────────────
@@ -620,7 +606,7 @@ def main():
         }
 
     # ── Assemble & save ───────────────────────────────────────────────────────
-    snapshot = build_snapshot(events, auctions, fx_snapshots, health)
+    snapshot = build_snapshot(events, fx_snapshots, health)
 
     if verbose:
         print("-" * 50)

@@ -1,3 +1,9 @@
+## [v5.2.4] - 2026-03-27
+### Refactor: Bond auctions merged into events stream
+- **te_scraper.py v1.0.6**: bond auctions merged into `today_events` list (same structure as calendar events); `is_bond: true` flag for identification; country→currency mapping applied to bonds; `bond_auctions` key removed from snapshot output; `build_snapshot` updated accordingly
+- **dashboard-event-widget.js**: removed `buildBondSection()` and separate bond header — bonds now appear inline as regular events via `window.TE_SNAPSHOT_DATA.today_events`
+- **pre-session-brief.js**: removed bond count pill (bonds counted in total_events)
+
 ## [v5.2.3] - 2026-03-27
 ### Refactor: Merge cards, template summary, bond auctions to events card
 - **pre-session-brief.js v2.0.0**: merged with Macro Briefing into single combined card; template-based summary (no API call — instant, reliable, no CORS); fetches bias + TE in parallel; shows currency bias arrows, upcoming events, session pairs colour-coded
