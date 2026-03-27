@@ -1,3 +1,13 @@
+## [v5.3.0] - 2026-03-27
+### New: Full commodity + bond bias engine — sister sites fixed
+**forex_calendar_scraper.py v3.4.0:**
+- **Sister site canary fixed**: `check_feed_canaries()` now site-aware — FF requires `calendar__currency`, sister sites only require `calendar__actual` + `calendar__event-title` + `data-event-id`
+- **IMPACT_CSS_MAP expanded**: added `mm/ee/cc` prefixes for MetalsMine/EnergyExch/CryptoCraft
+- **TITLE_TO_CURRENCY**: infers commodity proxy currency from event title keywords (gold→XAU, crude→OIL, bitcoin→BTC etc) for sister sites that have no currency column
+- **COMMODITY_TO_FX map**: routes commodity BEAT/MISS to G10 currency bias at 0.5x weight — oil up→CAD bullish, gold up→CHF/JPY/USD bullish (risk-off), copper up→AUD/NZD bullish, BTC up→AUD/NZD bullish (risk-on)
+- **BOND_TO_CURRENCY map**: maps TE bond auction symbols to G10 currencies — yield up (BEAT) = hawkish = currency bullish at 0.5x weight
+- **calculate_currency_bias**: three scoring branches — direct G10 (full weight), bond auction (0.5x), commodity proxy (0.5x)
+
 ## [v5.2.7] - 2026-03-27
 ### New: TE backfill — 4 weeks of TE calendar data into bias-history.json
 - **te_scraper.py v1.2.0**: `--backfill` and `--backfill-weeks` flags added; `get_te_past_week_urls()`, `te_week_already_backfilled()`, `backfill_te_week()` helpers; uses same Sunday-anchored week URL pattern as FF (`tradingeconomics.com/calendar?week=mar1.2026`); skips weeks already backfilled; 2s delay between weeks; scores BEAT/MISS from surprise_dir; appends to shared bias-history.json with run_id `backfill_YYYYMMDD_te`

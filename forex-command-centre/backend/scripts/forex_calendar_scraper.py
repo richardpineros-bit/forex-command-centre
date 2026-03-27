@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ForexFactory Economic Calendar Scraper v3.3.0
+ForexFactory Economic Calendar Scraper v3.4.0
 Multi-site scraping: forex + metals + energy + crypto sister sites.
 
 Requires: pip install beautifulsoup4 --break-system-packages
@@ -12,6 +12,12 @@ Backfill last 30 days (run once manually):
     python3 forex_calendar_scraper.py --unraid --backfill [--all-sites]
 
 Changelog:
+    v3.4.0 - Fix sister site canary (site-aware checks); add TITLE_TO_CURRENCY inference
+             for metals/energy/crypto (no currency column); expand IMPACT_CSS_MAP with mm/ee/cc
+             prefixes; COMMODITY_TO_FX mapping routes commodity moves to G10 currency bias
+             (0.5x weight); BOND_TO_CURRENCY maps TE bond auctions to currency (yield up=bullish);
+             bond yield scoring branch in calculate_currency_bias
+    v3.3.1 - FF --backfill chains to TE backfill via subprocess
     v3.3.0 - Surprise magnitude: parse_numeric() handles K/M/B/% suffixes; calculate_surprise()
              adds surprise_abs, surprise_pct, surprise_dir fields to every event dict
     v3.2.0 - --all-sites flag: scrape metals/energy/crypto sister sites; extended PAIRS list
@@ -77,16 +83,55 @@ PAIRS = [
 ]
 
 IMPACT_CSS_MAP = {
+    # ForexFactory
     "icon--ff-impact-red": "High",
     "icon--ff-impact-ora": "Medium",
     "icon--ff-impact-yel": "Low",
     "icon--ff-impact-gra": "Holiday",
+    # MetalsMine, EnergyExch, CryptoCraft sister sites
+    "icon--mm-impact-red": "High",
+    "icon--mm-impact-ora": "Medium",
+    "icon--mm-impact-yel": "Low",
+    "icon--ee-impact-red": "High",
+    "icon--ee-impact-ora": "Medium",
+    "icon--ee-impact-yel": "Low",
+    "icon--cc-impact-red": "High",
+    "icon--cc-impact-ora": "Medium",
+    "icon--cc-impact-yel": "Low",
+}
+
+# Sister site currency inference from event title keywords
+TITLE_TO_CURRENCY = {
+    "gold":         "XAU", "silver":       "XAG", "platinum":     "XPT",
+    "copper":       "XCU", "palladium":    "XPD",
+    "crude":        "OIL", "wti":          "OIL", "brent":        "OIL",
+    "natural gas":  "GAS", "gasoline":     "OIL", "distillate":   "OIL",
+    "heating oil":  "OIL", "eia":          "OIL", "refinery":     "OIL",
+    "bitcoin":      "BTC", "ethereum":     "ETH", "litecoin":     "LTC",
+    "bitcoin cash": "BCH", "ripple":       "XRP",
+}
+
+# Commodity proxy -> G10 currency sentiment
+# BEAT (price up) -> bullish currencies; MISS (price down) -> bearish
+COMMODITY_TO_FX = {
+    "XAU": {"bullish": ["CHF","JPY","USD"], "bearish": ["AUD","NZD"]},
+    "XAG": {"bullish": ["AUD"],             "bearish": []},
+    "XCU": {"bullish": ["AUD","NZD"],       "bearish": []},
+    "OIL": {"bullish": ["CAD"],             "bearish": []},
+    "GAS": {"bullish": ["USD"],             "bearish": []},
+    "BTC": {"bullish": ["AUD","NZD"],       "bearish": ["JPY","CHF"]},
+    "ETH": {"bullish": ["AUD","NZD"],       "bearish": ["JPY","CHF"]},
 }
 
 # ── Canary ──────────────────────────────────────────────────────────────────
-def check_feed_canaries(html_content):
-    required = ["calendar__table", "calendar__actual", "calendar__currency",
-                "calendar__event-title", "data-event-id"]
+def check_feed_canaries(html_content, site="forex"):
+    # FF requires currency column; sister sites do not have it
+    if site == "forex":
+        required = ["calendar__actual", "calendar__event-title", "data-event-id",
+                    "calendar__currency"]
+    else:
+        # Sister sites: metalsmine, energyexch, cryptocraft
+        required = ["calendar__actual", "calendar__event-title", "data-event-id"]
     missing = [m for m in required if m not in html_content]
     if missing:
         return {"status":"MARKUP_CHANGED","message":f"Missing markers: {missing}",
@@ -171,6 +216,16 @@ def parse_calendar_html(html_content, allowed_currencies=None, source_site="fore
 
             currency_td = row.find("td", class_="calendar__currency")
             currency = currency_td.get_text(strip=True) if currency_td else ""
+
+            # Sister sites have no currency column -- infer from event title
+            if not currency and source_site != "forex":
+                title_span_tmp = row.find("span", class_="calendar__event-title")
+                title_tmp = title_span_tmp.get_text(strip=True).lower() if title_span_tmp else ""
+                for keyword, proxy in TITLE_TO_CURRENCY.items():
+                    if keyword in title_tmp:
+                        currency = proxy
+                        break
+
             if not currency:
                 continue
             if allowed_currencies is not None and currency not in allowed_currencies:
@@ -258,7 +313,7 @@ def fetch_all_sites(output_dir):
                                 "missing_tags":[],"checked_at":datetime.utcnow().isoformat()+"Z"}
             continue
 
-        health = check_feed_canaries(html)
+        health = check_feed_canaries(html, site=site_name)
         if health["status"] != "OK":
             print(f"  Canary FAIL for {site_name}: {health['message']}", file=sys.stderr)
             if cfg["canary_required"]:
@@ -278,6 +333,19 @@ def fetch_all_sites(output_dir):
     all_events.sort(key=lambda x: (x.get("datetime_utc") or "9999", x.get("currency", "")))
     save_health(worst_health, output_dir)
     return all_events
+
+# Bond auction symbol -> currency (yield up = currency bullish)
+BOND_TO_CURRENCY = {
+    # US Treasuries
+    "USB02Y": "USD", "USB05Y": "USD", "USB10Y": "USD", "USB30Y": "USD",
+    # European
+    "DE10Y":  "EUR", "GDBR7YR": "EUR", "GERMANY2YNY": "EUR", "GERMANY5YNY": "EUR",
+    "UK10Y":  "GBP", "GBP CALENDAR": "GBP",
+    "JP10Y":  "JPY", "GJGB10": "JPY", "GJGB3M": "JPY", "JAPAN2YNY": "JPY",
+    # Others
+    "GCAN10YR": "CAD", "GCAN2Y": "CAD",
+    "FRA CALENDAR": "EUR", "ITA CALENDAR": "EUR",
+}
 
 # ── Bias scoring ─────────────────────────────────────────────────────────────
 def get_decay(hours_ago):
@@ -348,17 +416,68 @@ def calculate_currency_bias(events, now):
         hours_ago = (now - event_dt).total_seconds()/3600
         decay = get_decay(hours_ago)
         if decay==0: continue
-        final = score_result(result) * IMPACT_WEIGHTS.get(impact,1.0) * decay
-        if currency not in scores:
-            scores[currency] = {"total":0.0,"events":[],"count":0}
-        scores[currency]["total"]  += final
-        scores[currency]["count"]  += 1
-        scores[currency]["events"].append({
-            "title":event.get("title"),"impact":impact,"result":result,
-            "actual":actual,"forecast":event.get("forecast"),"previous":event.get("previous"),
-            "hours_ago":round(hours_ago,1),"score":round(final,2),
-            "source_site":event.get("source_site","forex")
-        })
+        raw_score = score_result(result) * IMPACT_WEIGHTS.get(impact,1.0) * decay
+
+        # Direct G10 currency event (FF or TE calendar)
+        if currency in FOREX_CURRENCIES:
+            if currency not in scores:
+                scores[currency] = {"total":0.0,"events":[],"count":0}
+            scores[currency]["total"]  += raw_score
+            scores[currency]["count"]  += 1
+            scores[currency]["events"].append({
+                "title":event.get("title"),"impact":impact,"result":result,
+                "actual":actual,"forecast":event.get("forecast"),"previous":event.get("previous"),
+                "hours_ago":round(hours_ago,1),"score":round(raw_score,2),
+                "source_site":event.get("source_site","forex")
+            })
+        # Bond auction event (from TE scraper, is_bond=True)
+        elif event.get("is_bond"):
+            symbol   = event.get("symbol", "")
+            fx_cur   = BOND_TO_CURRENCY.get(symbol)
+            if not fx_cur:
+                # Try inferring from currency field directly
+                if currency in FOREX_CURRENCIES:
+                    fx_cur = currency
+            if fx_cur:
+                # Yield up (BEAT) = hawkish signal = bullish for currency
+                bond_score = raw_score * 0.5  # half weight — yields are indirect signal
+                if fx_cur not in scores:
+                    scores[fx_cur] = {"total":0.0,"events":[],"count":0}
+                scores[fx_cur]["total"]  += bond_score
+                scores[fx_cur]["count"]  += 1
+                scores[fx_cur]["events"].append({
+                    "title":f"Bond {event.get('event',symbol)}","impact":impact,"result":result,
+                    "actual":actual,"forecast":event.get("forecast"),"previous":event.get("previous"),
+                    "hours_ago":round(hours_ago,1),"score":round(bond_score,2),
+                    "source_site":"te_bond"
+                })
+
+        # Commodity proxy event (metals/energy/crypto sister sites)
+        elif currency in COMMODITY_TO_FX:
+            mapping = COMMODITY_TO_FX[currency]
+            # BEAT = price up = bullish for mapped currencies
+            # MISS = price down = bearish for mapped currencies
+            if result == "BEAT":
+                affected = mapping.get("bullish", [])
+                sign = 1.0
+            elif result == "MISS":
+                affected = mapping.get("bullish", [])  # reverse: if price missed, those currencies weaken
+                sign = -1.0
+            else:
+                affected = []
+                sign = 0.0
+            commodity_score = sign * IMPACT_WEIGHTS.get(impact, 1.0) * decay * 0.5  # half weight vs direct
+            for fx_cur in affected:
+                if fx_cur not in scores:
+                    scores[fx_cur] = {"total":0.0,"events":[],"count":0}
+                scores[fx_cur]["total"]  += commodity_score
+                scores[fx_cur]["count"]  += 1
+                scores[fx_cur]["events"].append({
+                    "title":f"{currency} {event.get('title','')}","impact":impact,"result":result,
+                    "actual":actual,"forecast":event.get("forecast"),"previous":event.get("previous"),
+                    "hours_ago":round(hours_ago,1),"score":round(commodity_score,2),
+                    "source_site":event.get("source_site","forex")
+                })
 
     bias_map = {}
     for currency, data in scores.items():
@@ -530,7 +649,7 @@ def backfill_week(site_urls, week_sunday, history, bias_path, all_sites=False):
         except RuntimeError as e:
             print(f"  WARNING: {e} — skipping {site_name}", file=sys.stderr)
             continue
-        health = check_feed_canaries(html)
+        health = check_feed_canaries(html, site=site_name)
         if health["status"] != "OK":
             print(f"  Canary fail for {site_name} — skipping", file=sys.stderr)
             continue
@@ -617,7 +736,7 @@ def main():
         url = SITE_CONFIGS["forex"]["url"]
         print(f"Fetching {url}...")
         html = fetch_html_feed(url)
-        health = check_feed_canaries(html)
+        health = check_feed_canaries(html, site="forex")
         save_health(health, output_dir)
         if health["status"] != "OK":
             print(f"ABORT: {health['message']}", file=sys.stderr); sys.exit(2)
