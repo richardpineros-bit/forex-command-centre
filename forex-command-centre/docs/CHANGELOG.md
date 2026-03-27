@@ -1,3 +1,10 @@
+## [v5.2.3] - 2026-03-27
+### Refactor: Merge cards, template summary, bond auctions to events card
+- **pre-session-brief.js v2.0.0**: merged with Macro Briefing into single combined card; template-based summary (no API call — instant, reliable, no CORS); fetches bias + TE in parallel; shows currency bias arrows, upcoming events, session pairs colour-coded
+- **te-briefing.js v4.0.0**: stubbed out — all rendering moved to pre-session-brief.js
+- **index.html**: removed `#te-briefing-container` div — single `#pre-session-brief-container` handles both
+- **Bond auctions**: already in `dashboard-event-widget.js` `buildBondSection()` — appended to CRITICAL Events card via `window.TE_SNAPSHOT_DATA`
+
 ## [v5.2.2] - 2026-03-27
 ### New: Surprise magnitude + Pre-Session Brief + Economic drivers in Macro Briefing
 
