@@ -1,3 +1,10 @@
+## [v5.2.0] - 2026-03-27
+### Fix: te_scraper.py v1.0.3 — correct TE HTML structure
+- **Value extraction**: switched to `id="actual"`, `id="previous"`, `id="consensus"` within row scope — TE does not use class names for these cells
+- **Time extraction**: reads span inside cells[0] instead of raw cell text
+- **Bond filter**: replaced `BOND_SYMBOLS` set (wrong — TE symbol names don't match) with `G10_BOND_COUNTRIES` country list — now captures all G10 bond auctions (US, DE, UK, JP, AU, NZ, CA, CH, FR, IT)
+- **Importance**: confirmed TE does not expose importance/stars in scraped HTML — always returns 0 (Unknown), consistent with FF Holiday=0. impact_level field kept for schema consistency.
+
 ## [v5.1.9] - 2026-03-27
 ### New: TE Macro Briefing — dashboard card + Intel Hub tab
 **Alert server (index.js v2.6.0):**

@@ -23,8 +23,11 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
-    v1.0.2 - importance default changed 1→0 to match FF scale (High=3,Medium=2,Low=1,Holiday=0);
-             added impact_level field (numeric, mirrors FF output)
+    v1.0.3 - Fix value extraction: use id="actual"/"previous"/"consensus" within row scope;
+             fix time: extract from span inside cells[0]; fix bonds: filter by G10_BOND_COUNTRIES
+             (country list) instead of BOND_SYMBOLS (TE symbol names don't match our set);
+             importance always 0 — TE does not expose stars in scraped HTML
+    v1.0.2 - importance default 1→0; added impact_level field
     v1.0.1 - Fix cell positions; fix importance star detection; relax bonds canary; rename date→time_et
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
 """
@@ -43,7 +46,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
 # G10 currencies we care about
 G10_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"]
@@ -65,8 +68,11 @@ COUNTRY_TO_CURRENCY = {
     "switzerland":      "CHF",
 }
 
-# Bond symbols we track
-BOND_SYMBOLS = {"USB10Y", "USB02Y", "USB05Y", "USB30Y", "DE10Y", "UK10Y", "JP10Y"}
+# G10 countries whose bond auctions we track (by TE data-country value, lowercase)
+G10_BOND_COUNTRIES = {
+    "united states", "germany", "united kingdom", "japan",
+    "australia", "new zealand", "canada", "switzerland", "france", "italy",
+}
 
 # FX pairs: pair label → (TE country slug, currency code)
 FX_PAGES = {
@@ -149,24 +155,11 @@ def canary_fx(html):
 
 def parse_importance(row):
     """
-    Extract importance level from TE calendar row.
-    Scale matches ForexFactory: High=3, Medium=2, Low=1, Unknown/Holiday=0
+    TE does not expose importance/stars in scraped HTML.
+    Returns 0 (unknown) for all events — matches FF Holiday=0.
+    impact_level field is preserved for schema consistency with FF data.
     """
-    # Check data-importance attribute first (most reliable)
-    imp = row.get("data-importance")
-    if imp:
-        try:
-            return int(imp)
-        except (ValueError, TypeError):
-            pass
-
-    # Count filled glyphicon stars (exclude star-empty)
-    all_stars = row.find_all("i", class_=lambda c: c and "glyphicon-star" in c)
-    filled = [s for s in all_stars if "star-empty" not in " ".join(s.get("class", []))]
-    if filled:
-        return len(filled)  # 1, 2, or 3 — maps directly to Low/Medium/High
-
-    return 0  # no stars found = Holiday or unknown (matches FF Holiday=0)
+    return 0
 
 
 def importance_to_label(imp):
@@ -192,15 +185,23 @@ def parse_calendar_page(html, bond_mode=False):
     """
     Parse TE calendar or bonds page.
     Returns list of event dicts.
-    bond_mode=True filters to BOND_SYMBOLS only.
+
+    TE confirmed row structure (from live HTML inspection):
+      cells[0]  = date/time TD — time is in <span class="event-X calendar-date-Y">
+      cells[1]  = country flag table
+      cells[2]  = event name <a class="calendar-event">
+      cells[3]  = actual  — <span id="actual">
+      cells[4]  = previous — <span id="previous">
+      cells[5]  = forecast/consensus — <a id="consensus">
+      cells[6+] = responsive/alert cols (ignore)
+
+    Values are extracted by id attribute within the row scope.
+    bond_mode=True filters to G10_BOND_COUNTRIES instead of G10 calendar currencies.
     """
     soup = BeautifulSoup(html, "html.parser")
     events = []
 
-    # TE calendar rows carry data attributes directly on <tr>
     rows = soup.find_all("tr", attrs={"data-symbol": True})
-
-    # If no data-symbol rows, try generic tr with data-event
     if not rows:
         rows = soup.find_all("tr", attrs={"data-event": True})
 
@@ -213,68 +214,52 @@ def parse_calendar_page(html, bond_mode=False):
             event   = row.get("data-event",   "").strip()
             cat     = row.get("data-category","").strip()
 
-            # ── Bond mode: filter to tracked bond symbols ──────────────────
+            # ── Filter ────────────────────────────────────────────────────
             if bond_mode:
-                if symbol not in BOND_SYMBOLS:
+                if country not in G10_BOND_COUNTRIES:
                     continue
+                currency = None
             else:
-                # ── Calendar mode: filter to G10 currencies ────────────────
                 currency = COUNTRY_TO_CURRENCY.get(country)
                 if not currency:
                     continue
 
-            # Get table cells
+            # ── Time — span inside cells[0] ───────────────────────────────
             cells = row.find_all("td")
-            if len(cells) < 4:
-                continue
+            time_val = None
+            if cells:
+                time_span = cells[0].find("span")
+                if time_span:
+                    time_val = time_span.get_text(strip=True) or None
 
-            # TE cell layout (confirmed from live output):
-            # cells[0]  = time (ET) — shown as "02:00 PM"
-            # cells[1..n-4] = country, importance, event+period (variable due to rowspan on date col)
-            # cells[-3] = actual value
-            # cells[-2] = forecast value
-            # cells[-1] = previous value
-            # Using last-3 approach is position-independent regardless of date col rowspan.
+            # ── Values — by id within this row ────────────────────────────
+            def get_by_id(el_id):
+                el = row.find(id=el_id)
+                if not el:
+                    return None
+                text = el.get_text(strip=True)
+                return text if text else None
 
-            time_td     = cells[0]
-            actual_td   = None
-            forecast_td = None
-            previous_td = None
+            actual_val   = get_by_id("actual")
+            previous_val = get_by_id("previous")
+            forecast_val = get_by_id("consensus")
 
-            # Try class-based first (works if TE uses semantic classes)
-            actual_td   = row.find("td", class_=lambda c: c and "actual"   in c.lower())
-            forecast_td = row.find("td", class_=lambda c: c and "forecast" in c.lower())
-            previous_td = row.find("td", class_=lambda c: c and "previous" in c.lower())
-
-            # Fallback: last 3 cells (robust against variable prefix columns)
-            if not actual_td and len(cells) >= 6:
-                actual_td   = cells[-3]
-                forecast_td = cells[-2]
-                previous_td = cells[-1]
-
-            actual_val   = parse_cell_text(actual_td)
-            forecast_val = parse_cell_text(forecast_td)
-            previous_val = parse_cell_text(previous_td)
-            time_val     = parse_cell_text(time_td)
-
-            # Clean up values — TE sometimes returns "\xa0", "-", or country codes
             def clean_val(v):
                 if not v:
                     return None
                 v = v.strip().replace("\xa0", "").replace("\u00a0", "")
-                # Reject 2-letter country codes leaking into value cells
                 if len(v) == 2 and v.isupper():
-                    return None
+                    return None  # reject stray country codes
                 return v if v not in ("-", "", "NA", "N/A") else None
 
             actual_val   = clean_val(actual_val)
-            forecast_val = clean_val(forecast_val)
             previous_val = clean_val(previous_val)
+            forecast_val = clean_val(forecast_val)
 
-            importance   = parse_importance(row)
-            impact_label = importance_to_label(importance)
-            # impact_level mirrors ForexFactory: High=3, Medium=2, Low=1, Holiday/Unknown=0
-            impact_level = importance
+            # importance always 0 — TE does not expose stars in HTML
+            importance   = 0
+            impact_label = "Unknown"
+            impact_level = 0
 
             if bond_mode:
                 entry = {
