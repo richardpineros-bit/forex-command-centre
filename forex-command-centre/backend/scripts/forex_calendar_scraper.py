@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ForexFactory Economic Calendar Scraper v3.2.0
+ForexFactory Economic Calendar Scraper v3.3.0
 Multi-site scraping: forex + metals + energy + crypto sister sites.
 
 Requires: pip install beautifulsoup4 --break-system-packages
@@ -12,6 +12,8 @@ Backfill last 30 days (run once manually):
     python3 forex_calendar_scraper.py --unraid --backfill [--all-sites]
 
 Changelog:
+    v3.3.0 - Surprise magnitude: parse_numeric() handles K/M/B/% suffixes; calculate_surprise()
+             adds surprise_abs, surprise_pct, surprise_dir fields to every event dict
     v3.2.0 - --all-sites flag: scrape metals/energy/crypto sister sites; extended PAIRS list
     v3.1.0 - --backfill flag: scrapes past 4 weeks to populate 30 days of history
     v3.0.0 - Switch to HTML scraping; actuals from FF CSS classes; UNRAID_BIAS path fix
@@ -228,6 +230,7 @@ def parse_calendar_html(html_content, allowed_currencies=None, source_site="fore
                 "actual":        actual_str,
                 "result":        result,
                 "url":           None,
+                **calculate_surprise(actual_str, forecast_str, result),
             })
 
         except Exception as e:
@@ -281,6 +284,51 @@ def get_decay(hours_ago):
     for threshold, mult in TIME_DECAY:
         if hours_ago <= threshold: return mult
     return 0.0
+
+def parse_numeric(val_str):
+    """
+    Parse a value string to float, handling K/M/B suffixes and % signs.
+    Returns float or None if unparseable.
+    Examples: '225K' -> 225000, '2.3%' -> 2.3, '-0.5' -> -0.5, '52.4' -> 52.4
+    """
+    if not val_str:
+        return None
+    s = val_str.strip().replace(',', '').replace('%', '')
+    multiplier = 1.0
+    if s.upper().endswith('T'):
+        multiplier = 1e12; s = s[:-1]
+    elif s.upper().endswith('B'):
+        multiplier = 1e9;  s = s[:-1]
+    elif s.upper().endswith('M'):
+        multiplier = 1e6;  s = s[:-1]
+    elif s.upper().endswith('K'):
+        multiplier = 1e3;  s = s[:-1]
+    try:
+        return round(float(s) * multiplier, 6)
+    except (ValueError, TypeError):
+        return None
+
+
+def calculate_surprise(actual_str, forecast_str, result):
+    """
+    Calculate surprise magnitude: how far actual deviated from forecast.
+    Returns dict with surprise_abs (absolute diff), surprise_pct (% diff), surprise_dir.
+    Returns None fields if values can't be parsed.
+    """
+    if not result or result not in ('BEAT', 'MISS', 'INLINE'):
+        return {'surprise_abs': None, 'surprise_pct': None, 'surprise_dir': None}
+    actual   = parse_numeric(actual_str)
+    forecast = parse_numeric(forecast_str)
+    if actual is None or forecast is None:
+        return {'surprise_abs': None, 'surprise_pct': None, 'surprise_dir': result}
+    diff     = actual - forecast
+    surprise_pct = round((diff / abs(forecast)) * 100, 2) if forecast != 0 else None
+    return {
+        'surprise_abs': round(diff, 6),
+        'surprise_pct': surprise_pct,
+        'surprise_dir': result,
+    }
+
 
 def score_result(result):
     return {"BEAT":1.0,"MISS":-1.0,"INLINE":0.0,"UNKNOWN":0.0}.get(result,0.0)

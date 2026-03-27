@@ -1,3 +1,32 @@
+## [v5.2.2] - 2026-03-27
+### New: Surprise magnitude + Pre-Session Brief + Economic drivers in Macro Briefing
+
+**forex_calendar_scraper.py v3.3.0:**
+- `parse_numeric()` — parses value strings with K/M/B/T/% suffixes to float
+- `calculate_surprise()` — adds `surprise_abs`, `surprise_pct`, `surprise_dir` to every event dict
+- Handles 90%+ of high-impact events cleanly; returns null fields if unparseable (never blocks run)
+
+**te_scraper.py v1.0.5:**
+- Same `parse_numeric()` + `calculate_surprise()` added — schema consistent with FF scraper
+- surprise fields added to both calendar events and bond auction dicts
+
+**js/te-briefing.js v3.0.0:**
+- Claude prompt now includes today's economic actuals with surprise magnitude as economic drivers
+- Format: "currency | event | actual vs forecast | BEAT/MISS by X%"
+- Claude explains WHY currencies are moving (from real data), not just WHAT prices are doing
+
+**js/pre-session-brief.js v1.0.0 (NEW):**
+- Pinned card above Macro Briefing card on Dashboard tab
+- Session-aware: Tokyo (09:00 AEST), London (17:00 AEST), NY (22:00 AEST)
+- Hidden off-session (no blank card shown)
+- Shows: currency bias arrows (8 currencies), upcoming high-impact events (next 12h), session pairs colour-coded (green=clean, amber=conflicted)
+- Claude API generates 2-3 sentence plain-English brief from real FCC data only (bias, verdicts, actuals, upcoming events)
+- Refreshes every 15 minutes
+
+**index.html:**
+- `#pre-session-brief-container` div added above `#te-briefing-container`
+- `pre-session-brief.js` script import added
+
 ## [v5.2.1] - 2026-03-27
 ### New: Macro Briefing AI summary from real TE source text
 - **te_scraper.py v1.0.4**: `parse_fx_page` now extracts TE's own summary paragraph from `<div id="stats"><h2>` and `<meta name="description">` — stored as `summary` field per pair in `fx_snapshot`; improved rate extraction via TEChartsMeta JS var; daily_pct extracted from meta description "up/down X% from previous session"

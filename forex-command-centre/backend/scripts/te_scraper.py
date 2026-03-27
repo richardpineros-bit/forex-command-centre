@@ -23,10 +23,9 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
-    v1.0.4 - parse_fx_page: extract TE summary paragraph from id="stats" h2 and meta description;
-             improved rate extraction via TEChartsMeta JS var and data-symbol tr; daily_pct from
-             meta description text (up/down X% from previous session)
-    v1.0.3 - Fix value extraction by id; fix time from span; fix bond filter to G10_BOND_COUNTRIES
+    v1.0.5 - Surprise magnitude: parse_numeric() + calculate_surprise() added; surprise_abs,
+             surprise_pct, surprise_dir fields added to all event and bond auction dicts
+    v1.0.4 - extract TE summary paragraph; improved rate and daily_pct extraction
     v1.0.2 - importance default 1→0; added impact_level field
     v1.0.1 - Fix cell positions; fix importance star detection; relax bonds canary; rename date→time_et
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
@@ -46,7 +45,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
 # G10 currencies we care about
 G10_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"]
@@ -152,6 +151,40 @@ def canary_fx(html):
 
 
 # ── Calendar parser ───────────────────────────────────────────────────────────
+
+def parse_numeric(val_str):
+    """Parse value string to float, handling K/M/B/% suffixes. Returns None if unparseable."""
+    if not val_str:
+        return None
+    s = val_str.strip().replace(',', '').replace('%', '')
+    multiplier = 1.0
+    if s.upper().endswith('T'):   multiplier = 1e12; s = s[:-1]
+    elif s.upper().endswith('B'): multiplier = 1e9;  s = s[:-1]
+    elif s.upper().endswith('M'): multiplier = 1e6;  s = s[:-1]
+    elif s.upper().endswith('K'): multiplier = 1e3;  s = s[:-1]
+    try:
+        return round(float(s) * multiplier, 6)
+    except (ValueError, TypeError):
+        return None
+
+
+def calculate_surprise(actual_str, forecast_str, result=None):
+    """Calculate surprise magnitude from actual vs forecast strings."""
+    actual   = parse_numeric(actual_str)
+    forecast = parse_numeric(forecast_str)
+    if actual is None or forecast is None:
+        return {'surprise_abs': None, 'surprise_pct': None, 'surprise_dir': result}
+    diff = actual - forecast
+    surprise_pct = round((diff / abs(forecast)) * 100, 2) if forecast != 0 else None
+    # Infer direction if not provided
+    if result is None:
+        result = 'BEAT' if diff > 0 else ('MISS' if diff < 0 else 'INLINE')
+    return {
+        'surprise_abs': round(diff, 6),
+        'surprise_pct': surprise_pct,
+        'surprise_dir': result,
+    }
+
 
 def parse_importance(row):
     """
@@ -275,6 +308,7 @@ def parse_calendar_page(html, bond_mode=False):
                     "impact":       impact_label,
                     "impact_level": impact_level,
                     "scraped_at":   now_utc,
+                    **calculate_surprise(actual_val, forecast_val),
                 }
             else:
                 entry = {
@@ -291,6 +325,7 @@ def parse_calendar_page(html, bond_mode=False):
                     "impact":       impact_label,
                     "impact_level": impact_level,
                     "scraped_at":   now_utc,
+                    **calculate_surprise(actual_val, forecast_val),
                 }
 
             events.append(entry)

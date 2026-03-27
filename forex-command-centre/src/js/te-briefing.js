@@ -1,8 +1,7 @@
 // ============================================
-// TE BRIEFING MODULE v2.0.0
-// Fetches /te-snapshot, passes real TE source text to Claude API
-// for a plain-English paragraph summary. Claude summarises only
-// what the TE pages say -- no external context added.
+// TE BRIEFING MODULE v3.0.0
+// Summarises real TE data: FX rates + today's economic actuals as drivers.
+// Claude summarises ONLY what the scraped data says -- no invention.
 // ============================================
 
 (function() {
@@ -69,9 +68,8 @@
 
         var totalCount = (data.summary || {}).total_events  || 0;
         var highCount  = (data.summary || {}).high_impact   || 0;
-        var bondCount  = ((data.bond_auctions) || []).length;
-
-        var cardId = 'te-summary-text';
+        var bondCount  = (data.bond_auctions || []).length;
+        var cardId     = 'te-summary-text';
 
         container.innerHTML =
             '<div class="card" style="margin-bottom:16px;">' +
@@ -81,10 +79,18 @@
             '</div>' +
             (staleHtml ? '<div style="border-bottom:1px solid var(--border-color);">' + staleHtml + '</div>' : '') +
             '<div class="card-body" style="padding:12px 16px;">' +
+
+            // Summary paragraph — fills async
             '<div id="' + cardId + '" style="font-size:0.85rem;line-height:1.65;color:var(--text-secondary);margin-bottom:12px;min-height:40px;">' +
-            '<span style="color:var(--text-muted);font-style:italic;font-size:0.78rem;">&#x23F3; Generating summary...</span>' +
+            '<span style="color:var(--text-muted);font-style:italic;font-size:0.78rem;">&#x23F3; Loading market summary...</span>' +
             '</div>' +
-            '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">' + buildRateStrip(data.fx_snapshot || {}) + '</div>' +
+
+            // FX rate strip
+            '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.8;">' +
+            buildRateStrip(data.fx_snapshot || {}) +
+            '</div>' +
+
+            // Pills
             '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.72rem;">' +
             '<span style="background:var(--bg-tertiary);border:1px solid var(--border-color);padding:2px 8px;border-radius:12px;color:var(--text-muted);">' + totalCount + ' G10 events today</span>' +
             (highCount > 0 ? '<span style="background:#f8d7da;border:1px solid #f5c6cb;padding:2px 8px;border-radius:12px;color:#721c24;">&#x26A0; ' + highCount + ' High impact</span>' : '') +
@@ -103,10 +109,9 @@
         PAIRS.forEach(function(pair) {
             var d = fx[pair];
             if (!d || !d.rate) return;
-            var pctColour = '';
-            if (d.daily_pct) {
-                pctColour = d.daily_pct.startsWith('+') ? 'color:#28a745;' : 'color:#dc3545;';
-            }
+            var pctColour = d.daily_pct
+                ? (d.daily_pct.startsWith('+') ? 'color:#28a745;' : 'color:#dc3545;')
+                : '';
             parts.push(
                 '<strong>' + pair + '</strong> ' + d.rate +
                 (d.daily_pct ? ' <span style="' + pctColour + '">' + d.daily_pct + '</span>' : '')
@@ -115,44 +120,78 @@
         return parts.join(' &nbsp;&bull;&nbsp; ');
     }
 
-    // -- AI summary from real TE source text --------------------------------
+    // -- Build driver context from today's actuals --------------------------
+
+    function buildDriverContext(data) {
+        var events  = data.today_events || [];
+        var drivers = [];
+
+        // Events with actuals that fired today
+        events.forEach(function(e) {
+            if (!e.actual || !e.event) return;
+            var line = e.currency + ' | ' + e.event;
+            if (e.actual)   line += ' | actual: ' + e.actual;
+            if (e.forecast) line += ' | forecast: ' + e.forecast;
+            if (e.surprise_dir) {
+                line += ' | ' + e.surprise_dir;
+                if (e.surprise_pct !== null && e.surprise_pct !== undefined) {
+                    var pct = Math.abs(e.surprise_pct);
+                    if (pct > 1) line += ' by ' + pct.toFixed(1) + '%';
+                }
+            }
+            drivers.push(line);
+        });
+
+        return drivers;
+    }
+
+    // -- AI summary from real TE data ---------------------------------------
 
     function generateSummary(data, targetId) {
-        var fx    = data.fx_snapshot || {};
-        var PAIRS = ['EURUSD','GBPUSD','USDJPY','AUDUSD','NZDUSD','USDCAD','USDCHF'];
-        var sources = [];
+        var fx      = data.fx_snapshot || {};
+        var PAIRS   = ['EURUSD','GBPUSD','USDJPY','AUDUSD','NZDUSD','USDCAD','USDCHF'];
 
+        // FX context from TE currency page summaries
+        var fxContext = [];
         PAIRS.forEach(function(pair) {
             var d = fx[pair];
             if (!d) return;
             if (d.summary) {
-                sources.push(pair + ': ' + d.summary);
+                fxContext.push(pair + ': ' + d.summary);
             } else if (d.rate && d.daily_pct) {
-                sources.push(pair + ': rate ' + d.rate + ', day ' + d.daily_pct);
+                fxContext.push(pair + ': ' + d.rate + ' (' + d.daily_pct + ' today)');
             }
         });
 
-        if (sources.length === 0) {
+        // Economic driver context from today's actuals
+        var drivers = buildDriverContext(data);
+
+        if (fxContext.length === 0 && drivers.length === 0) {
             setCardText(targetId, 'No source data available to summarise.');
             return;
         }
 
         var prompt =
-            'You are summarising forex market data sourced directly from Trading Economics. ' +
-            'Summarise ONLY what the following source text says. ' +
-            'Do NOT add any external context, opinions, news, or information not present in the data. ' +
-            'Write ONE short paragraph (2-3 sentences max) in plain everyday English with no jargon. ' +
-            'Format like this example: "USD up (safe haven); EUR weak; JPY weak; AUD mixed. ' +
-            'Drivers: Middle East tensions, oil near $100, fewer Fed cuts expected." ' +
-            'State which currencies are up or down and the reasons given in the source data only.\n\n' +
-            'SOURCE DATA FROM TRADING ECONOMICS:\n' + sources.join('\n');
+            'You are writing a pre-session forex market brief for a retail trader.\n' +
+            'Use ONLY the data provided below. Do NOT add any information, opinions, or context not in the data.\n' +
+            'Write 2-3 sentences maximum in plain everyday English with zero jargon.\n' +
+            'Focus on WHAT IS MOVING the currencies and WHY, based on the economic data.\n' +
+            'Format: start with the key movers (e.g. "USD weak, GBP strong"), then the economic reasons from the data.\n' +
+            'Example style: "USD soft after jobless claims came in higher than expected. GBP gaining after UK inflation expectations beat forecast. JPY steady with no major data today."\n\n';
+
+        if (drivers.length > 0) {
+            prompt += 'TODAY\'S ECONOMIC RELEASES (actual vs forecast):\n' + drivers.join('\n') + '\n\n';
+        }
+        if (fxContext.length > 0) {
+            prompt += 'FX RATE CONTEXT (from Trading Economics):\n' + fxContext.join('\n') + '\n';
+        }
 
         fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model:      'claude-sonnet-4-20250514',
-                max_tokens: 200,
+                max_tokens: 150,
                 messages:   [{ role: 'user', content: prompt }]
             })
         })
