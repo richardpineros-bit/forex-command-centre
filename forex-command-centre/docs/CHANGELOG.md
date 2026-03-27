@@ -1,3 +1,13 @@
+## [v5.2.5] - 2026-03-27
+### New: TE bias scoring feeds into shared bias-history.json
+- **te_scraper.py v1.1.0**: full bias engine added — mirrors FF scraper exactly
+  - `normalize_te_events_for_bias()` — maps TE schema to FF bias schema: `event`→`title`, `surprise_dir`→`result`, `time_et`→`datetime_utc` (ET+4h=UTC), `impact` defaults to "Medium" (conservative — TE has no star data)
+  - `calculate_te_currency_bias()`, `calculate_te_pair_verdicts()` — same scoring logic as FF
+  - `append_te_bias_run()` — appends to same `bias-history.json` as FF; run_id suffixed `_te` for identification
+  - `bias_path` auto-set: `--unraid` uses `/mnt/user/appdata/trading-state/data/bias-history.json`
+  - Skipped if no events have results yet (safe for --print mode)
+  - All downstream consumers (armed panel, Intel Hub, News Bias tab) benefit automatically
+
 ## [v5.2.4] - 2026-03-27
 ### Refactor: Bond auctions merged into events stream
 - **te_scraper.py v1.0.6**: bond auctions merged into `today_events` list (same structure as calendar events); `is_bond: true` flag for identification; country→currency mapping applied to bonds; `bond_auctions` key removed from snapshot output; `build_snapshot` updated accordingly

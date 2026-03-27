@@ -23,9 +23,12 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
-    v1.0.5 - Surprise magnitude: parse_numeric() + calculate_surprise() added; surprise_abs,
-             surprise_pct, surprise_dir fields added to all event and bond auction dicts
-    v1.0.4 - extract TE summary paragraph; improved rate and daily_pct extraction
+    v1.1.0 - Bias scoring: TE actuals fed into shared bias-history.json alongside FF runs;
+             normalize_te_events_for_bias() maps event→title, surprise_dir→result,
+             time_et→datetime_utc (ET+4=UTC), defaults impact to Medium (conservative);
+             calculate_te_currency_bias(), calculate_te_pair_verdicts(), append_te_bias_run()
+             mirror FF bias engine exactly; run_id suffixed _te for identification
+    v1.0.5 - surprise_abs/pct/dir fields added to all events and bond auctions
     v1.0.2 - importance default 1→0; added impact_level field
     v1.0.1 - Fix cell positions; fix importance star detection; relax bonds canary; rename date→time_et
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
@@ -45,7 +48,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.5"
+VERSION = "1.1.0"
 
 # G10 currencies we care about
 G10_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"]
@@ -404,6 +407,242 @@ def parse_fx_page(html, pair, currency):
     return result
 
 
+# ── Bias engine (mirrors forex_calendar_scraper.py) ───────────────────────────
+# TE events default to Medium impact — TE doesn't expose stars but events with
+# actuals are always market-relevant. Conservative weighting.
+
+IMPACT_WEIGHTS = {"High": 3.0, "Medium": 1.0, "Low": 0.0}
+TIME_DECAY     = [(24, 1.0), (48, 0.7), (72, 0.4), (168, 0.2), (9999, 0.0)]
+
+PAIRS = [
+    "AUDUSD","USDJPY","EURUSD","GBPUSD","EURJPY","GBPJPY",
+    "AUDJPY","NZDJPY","NZDUSD","USDCAD","USDCHF","EURGBP",
+    "XAUUSD","XAGUSD","XPTUSD","XCUUSD",
+    "WTICOUSD","BCOUSD","NATGASUSD",
+    "BTCUSD","ETHUSD","BCHUSD","LTCUSD","MBTCUSD",
+]
+
+# ET→UTC offset (EDT=−4, EST=−5). Late March = EDT.
+# TE pages are in ET. We add 4h to get UTC.
+ET_TO_UTC_HOURS = 4
+
+
+def time_et_to_datetime_utc(time_et_str):
+    """
+    Convert a TE time string like '02:00 PM' to a UTC datetime for today.
+    Returns ISO string or None.
+    """
+    if not time_et_str:
+        return None
+    try:
+        s = time_et_str.strip().lower().replace(" ", "")
+        is_pm = "pm" in s
+        s = s.replace("am", "").replace("pm", "")
+        parts = s.split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        if is_pm and h != 12: h += 12
+        elif not is_pm and h == 12: h = 0
+        # Add ET→UTC offset
+        h_utc = h + ET_TO_UTC_HOURS
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        event_utc = today + timedelta(hours=h_utc, minutes=m)
+        return event_utc.isoformat() + "Z"
+    except Exception:
+        return None
+
+
+def normalize_te_events_for_bias(events):
+    """
+    Normalise TE events to FF bias-engine schema:
+    - title   ← event
+    - result  ← surprise_dir (BEAT/MISS/INLINE)
+    - impact  ← "Medium" default (TE doesn't expose importance)
+    - datetime_utc ← constructed from time_et
+    - source_site  ← "te_calendar" or "te_bond"
+    Returns only events that have actual + result + currency.
+    """
+    out = []
+    for e in events:
+        actual      = e.get("actual")
+        result      = e.get("surprise_dir")
+        currency    = e.get("currency", "")
+        if not actual or not result or result not in ("BEAT", "MISS", "INLINE"):
+            continue
+        if not currency:
+            continue
+        dt_utc = time_et_to_datetime_utc(e.get("time_et"))
+        out.append({
+            "title":        e.get("event", e.get("symbol", "Unknown")),
+            "currency":     currency,
+            "impact":       "Medium",   # conservative default — TE has no star data
+            "result":       result,
+            "actual":       actual,
+            "forecast":     e.get("forecast"),
+            "previous":     e.get("previous"),
+            "datetime_utc": dt_utc,
+            "source_site":  "te_bond" if e.get("is_bond") else "te_calendar",
+            "surprise_abs": e.get("surprise_abs"),
+            "surprise_pct": e.get("surprise_pct"),
+        })
+    return out
+
+
+def get_te_decay(hours_ago):
+    for threshold, mult in TIME_DECAY:
+        if hours_ago <= threshold:
+            return mult
+    return 0.0
+
+
+def calculate_te_currency_bias(normalised_events, now):
+    """Same logic as FF calculate_currency_bias — runs on normalised TE events."""
+    scores = {}
+    for event in normalised_events:
+        currency = event.get("currency")
+        impact   = event.get("impact", "Medium")
+        result   = event.get("result")
+        actual   = event.get("actual")
+        dt_str   = event.get("datetime_utc")
+        if not actual or not result or result in ("UNKNOWN", None): continue
+        if IMPACT_WEIGHTS.get(impact, 0) == 0: continue
+        if not dt_str: continue
+        try:
+            event_dt = datetime.fromisoformat(dt_str.replace("Z", ""))
+        except Exception:
+            continue
+        if event_dt >= now: continue
+        hours_ago = (now - event_dt).total_seconds() / 3600
+        decay = get_te_decay(hours_ago)
+        if decay == 0: continue
+        score_val = {"BEAT": 1.0, "MISS": -1.0, "INLINE": 0.0}.get(result, 0.0)
+        final = score_val * IMPACT_WEIGHTS.get(impact, 1.0) * decay
+        if currency not in scores:
+            scores[currency] = {"total": 0.0, "events": [], "count": 0}
+        scores[currency]["total"]  += final
+        scores[currency]["count"]  += 1
+        scores[currency]["events"].append({
+            "title":      event.get("title"), "impact": impact, "result": result,
+            "actual":     actual, "forecast": event.get("forecast"),
+            "previous":   event.get("previous"), "hours_ago": round(hours_ago, 1),
+            "score":      round(final, 2), "source_site": event.get("source_site", "te_calendar"),
+        })
+
+    bias_map = {}
+    for currency, data in scores.items():
+        t = data["total"]; c = data["count"]
+        if c == 0: continue
+        if t > 2.0:    bias = "STRONGLY_BULLISH"
+        elif t > 0.5:  bias = "BULLISH"
+        elif t < -2.0: bias = "STRONGLY_BEARISH"
+        elif t < -0.5: bias = "BEARISH"
+        else:          bias = "NEUTRAL"
+        high_c = sum(1 for e in data["events"] if e["impact"] == "High")
+        if high_c >= 2:           conf = "HIGH"
+        elif high_c == 1 or c >= 2: conf = "MEDIUM"
+        else:                       conf = "LOW"
+        bias_map[currency] = {
+            "score":       round(t, 2), "bias": bias, "confidence": conf,
+            "event_count": c, "events": data["events"],
+        }
+    return bias_map
+
+
+def calculate_te_pair_verdicts(bias_map):
+    """Same logic as FF calculate_pair_verdicts."""
+    def size_modifier(net):
+        a = abs(net)
+        if a > 3.0: return 0.5
+        if a > 1.0: return 0.75
+        return 1.0
+
+    verdicts = {}
+    for pair in PAIRS:
+        base  = pair[:3]; quote = pair[3:]
+        bd = bias_map.get(base,  {"score": 0, "bias": "NEUTRAL", "confidence": "LOW", "event_count": 0})
+        qd = bias_map.get(quote, {"score": 0, "bias": "NEUTRAL", "confidence": "LOW", "event_count": 0})
+        net       = bd["score"] - qd["score"]
+        direction = "BULLISH" if net > 0.5 else ("BEARISH" if net < -0.5 else "NEUTRAL")
+        strength  = "STRONG"  if abs(net) > 3 else ("MODERATE" if abs(net) > 1 else "WEAK")
+        verdicts[pair] = {
+            "net_score":        round(net, 2), "direction": direction, "strength": strength,
+            "base_bias":        bd.get("bias", "NEUTRAL"),
+            "quote_bias":       qd.get("bias", "NEUTRAL"),
+            "base_confidence":  bd.get("confidence", "LOW"),
+            "quote_confidence": qd.get("confidence", "LOW"),
+            "size_modifier":    size_modifier(net),
+        }
+    return verdicts
+
+
+def load_bias_history(path):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Warning: bias history read failed: {e}", file=sys.stderr)
+    return {"schema_version": "1.0.0", "created": datetime.utcnow().isoformat() + "Z", "runs": []}
+
+
+def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
+    """Append a TE bias run to bias-history.json alongside FF runs."""
+    now     = datetime.utcnow()
+    cutoff  = now - timedelta(days=90)
+
+    event_results = []
+    for e in normalised_events:
+        if not e.get("actual") or not e.get("result"): continue
+        dt_str = e.get("datetime_utc")
+        if not dt_str: continue
+        try:
+            if datetime.fromisoformat(dt_str.replace("Z", "")) >= now: continue
+        except Exception:
+            continue
+        cur = e.get("currency", "")
+        title = e.get("title", "")
+        event_results.append({
+            "id":          f"te-{cur.lower()}-{title.lower().replace(' ','-')[:20]}-{dt_str[:10]}",
+            "title":       title,
+            "currency":    cur,
+            "impact":      e.get("impact", "Medium"),
+            "actual":      e.get("actual"),
+            "forecast":    e.get("forecast"),
+            "previous":    e.get("previous"),
+            "result":      e.get("result"),
+            "datetime_utc": dt_str,
+            "source_site": e.get("source_site", "te_calendar"),
+        })
+
+    run = {
+        "run_id":        now.strftime("%Y%m%d_%H%M%S") + "_te",
+        "timestamp":     now.isoformat() + "Z",
+        "source":        "te",
+        "event_results": event_results,
+        "currency_bias": {k: {"score": v["score"], "bias": v["bias"],
+                               "confidence": v["confidence"], "event_count": v["event_count"]}
+                          for k, v in bias_map.items()},
+        "pair_verdicts": pair_verdicts,
+    }
+
+    history["runs"].append(run)
+    history["runs"] = [
+        r for r in history["runs"]
+        if datetime.fromisoformat(r["timestamp"].replace("Z", "")) >= cutoff
+    ]
+    history["last_updated"] = now.isoformat() + "Z"
+    history["run_count"]    = len(history["runs"])
+    return history
+
+
+def save_bias_history(history, path):
+    d = os.path.dirname(path)
+    if d and not os.path.exists(d): os.makedirs(d)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2, ensure_ascii=False)
+    print(f"TE bias: {history.get('run_count', 0)} runs -> {path}")
+
+
 # ── Scraping orchestration ────────────────────────────────────────────────────
 
 def scrape_calendar(verbose=True):
@@ -564,6 +803,9 @@ def main():
     args = parser.parse_args()
 
     output_path = UNRAID_OUTPUT if args.unraid else args.output
+    UNRAID_BIAS = "/mnt/user/appdata/trading-state/data/bias-history.json"
+    DEFAULT_BIAS = os.path.join(os.path.dirname(output_path), "bias-history.json")
+    bias_path = UNRAID_BIAS if args.unraid else DEFAULT_BIAS
     verbose = not args.quiet
 
     if verbose:
@@ -605,7 +847,7 @@ def main():
             "pairs_total": len(fx_snapshots),
         }
 
-    # ── Assemble & save ───────────────────────────────────────────────────────
+    # ── Assemble & save snapshot ──────────────────────────────────────────────
     snapshot = build_snapshot(events, fx_snapshots, health)
 
     if verbose:
@@ -616,6 +858,27 @@ def main():
         print(json.dumps(snapshot, indent=2))
     else:
         save_snapshot(snapshot, output_path)
+
+    # ── Bias scoring — feed TE actuals into shared bias-history.json ──────────
+    if not args.print_output:
+        normalised = normalize_te_events_for_bias(events)
+        with_result = [e for e in normalised if e.get("result") in ("BEAT","MISS","INLINE")]
+        if with_result:
+            if verbose:
+                print(f"Scoring TE bias: {len(with_result)} events with results...")
+            now = datetime.utcnow()
+            bias_map      = calculate_te_currency_bias(normalised, now)
+            pair_verdicts = calculate_te_pair_verdicts(bias_map)
+            if verbose:
+                for cur, d in sorted(bias_map.items()):
+                    print(f"  {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} events]")
+                print(f"  {len(pair_verdicts)} pair verdicts calculated")
+            history = load_bias_history(bias_path)
+            history = append_te_bias_run(history, normalised, bias_map, pair_verdicts)
+            save_bias_history(history, bias_path)
+        else:
+            if verbose:
+                print("No TE events with results yet — bias scoring skipped")
 
     # Overall health check — warn if calendar completely failed
     if health["calendar"]["status"] not in ("OK",):
