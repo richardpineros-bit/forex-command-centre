@@ -429,9 +429,11 @@ PAIRS = [
 ET_TO_UTC_HOURS = 4
 
 
-def time_et_to_datetime_utc(time_et_str):
+def time_et_to_datetime_utc(time_et_str, has_actual=False):
     """
     Convert a TE time string like '02:00 PM' to a UTC datetime for today.
+    If has_actual=True and the constructed time is in the future, use yesterday —
+    events with actuals have already happened regardless of wall-clock position.
     Returns ISO string or None.
     """
     if not time_et_str:
@@ -445,10 +447,13 @@ def time_et_to_datetime_utc(time_et_str):
         m = int(parts[1]) if len(parts) > 1 else 0
         if is_pm and h != 12: h += 12
         elif not is_pm and h == 12: h = 0
-        # Add ET→UTC offset
         h_utc = h + ET_TO_UTC_HOURS
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         event_utc = today + timedelta(hours=h_utc, minutes=m)
+        # If event has an actual but constructed time is in the future,
+        # it happened earlier today or yesterday — shift back
+        if has_actual and event_utc > datetime.utcnow():
+            event_utc -= timedelta(days=1)
         return event_utc.isoformat() + "Z"
     except Exception:
         return None
@@ -483,7 +488,7 @@ def normalize_te_events_for_bias(events):
         if not result or result not in ("BEAT", "MISS", "INLINE"):
             continue
 
-        dt_utc = time_et_to_datetime_utc(e.get("time_et"))
+        dt_utc = time_et_to_datetime_utc(e.get("time_et"), has_actual=bool(actual))
         out.append({
             "title":        e.get("event", e.get("symbol", "Unknown")),
             "currency":     currency,
