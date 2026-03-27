@@ -23,10 +23,10 @@ MANUAL RUN (test without writing to Unraid path):
     python3 te_scraper.py --print
 
 Changelog:
-    v1.0.3 - Fix value extraction: use id="actual"/"previous"/"consensus" within row scope;
-             fix time: extract from span inside cells[0]; fix bonds: filter by G10_BOND_COUNTRIES
-             (country list) instead of BOND_SYMBOLS (TE symbol names don't match our set);
-             importance always 0 — TE does not expose stars in scraped HTML
+    v1.0.4 - parse_fx_page: extract TE summary paragraph from id="stats" h2 and meta description;
+             improved rate extraction via TEChartsMeta JS var and data-symbol tr; daily_pct from
+             meta description text (up/down X% from previous session)
+    v1.0.3 - Fix value extraction by id; fix time from span; fix bond filter to G10_BOND_COUNTRIES
     v1.0.2 - importance default 1→0; added impact_level field
     v1.0.1 - Fix cell positions; fix importance star detection; relax bonds canary; rename date→time_et
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
@@ -46,7 +46,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 # G10 currencies we care about
 G10_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"]
@@ -305,7 +305,7 @@ def parse_calendar_page(html, bond_mode=False):
 
 def parse_fx_page(html, pair, currency):
     """
-    Parse a TE currency page for current rate, daily change, trend.
+    Parse a TE currency page for current rate, daily change, and TE summary text.
     Returns dict with rate data or error info.
     """
     soup = BeautifulSoup(html, "html.parser")
@@ -314,62 +314,64 @@ def parse_fx_page(html, pair, currency):
         "currency":    currency,
         "rate":        None,
         "daily_pct":   None,
-        "trend_1m":    None,
+        "summary":     None,   # TE's own summary paragraph for this pair
         "scraped_at":  datetime.utcnow().isoformat() + "Z",
         "status":      "OK",
     }
 
     try:
-        # TE currency pages: rate is typically in an element with id or class
-        # containing the symbol, or in a <span id="ctl00_..."> or data-symbol attr
-        # Try multiple selectors
-
-        # Method 1: data-symbol attribute on span/td
-        rate_el = soup.find(attrs={"data-symbol": True})
-        if rate_el:
-            rate_text = rate_el.get_text(strip=True)
-            if rate_text and rate_text.replace(".", "").replace(",", "").lstrip("-").isdigit():
-                result["rate"] = rate_text
-
-        # Method 2: look for large numeric display elements
-        # TE uses <span id="p"> or similar for live rate
-        for el_id in ("p", "rate", "currentrate"):
-            el = soup.find(id=el_id)
-            if el:
-                t = el.get_text(strip=True).replace(",", "")
+        # ── Rate ─────────────────────────────────────────────────────────────
+        # Method 1: <tr data-symbol="EURUSD:CUR"> contains the live rate
+        rate_row = soup.find("tr", attrs={"data-symbol": True})
+        if rate_row:
+            tds = rate_row.find_all("td")
+            for td in tds[:3]:
+                t = td.get_text(strip=True).replace(",", "")
                 try:
                     float(t)
-                    result["rate"] = t
-                    break
-                except (ValueError, TypeError):
-                    pass
-
-        # Method 3: look for te-currency class elements
-        for cls in ("te-currency", "currency-rate", "current-rate"):
-            el = soup.find(class_=cls)
-            if el:
-                t = el.get_text(strip=True).replace(",", "")
-                try:
-                    float(t)
-                    result["rate"] = t
-                    break
-                except (ValueError, TypeError):
-                    pass
-
-        # Daily % change — look for elements with "%" text near the rate
-        pct_candidates = soup.find_all(string=lambda s: s and "%" in s)
-        for cand in pct_candidates[:10]:
-            text = cand.strip()
-            # Match patterns like "+0.23%", "-0.15%", "0.23%"
-            match = re.search(r"([+-]?\d+\.?\d*)\s*%", text)
-            if match:
-                try:
-                    val = float(match.group(1))
-                    if abs(val) < 10:  # sanity check — daily % rarely > 10%
-                        result["daily_pct"] = f"{val:+.2f}%"
+                    if t and t != "0":
+                        result["rate"] = t
                         break
                 except (ValueError, TypeError):
                     pass
+
+        # Method 2: TEChartsMeta JS var contains "last" value
+        # e.g. TEChartsMeta = [{"last":1.153320000000,...}]
+        if not result["rate"]:
+            meta_match = re.search(r'"last"\s*:\s*([\d.]+)', html)
+            if meta_match:
+                result["rate"] = meta_match.group(1)
+
+        # ── Daily % ──────────────────────────────────────────────────────────
+        # Extract from TEChartsMeta or meta description
+        # meta description: "fell to 1.1534 on March 26, 2026, down 0.21%"
+        desc_match = re.search(r'(?:up|down)\s+([\d.]+)%\s+from the previous session', html)
+        if desc_match:
+            # Determine sign from direction word
+            sign_match = re.search(r'(up|down)\s+' + re.escape(desc_match.group(1)), html)
+            sign = "-" if sign_match and sign_match.group(1) == "down" else "+"
+            result["daily_pct"] = f"{sign}{desc_match.group(1)}%"
+
+        # ── Summary text ─────────────────────────────────────────────────────
+        # TE puts a plain-English paragraph in <div id="stats"><h2> and <meta description>
+        # Priority: stats tab > meta description
+
+        # Method 1: stats tab paragraph
+        stats_div = soup.find("div", id="stats")
+        if stats_div:
+            h2 = stats_div.find("h2")
+            if h2:
+                text = h2.get_text(strip=True)
+                if len(text) > 40:
+                    result["summary"] = text
+
+        # Method 2: meta description (shorter but always present)
+        if not result["summary"]:
+            meta = soup.find("meta", attrs={"name": "description"})
+            if meta and meta.get("content"):
+                content = meta["content"]
+                if len(content) > 40:
+                    result["summary"] = content
 
     except Exception as e:
         result["status"] = f"PARSE_ERROR: {e}"

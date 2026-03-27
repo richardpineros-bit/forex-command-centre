@@ -1,3 +1,8 @@
+## [v5.2.1] - 2026-03-27
+### New: Macro Briefing AI summary from real TE source text
+- **te_scraper.py v1.0.4**: `parse_fx_page` now extracts TE's own summary paragraph from `<div id="stats"><h2>` and `<meta name="description">` — stored as `summary` field per pair in `fx_snapshot`; improved rate extraction via TEChartsMeta JS var; daily_pct extracted from meta description "up/down X% from previous session"
+- **te-briefing.js v2.0.0**: passes real scraped TE summary text to Claude API; Claude summarises ONLY what TE says — no external context added; plain English 2-3 sentence paragraph rendered in card; rate strip shown below; "Generating summary..." placeholder while API call is in flight
+
 ## [v5.2.0] - 2026-03-27
 ### Fix: te_scraper.py v1.0.3 — correct TE HTML structure
 - **Value extraction**: switched to `id="actual"`, `id="previous"`, `id="consensus"` within row scope — TE does not use class names for these cells
