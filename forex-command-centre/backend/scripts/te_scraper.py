@@ -454,28 +454,38 @@ def time_et_to_datetime_utc(time_et_str):
 
 def normalize_te_events_for_bias(events):
     """
-    Normalise TE events to FF bias-engine schema:
-    - title   ← event
-    - result  ← surprise_dir (BEAT/MISS/INLINE)
-    - impact  ← "Medium" default (TE doesn't expose importance)
-    - datetime_utc ← constructed from time_et
-    - source_site  ← "te_calendar" or "te_bond"
-    Returns only events that have actual + result + currency.
+    Normalise TE events to FF bias-engine schema.
+    For bond auctions with no forecast: infer BEAT/MISS from actual vs previous.
+    Yield up vs previous = BEAT (hawkish = bullish for currency).
     """
     out = []
     for e in events:
-        actual      = e.get("actual")
-        result      = e.get("surprise_dir")
-        currency    = e.get("currency", "")
-        if not actual or not result or result not in ("BEAT", "MISS", "INLINE"):
+        actual   = e.get("actual")
+        currency = e.get("currency", "")
+        if not actual or not currency:
             continue
-        if not currency:
+
+        result = e.get("surprise_dir")
+
+        # Bonds often lack forecast -- infer from actual vs previous
+        if (not result or result not in ("BEAT", "MISS", "INLINE")) and e.get("is_bond"):
+            prev = e.get("previous")
+            if prev:
+                a = parse_numeric(actual)
+                p = parse_numeric(prev)
+                if a is not None and p is not None:
+                    if a > p:   result = "BEAT"
+                    elif a < p: result = "MISS"
+                    else:       result = "INLINE"
+
+        if not result or result not in ("BEAT", "MISS", "INLINE"):
             continue
+
         dt_utc = time_et_to_datetime_utc(e.get("time_et"))
         out.append({
             "title":        e.get("event", e.get("symbol", "Unknown")),
             "currency":     currency,
-            "impact":       "Medium",   # conservative default — TE has no star data
+            "impact":       "Medium",
             "result":       result,
             "actual":       actual,
             "forecast":     e.get("forecast"),
@@ -484,6 +494,7 @@ def normalize_te_events_for_bias(events):
             "source_site":  "te_bond" if e.get("is_bond") else "te_calendar",
             "surprise_abs": e.get("surprise_abs"),
             "surprise_pct": e.get("surprise_pct"),
+            "is_bond":      e.get("is_bond", False),
         })
     return out
 
