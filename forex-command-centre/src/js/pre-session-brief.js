@@ -273,7 +273,15 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() { init(); }, 800);
+        setTimeout(function() {
+            try {
+                init();
+            } catch(e) {
+                // Fallback: render error state so card is visible
+                var c = document.getElementById('pre-session-brief-container');
+                if (c) c.innerHTML = '<div class="card" style="margin-bottom:16px;border-left:3px solid #dc3545;"><div class="card-body" style="padding:12px 16px;font-size:0.85rem;color:#dc3545;">&#x26A0; Session brief error: ' + e.message + '</div></div>';
+            }
+        }, 800);
     });
 
 })();
