@@ -1,3 +1,10 @@
+## [v5.2.6] - 2026-03-27
+### Fix: File locking on bias-history.json — prevents race condition
+- Both `forex_calendar_scraper.py` (v3.3.1) and `te_scraper.py` (v1.1.1) now use `fcntl.flock`
+- `load_bias_history`: LOCK_SH (shared read) — blocks concurrent writers; handles empty file gracefully (returns clean default instead of crashing with JSON parse error)
+- `save_bias_history`: LOCK_EX (exclusive write) via `.lock` sidecar file — sequential writes guaranteed; never overwrites concurrent reader mid-write
+- Run FF scraper first, TE second to restore history after today's overwrite
+
 ## [v5.2.5] - 2026-03-27
 ### New: TE bias scoring feeds into shared bias-history.json
 - **te_scraper.py v1.1.0**: full bias engine added — mirrors FF scraper exactly

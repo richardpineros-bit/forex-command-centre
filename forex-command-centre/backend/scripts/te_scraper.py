@@ -34,7 +34,7 @@ Changelog:
     v1.0.0 - Initial release: G10 calendar events, bond auctions, FX snapshot
 """
 
-import argparse, json, re, sys, os, time
+import argparse, json, re, sys, os, time, fcntl
 from datetime import datetime, timezone, timedelta
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -576,13 +576,20 @@ def calculate_te_pair_verdicts(bias_map):
 
 
 def load_bias_history(path):
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Warning: bias history read failed: {e}", file=sys.stderr)
-    return {"schema_version": "1.0.0", "created": datetime.utcnow().isoformat() + "Z", "runs": []}
+    if not os.path.exists(path):
+        return {"schema_version": "1.0.0", "created": datetime.utcnow().isoformat() + "Z", "runs": []}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            fcntl.flock(f, fcntl.LOCK_SH)
+            try:
+                content = f.read()
+                return json.loads(content) if content.strip() else \
+                    {"schema_version": "1.0.0", "created": datetime.utcnow().isoformat() + "Z", "runs": []}
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except Exception as e:
+        print(f"Warning: bias history read failed: {e}", file=sys.stderr)
+        return {"schema_version": "1.0.0", "created": datetime.utcnow().isoformat() + "Z", "runs": []}
 
 
 def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
@@ -638,8 +645,14 @@ def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
 def save_bias_history(history, path):
     d = os.path.dirname(path)
     if d and not os.path.exists(d): os.makedirs(d)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2, ensure_ascii=False)
+    lock_path = path + ".lock"
+    with open(lock_path, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(history, f, indent=2, ensure_ascii=False)
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
     print(f"TE bias: {history.get('run_count', 0)} runs -> {path}")
 
 
