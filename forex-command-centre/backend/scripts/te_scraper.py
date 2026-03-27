@@ -92,12 +92,10 @@ FX_PAGES = {
 }
 
 # Index instrument -> (TE slug, sentiment_group)
-# sentiment_group drives which G10 currencies get the risk-on/off signal
+# Note: US30/US2000/NAS100 TE pages require browser fingerprinting — not scrapeable
+# SPX500 covers US equity sentiment; EU/Asia indices cover the rest
 INDEX_PAGES = {
-    "US30USD":   ("united-states/dow-jones",       "risk_us"),
-    "US2000USD": ("united-states/russell-2000",    "risk_us"),
     "SPX500USD": ("united-states/stock-market",    "risk_us"),
-    "NAS100USD": ("united-states/nasdaq",          "risk_us"),
     "UK100GBP":  ("united-kingdom/stock-market",   "risk_eu"),
     "JP225YJPY": ("japan/stock-market",            "risk_asia"),
     "JP225USD":  ("japan/stock-market",            "risk_asia"),
