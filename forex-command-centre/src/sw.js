@@ -3,7 +3,7 @@
 // Handles: push notifications, app shell caching, offline resilience
 // ============================================================================
 
-const CACHE_NAME = 'fcc-v5';
+const CACHE_NAME = 'fcc-v6';
 
 // App shell — critical files to cache for offline use
 const SHELL_URLS = [
@@ -72,8 +72,9 @@ self.addEventListener('fetch', function(event) {
     // Skip API calls — always go to network
     if (event.request.url.includes('api.pineros.club')) return;
 
-    // Skip dashboard pages — always network, never serve stale cached versions
+    // Skip these pages — always network, never cache
     if (event.request.url.includes('arm-history-dashboard.html')) return;
+    if (event.request.url.includes('arm-history-dashboard')) return;
 
     event.respondWith(
         fetch(event.request).catch(function() {
