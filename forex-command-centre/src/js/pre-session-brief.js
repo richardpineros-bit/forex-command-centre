@@ -77,7 +77,6 @@
         var biasHtml = buildBiasChips(bias);
 
         // Upcoming events chips
-        var eventsHtml = buildEventsChips(te);
 
         // Session pairs
         var pairsHtml = session ? buildPairsChips(bias, session) : '';
@@ -110,9 +109,6 @@
                 '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + biasHtml + '</div></div>' : '') +
 
             // Upcoming events
-            (eventsHtml ? '<div style="margin-bottom:10px;">' +
-                '<div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Upcoming High Impact</div>' +
-                '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + eventsHtml + '</div></div>' : '') +
 
             // Session pairs
             (pairsHtml ? '<div style="margin-bottom:10px;">' +
