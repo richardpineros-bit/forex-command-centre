@@ -3,6 +3,39 @@
     // Configuration
     const STATE_URL = 'https://api.pineros.club/state';
     const REFRESH_INTERVAL = 30000; // 30 seconds
+
+    // ── Context filter (bonds + indices hidden by default) ────────────────────
+    // These instruments provide bias data but are not traded
+    const CONTEXT_PAIRS = new Set([
+        // Bonds
+        'USB02Y','USB05Y','USB10Y','USB30Y','UK10YGBP','DE10YEUR',
+        'JP10YJPY','USB02YUSD','USB05YUSD','USB10YUSD','USB30YUSD',
+        'UK10YGBP','DE10YEUR','JP10YJPY','GCAN10YR','GCAN2Y',
+        // Indices
+        'US30USD','US2000USD','SPX500USD','NAS100USD','UK100GBP',
+        'JP225YJPY','JP225USD','HK33HKD','FR40EUR','EU50EUR',
+        'DE30EUR','CN50USD','AU200AUD',
+    ]);
+
+    var hideContext = true; // on by default
+
+    function toggleContextFilter() {
+        hideContext = !hideContext;
+        var btn = document.getElementById('btn-hide-context');
+        if (btn) {
+            btn.textContent = 'ὌA Context: ' + (hideContext ? 'Hide' : 'Show');
+            btn.style.color = hideContext ? 'var(--text-muted)' : 'var(--color-info)';
+            btn.style.borderColor = hideContext ? 'var(--border-color)' : 'var(--color-info)';
+        }
+        // Re-render with current data
+        if (window._lastArmedData) renderState(window._lastArmedData);
+    }
+
+    function isContextPair(pairName) {
+        if (!pairName) return false;
+        var p = pairName.toUpperCase().replace('/', '');
+        return CONTEXT_PAIRS.has(p);
+    }
     
     // Elements
     const countEl = document.getElementById('armed-count');
@@ -327,6 +360,13 @@
 
         // Split armed pairs: R-OFFSESSION goes to watchlist pending section
         var pairs = data.pairs || [];
+        window._lastArmedData = data;
+
+        // Apply context filter (bonds/indices hidden by default)
+        if (hideContext) {
+            pairs = pairs.filter(function(p) { return !isContextPair(p.pair); });
+        }
+
         var activePairs = pairs.filter(function(p) { return p.primary !== 'R-OFFSESSION'; });
         var offSessionPairs = pairs.filter(function(p) { return p.primary === 'R-OFFSESSION'; });
 
@@ -381,6 +421,7 @@
     
     // Expose manual refresh globally
     window.refreshArmedPanel = fetchArmedState;
+    window.ArmedPanel = { toggleContextFilter: toggleContextFilter };
     // Expose openTV globally for row onclick handlers
     window.openTV = openTV;
     
