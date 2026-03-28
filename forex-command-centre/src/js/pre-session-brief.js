@@ -118,6 +118,9 @@
             // Pills
             '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + pillsHtml + '</div>' +
 
+            // Critical events integrated
+            buildCriticalEventsSection() +
+
             '</div></div>';
     }
 
@@ -266,6 +269,66 @@
             }
             return '<span style="font-size:0.72rem;padding:2px 7px;border-radius:3px;background:' + bg + ';color:' + col + ';border:1px solid ' + border + ';">' + pair + suffix + '</span>';
         }).join('');
+    }
+
+
+    // ── Critical events section ───────────────────────────────────────────────
+    function buildCriticalEventsSection() {
+        if (!window.LIVE_CALENDAR_DATA || !Array.isArray(window.LIVE_CALENDAR_DATA.events)) {
+            return '<div style="padding:6px 0;font-size:0.78rem;color:var(--text-muted);">&#x23F3; Calendar loading...</div>';
+        }
+        var events = window.LIVE_CALENDAR_DATA.events;
+        var now = new Date();
+        var critical = [];
+        events.forEach(function(e) {
+            if (!e.impact_level || e.impact_level !== 3 || !e.datetime_utc) return;
+            var t = new Date(e.datetime_utc);
+            if (t > now && (t - now) < 7 * 24 * 60 * 60 * 1000) critical.push(e);
+        });
+        critical.sort(function(a,b){ return new Date(a.datetime_utc)-new Date(b.datetime_utc); });
+
+        if (critical.length === 0) {
+            return '<div style="padding:6px 0;font-size:0.78rem;color:#28a745;">&#x2713; No CRITICAL events this week</div>';
+        }
+
+        var VISIBLE = 3;
+        var hasMore = critical.length > VISIBLE;
+        var html = '<div style="border-top:1px solid var(--border-color);margin-top:10px;padding-top:8px;">';
+        html += '<div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">&#x26A0; Critical Events — ' + critical.length + ' this week</div>';
+
+        critical.forEach(function(e, i) {
+            if (i === VISIBLE && hasMore) html += '<div id="psb-events-overflow" style="display:none;">';
+            var t = new Date(e.datetime_utc);
+            var mins = Math.floor((t - now) / 60000);
+            var countdown = mins < 60 ? mins + 'm' : mins < 1440 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : Math.floor(mins/1440) + 'd ' + Math.floor((mins%1440)/60) + 'h';
+            var col = mins < 240 ? '#dc3545' : mins < 1440 ? '#ffc107' : '#6c757d';
+            var day = t.toLocaleDateString('en-AU',{weekday:'short'});
+            var time = t.toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+            var eid = 'psb-event-' + i;
+            html += '<div style="border-bottom:1px solid var(--border-color);">';
+            html += '<div onclick="var el=document.getElementById('' + eid + '');el.style.display=el.style.display==='none'?'block':'none';" style="padding:6px 8px;cursor:pointer;display:flex;align-items:center;gap:8px;border-left:3px solid ' + col + ';">';
+            html += '<span style="background:var(--bg-secondary);padding:2px 5px;border-radius:3px;font-size:0.68rem;font-weight:600;">' + e.currency + '</span>';
+            html += '<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.title + '</div>';
+            html += '<div style="font-size:0.72rem;color:var(--text-muted);">' + day + ' ' + time + ' AEST</div></div>';
+            if (e.forecast || e.previous) {
+                html += '<div style="text-align:right;font-size:0.72rem;flex-shrink:0;">';
+                if (e.forecast) html += '<div>F: <strong>' + e.forecast + '</strong></div>';
+                if (e.previous) html += '<div style="color:var(--text-muted);">P: ' + e.previous + '</div>';
+                html += '</div>';
+            }
+            html += '<div style="font-size:0.7rem;color:' + col + ';font-weight:600;min-width:44px;text-align:right;">' + countdown + '</div>';
+            html += '</div>';
+            html += '<div id="' + eid + '" style="display:none;padding:5px 8px 8px 16px;background:var(--bg-secondary);font-size:0.76rem;color:var(--text-muted);font-style:italic;">Tap row to expand.</div>';
+            html += '</div>';
+        });
+
+        if (hasMore) {
+            var rem = critical.length - VISIBLE;
+            html += '</div>';
+            html += '<div id="psb-events-toggle" onclick="var o=document.getElementById(\'psb-events-overflow\');var t=document.getElementById(\'psb-events-toggle\');if(o.style.display===\'none\'){o.style.display=\'block\';t.innerHTML=\'&#x25B2; Show less\';}else{o.style.display=\'none\';t.innerHTML=\'&#x25BC; \'+rem+\' more events\';}" style="padding:6px 0;text-align:center;font-size:0.76rem;color:var(--text-muted);cursor:pointer;">&#x25BC; \' + rem + \' more events</div>';
+        }
+        html += '</div>';
+        return html;
     }
 
     document.addEventListener('DOMContentLoaded', function() {
