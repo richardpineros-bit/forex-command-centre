@@ -254,7 +254,6 @@
                 <div class="card-header">
                     <h2 class="card-title">&#x1F3AF; Armed Instruments</h2>
                     <div class="flex gap-sm align-center">
-                        <button id="btn-hide-context" onclick="window.ArmedPanel && window.ArmedPanel.toggleContextFilter()" title="Hide bonds &amp; indices (context-only instruments)" style="font-size:0.7rem;padding:3px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-color);background:var(--bg-tertiary);color:var(--text-muted);cursor:pointer;font-family:var(--font-heading);font-weight:600;" id="btn-hide-context">&#x1F4CA; Context: Hide</button>
                         <button id="btn-clear-expired" onclick="clearExpiredArmed()" title="Remove expired instruments from server" style="display:none; font-size:0.7rem; padding:3px 8px; border-radius:var(--radius-sm); border:1px solid var(--color-fail); background:rgba(239,68,68,0.1); color:var(--color-fail); cursor:pointer; font-family:var(--font-heading); font-weight:600;">Clear Expired</button>
                         <a href="arm-history-dashboard.html" target="_blank" title="Open Pair Intelligence Hub" style="font-size:0.7rem;padding:3px 8px;border-radius:var(--radius-sm);border:1px solid var(--border-color);background:var(--bg-tertiary);color:var(--text-secondary);text-decoration:none;font-family:var(--font-heading);font-weight:600;white-space:nowrap;">&#x1F9E0; Intel</a>
                         <span class="armed-panel-count zero" id="armed-count">0</span>
@@ -2925,6 +2924,62 @@
                 <button class="btn btn-primary mt-md" onclick="saveSettings()">&#x1F4BE; Save Settings</button>
             </div>
             
+            <!-- Armed Panel Instrument Filters -->
+            <div class="card mb-lg">
+                <div class="card-header">
+                    <h2 class="card-title">&#x1F6AB; Armed Panel Filters</h2>
+                </div>
+                <div class="card-body">
+                    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;">
+                        Tick instruments to <strong>exclude</strong> from the armed panel. Data is still collected for bias scoring &#x2014; they just won&#x27;t appear as tradeable setups.
+                    </p>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">&#x1F4B0; Bond Instruments</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;" id="filter-bonds">
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="USB02YUSD"> USB02YUSD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="USB05YUSD"> USB05YUSD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="USB10YUSD"> USB10YUSD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="USB30YUSD"> USB30YUSD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="UK10YGBP"> UK10YGBP</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="DE10YEUR"> DE10YEUR</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="JP10YJPY"> JP10YJPY</label>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">&#x1F4C8; Index Instruments</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;" id="filter-indices">
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="US30USD"> US30USD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="US2000USD"> US2000USD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="SPX500USD"> SPX500USD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="NAS100USD"> NAS100USD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="UK100GBP"> UK100GBP</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="JP225YJPY"> JP225YJPY</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="JP225USD"> JP225USD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="HK33HKD"> HK33HKD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="FR40EUR"> FR40EUR</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="EU50EUR"> EU50EUR</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="DE30EUR"> DE30EUR</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="CN50USD"> CN50USD</label>
+                            <label class="filter-check"><input type="checkbox" class="armed-exclude-cb" value="AU200AUD"> AU200AUD</label>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button class="btn btn-primary" onclick="saveArmedFilters()">&#x1F4BE; Save Filters</button>
+                        <button class="btn btn-secondary" onclick="resetArmedFilters()">Reset to Default</button>
+                        <span id="filter-saved-msg" style="font-size:0.78rem;color:var(--color-success);display:none;">&#x2714; Saved</span>
+                    </div>
+
+                    <style>
+                        .filter-check { display:flex;align-items:center;gap:5px;font-size:0.78rem;padding:4px 8px;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-secondary);cursor:pointer;white-space:nowrap; }
+                        .filter-check input { cursor:pointer; }
+                        .filter-check:has(input:checked) { border-color:var(--color-fail);background:rgba(239,68,68,0.08);color:var(--color-fail); }
+                    </style>
+                </div>
+            </div>
+
             <!-- Broker Connection (rendered by broker-ui.js) -->
             <div id="broker-status-panel" class="mb-lg"></div>
             

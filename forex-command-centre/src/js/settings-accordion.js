@@ -186,3 +186,46 @@ accordionStyles.textContent = `
 document.head.appendChild(accordionStyles);
 
 // CHUNK 7 COMPLETE - Settings, Export/Import, Auto-save
+
+// ── Armed Panel Filters ────────────────────────────────────────────────────
+
+var DEFAULT_ARMED_EXCLUSIONS = [
+    'USB02YUSD','USB05YUSD','USB10YUSD','USB30YUSD',
+    'UK10YGBP','DE10YEUR','JP10YJPY',
+];
+
+function initArmedFilters() {
+    var excluded = [];
+    try {
+        var stored = localStorage.getItem('fcc_armed_exclude');
+        excluded = stored !== null ? JSON.parse(stored) : DEFAULT_ARMED_EXCLUSIONS;
+    } catch(e) {
+        excluded = DEFAULT_ARMED_EXCLUSIONS;
+    }
+    document.querySelectorAll('.armed-exclude-cb').forEach(function(cb) {
+        cb.checked = excluded.indexOf(cb.value) !== -1;
+    });
+}
+
+function saveArmedFilters() {
+    var excluded = [];
+    document.querySelectorAll('.armed-exclude-cb:checked').forEach(function(cb) {
+        excluded.push(cb.value);
+    });
+    localStorage.setItem('fcc_armed_exclude', JSON.stringify(excluded));
+    var msg = document.getElementById('filter-saved-msg');
+    if (msg) { msg.style.display = 'inline'; setTimeout(function() { msg.style.display = 'none'; }, 2000); }
+    // Re-render armed panel
+    if (window._lastArmedData && window.ArmedPanel) window.ArmedPanel.toggleContextFilter();
+}
+
+function resetArmedFilters() {
+    localStorage.setItem('fcc_armed_exclude', JSON.stringify(DEFAULT_ARMED_EXCLUSIONS));
+    initArmedFilters();
+    if (window._lastArmedData && window.ArmedPanel) window.ArmedPanel.toggleContextFilter();
+}
+
+// Init on tab load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(initArmedFilters, 500);
+});

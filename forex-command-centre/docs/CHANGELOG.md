@@ -1,3 +1,9 @@
+## [v5.3.3] - 2026-03-28
+### New: Armed Panel Filters in Settings + Index pairs for verdict calculation
+- Settings tab: Armed Panel Filters card with Bond/Index instrument checklists
+- armed-panel.js: localStorage-driven exclusion filter, bonds excluded by default
+- Index pairs added to PAIRS list for verdict calculation
+
 ## [v5.3.1] - 2026-03-27
 ### New: Index snapshots + risk sentiment bias (te_scraper.py v1.2.0)
 - **INDEX_PAGES**: 13 instruments mapped to TE stock market slugs — US30USD, US2000USD, SPX500USD, NAS100USD, UK100GBP, JP225YJPY, JP225USD, HK33HKD, FR40EUR, EU50EUR, DE30EUR, CN50USD, AU200AUD
