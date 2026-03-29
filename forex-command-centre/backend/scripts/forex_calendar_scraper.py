@@ -576,7 +576,10 @@ def append_bias_run(history, events, bias_map, pair_verdicts, run_time=None):
                             "title":e["title"],"currency":e["currency"],"impact":e["impact"],
                             "actual":e["actual"],"forecast":e.get("forecast"),
                             "previous":e.get("previous"),"result":e["result"],"datetime_utc":dt_str,
-                            "source_site":e.get("source_site","forex")
+                            "source_site":e.get("source_site","forex"),
+                            "surprise_abs":e.get("surprise_abs"),
+                            "surprise_pct":e.get("surprise_pct"),
+                            "surprise_dir":e.get("surprise_dir"),
                         })
                 except: pass
 
