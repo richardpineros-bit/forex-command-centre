@@ -724,14 +724,26 @@ def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
         if verdict.get("net_score", 0) != 0:
             merged_verdicts[pair] = verdict
 
+    # Also merge currency_bias — TE only has currencies it scored today
+    # Preserve FF currency scores for currencies TE didn't touch
+    merged_bias = {}
+    if ff_runs:
+        for ff_run in sorted(ff_runs, key=lambda r: r.get("timestamp",""), reverse=True):
+            cb = ff_run.get("currency_bias", {})
+            if cb:
+                merged_bias = dict(cb)
+                break
+    # Override with TE bias for currencies TE scored
+    for cur, data in bias_map.items():
+        merged_bias[cur] = {"score": data["score"], "bias": data["bias"],
+                            "confidence": data["confidence"], "event_count": data["event_count"]}
+
     run = {
         "run_id":        now.strftime("%Y%m%d_%H%M%S") + "_te",
         "timestamp":     now.isoformat() + "Z",
         "source":        "te",
         "event_results": event_results,
-        "currency_bias": {k: {"score": v["score"], "bias": v["bias"],
-                               "confidence": v["confidence"], "event_count": v["event_count"]}
-                          for k, v in bias_map.items()},
+        "currency_bias": merged_bias,
         "pair_verdicts": merged_verdicts,
     }
 
