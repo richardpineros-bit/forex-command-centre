@@ -1248,13 +1248,31 @@ def main():
             if verbose:
                 print(f"Scoring TE bias: {len(normalised)} events + {len(index_events)} index signals...")
             now = datetime.utcnow()
-            bias_map      = calculate_te_currency_bias(all_normalised, now)
-            pair_verdicts = calculate_te_pair_verdicts(bias_map)
+            bias_map = calculate_te_currency_bias(all_normalised, now)
+
+            # Build merged bias map (FF historical + TE today) for complete pair verdicts
+            history = load_bias_history(bias_path)
+            ff_runs = [r for r in history.get("runs", []) if not r.get("run_id","").endswith("_te")]
+            merged_bias_map = {}
+            for ff_run in sorted(ff_runs, key=lambda r: r.get("timestamp",""), reverse=True):
+                cb = ff_run.get("currency_bias", {})
+                if cb:
+                    merged_bias_map = {k: {"score":v["score"],"bias":v["bias"],
+                                           "confidence":v["confidence"],"event_count":v["event_count"]}
+                                       for k,v in cb.items()}
+                    break
+            # TE scores override FF for currencies TE scored today
+            for cur, data in bias_map.items():
+                merged_bias_map[cur] = {"score":data["score"],"bias":data["bias"],
+                                        "confidence":data["confidence"],"event_count":data["event_count"]}
+
+            # Calculate verdicts from merged bias — covers all pairs including new ones
+            pair_verdicts = calculate_te_pair_verdicts(merged_bias_map)
+
             if verbose:
                 for cur, d in sorted(bias_map.items()):
                     print(f"  {cur}: {d['bias']} ({d['score']:+.1f}) [{d['confidence']}, {d['event_count']} events]")
                 print(f"  {len(pair_verdicts)} pair verdicts calculated")
-            history = load_bias_history(bias_path)
             history = append_te_bias_run(history, all_normalised, bias_map, pair_verdicts)
             save_bias_history(history, bias_path)
         else:
