@@ -461,6 +461,23 @@ def parse_fx_page(html, pair, currency):
 IMPACT_WEIGHTS = {"High": 3.0, "Medium": 1.0, "Low": 0.3, "Unknown": 0.0}
 TIME_DECAY     = [(24, 1.0), (48, 0.7), (72, 0.4), (168, 0.2), (9999, 0.0)]
 
+# Explicit base/quote for index pairs (can't use simple [:3]/[3:] split)
+INDEX_PAIR_CURRENCIES = {
+    "AU200AUD":  ("AUD", "USD"),
+    "CN50USD":   ("CNY", "USD"),
+    "HK33HKD":   ("HKD", "USD"),
+    "JP225YJPY": ("JPY", "USD"),
+    "JP225USD":  ("JPY", "USD"),
+    "US30USD":   ("USD", "USD"),
+    "US2000USD": ("USD", "USD"),
+    "SPX500USD": ("USD", "USD"),
+    "NAS100USD": ("USD", "USD"),
+    "UK100GBP":  ("GBP", "USD"),
+    "FR40EUR":   ("EUR", "USD"),
+    "EU50EUR":   ("EUR", "USD"),
+    "DE30EUR":   ("EUR", "USD"),
+}
+
 PAIRS = [
     # Forex pairs
     "EURCAD","CADJPY","EURJPY","CHFJPY","GBPNZD","GBPJPY",
@@ -630,7 +647,10 @@ def calculate_te_pair_verdicts(bias_map):
 
     verdicts = {}
     for pair in PAIRS:
-        base  = pair[:3]; quote = pair[3:]
+        if pair in INDEX_PAIR_CURRENCIES:
+            base, quote = INDEX_PAIR_CURRENCIES[pair]
+        else:
+            base  = pair[:3]; quote = pair[3:]
         bd = bias_map.get(base,  {"score": 0, "bias": "NEUTRAL", "confidence": "LOW", "event_count": 0})
         qd = bias_map.get(quote, {"score": 0, "bias": "NEUTRAL", "confidence": "LOW", "event_count": 0})
         net       = bd["score"] - qd["score"]

@@ -511,10 +511,30 @@ def size_modifier(net):
     if a>1.0: return 0.75
     return 1.0
 
+# Explicit base/quote mapping for non-standard pairs (indices, metals etc)
+INDEX_PAIR_CURRENCIES = {
+    "AU200AUD":  ("AUD", "USD"),  # AU200 priced in AUD, vs USD risk sentiment
+    "CN50USD":   ("CNY", "USD"),
+    "HK33HKD":   ("HKD", "USD"),
+    "JP225YJPY": ("JPY", "USD"),
+    "JP225USD":  ("JPY", "USD"),
+    "US30USD":   ("USD", "USD"),
+    "US2000USD": ("USD", "USD"),
+    "SPX500USD": ("USD", "USD"),
+    "NAS100USD": ("USD", "USD"),
+    "UK100GBP":  ("GBP", "USD"),
+    "FR40EUR":   ("EUR", "USD"),
+    "EU50EUR":   ("EUR", "USD"),
+    "DE30EUR":   ("EUR", "USD"),
+}
+
 def calculate_pair_verdicts(bias_map):
     verdicts = {}
     for pair in PAIRS:
-        base = pair[:3]; quote = pair[3:]
+        if pair in INDEX_PAIR_CURRENCIES:
+            base, quote = INDEX_PAIR_CURRENCIES[pair]
+        else:
+            base = pair[:3]; quote = pair[3:]
         bd = bias_map.get(base, {"score":0,"bias":"NEUTRAL","confidence":"LOW","event_count":0})
         qd = bias_map.get(quote,{"score":0,"bias":"NEUTRAL","confidence":"LOW","event_count":0})
         net = bd["score"] - qd["score"]
