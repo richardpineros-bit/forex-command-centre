@@ -1697,3 +1697,33 @@ Instead of relying on trader memory ("Did I check if conditions changed?"), the 
 - **MAJOR:** Breaking changes, new architecture, incompatible with prior version
 - **MINOR:** New features, meaningful improvements, same overall purpose
 - **PATCH:** Bug fixes, typos, formatting, small tweaks
+
+## [v5.3.4] - 2026-03-29
+### Fixes + Data integrity improvements
+
+**Armed panel / bias display:**
+- Fixed index pair base/quote splitting — CN50USD, HK33HKD, JP225USD now correctly split using explicit INDEX_CURRENCIES map in alert server (was using substring(0,3) giving CN5/OUS etc)
+- Fixed TE run wiping forex pair verdicts — TE now merges best FF historical verdicts before writing; only overrides pairs it has actual signal for
+- Fixed TE run wiping currency bias — NZD/CHF/CAD now preserved from last FF run with actuals when TE has no signal for those currencies
+- Fixed pair verdicts calculated from merged FF+TE bias map — new pairs (NZDCHF, JP225USD etc) now get verdicts even if not in historical FF runs
+- Fixed EVENT_REFERENCE export order — moved after const declaration to fix "Cannot access before initialization" error
+- Restored event detail panel in session brief card — measures, usual effect, threshold from EVENT_REFERENCE
+
+**Critical events:**
+- Integrated CRITICAL events into session brief card — first 3 visible, rest collapsed with ▼ toggle
+- Removed standalone CRITICAL events widget (now hidden) — session brief card is single source
+- Colour coding preserved: red <4h, amber <24h, grey >24h
+- Expandable detail per event: measures, usual effect, threshold
+
+**Data storage:**
+- FF event_results now stores surprise_abs, surprise_pct, surprise_dir — enables future surprise magnitude analytics
+- Surprise magnitude correlation: NFP miss by 180K vs 2K now distinguishable in historical data
+
+**Service worker:**
+- arm-history-dashboard.html now unregisters SW and clears all caches on load — prevents stale page serving
+- SW cache bumped to fcc-v5
+
+**Index pairs:**
+- INDEX_PAIR_CURRENCIES map added to both scrapers and alert server
+- All 13 index instruments in display; 10 scrapeable ones drive bias scoring
+- US30/NAS100/US2000 display-only (TE pages require browser fingerprinting)
