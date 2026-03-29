@@ -14,9 +14,6 @@
         updateEventDisplay: updateEventDisplay
     };
 
-    // Expose EVENT_REFERENCE globally for other modules (pre-session-brief)
-    window.EVENT_REFERENCE = EVENT_REFERENCE;
-
     // ============================================
     // EVENT REFERENCE DATA
     // Measures + Usual Effect for CRITICAL events
@@ -284,6 +281,9 @@
             threshold: 'SNB rate decision'
         }
     };
+
+    // Expose globally for pre-session-brief.js
+    window.EVENT_REFERENCE = EVENT_REFERENCE;
 
     function init() {
         console.log('DashboardEventWidget v2.1.0 initialised');
