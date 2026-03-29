@@ -166,24 +166,20 @@
             return '<div class="armed-bias-row awaiting">&#x23F3; News bias: no data for ' + pair + '</div>';
         }
 
-        // Insufficient data = confidence LOW + event_count < 2
         var base  = verdict.base_bias  || {};
         var quote = verdict.quote_bias || {};
-        var totalEvents = (base.event_count || 0) + (quote.event_count || 0);
-        if (totalEvents < 2 && verdict.direction === 'NEUTRAL') {
-            return '<div class="armed-bias-row awaiting">&#x2014; News bias: insufficient data</div>';
-        }
+        // Don't show "insufficient data" — always show the verdict, even if NEUTRAL
 
         // Index pairs need explicit base/quote — can't use simple substring split
         var INDEX_CCY = {
-            'AU200AUD':'AUD','CN50USD':'CN5','HK33HKD':'HK3',
-            'JP225YJPY':'JPY','JP225USD':'JPY',
-            'US30USD':'US3','US2000USD':'US2','SPX500USD':'SPX',
-            'NAS100USD':'NAS','UK100GBP':'UK1',
-            'FR40EUR':'FR4','EU50EUR':'EU5','DE30EUR':'DE3',
+            'AU200AUD':['AUD','USD'],'CN50USD':['CNY','USD'],'HK33HKD':['HKD','USD'],
+            'JP225YJPY':['JPY','USD'],'JP225USD':['JPY','USD'],
+            'US30USD':['USD','USD'],'US2000USD':['USD','USD'],'SPX500USD':['USD','USD'],
+            'NAS100USD':['USD','USD'],'UK100GBP':['GBP','USD'],
+            'FR40EUR':['EUR','USD'],'EU50EUR':['EUR','USD'],'DE30EUR':['EUR','USD'],
         };
-        var baseCcy   = INDEX_CCY[pair] || pair.substring(0, 3);
-        var quoteCcy  = INDEX_CCY[pair] ? 'USD' : pair.substring(3, 6);
+        var baseCcy   = INDEX_CCY[pair] ? INDEX_CCY[pair][0] : pair.substring(0, 3);
+        var quoteCcy  = INDEX_CCY[pair] ? INDEX_CCY[pair][1] : pair.substring(3, 6);
         var baseBias  = base.bias  || 'NEUTRAL';
         var quoteBias = quote.bias || 'NEUTRAL';
         var baseArrow  = baseBias  === 'BULLISH' ? '\u25b2' : baseBias  === 'BEARISH' ? '\u25bc' : '\u25b6';
