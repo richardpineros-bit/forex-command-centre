@@ -680,7 +680,9 @@ def load_bias_history(path):
 
 
 def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
-    """Append a TE bias run to bias-history.json alongside FF runs."""
+    """Append a TE bias run to bias-history.json alongside FF runs.
+    Merges FF pair verdicts with TE verdicts — TE only overrides pairs it has signal for.
+    """
     now     = datetime.utcnow()
     cutoff  = now - timedelta(days=90)
 
@@ -708,6 +710,18 @@ def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
             "source_site": e.get("source_site", "te_calendar"),
         })
 
+    # Merge: start with latest FF pair verdicts, override with TE verdicts where available
+    merged_verdicts = {}
+    # Find most recent FF run
+    ff_runs = [r for r in history.get("runs", []) if not r.get("run_id","").endswith("_te")]
+    if ff_runs:
+        latest_ff = sorted(ff_runs, key=lambda r: r.get("timestamp",""))[-1]
+        merged_verdicts = dict(latest_ff.get("pair_verdicts", {}))
+    # Override with TE verdicts (only pairs TE actually scored)
+    for pair, verdict in pair_verdicts.items():
+        if verdict.get("direction") != "NEUTRAL" or verdict.get("net_score", 0) != 0:
+            merged_verdicts[pair] = verdict
+
     run = {
         "run_id":        now.strftime("%Y%m%d_%H%M%S") + "_te",
         "timestamp":     now.isoformat() + "Z",
@@ -716,7 +730,7 @@ def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
         "currency_bias": {k: {"score": v["score"], "bias": v["bias"],
                                "confidence": v["confidence"], "event_count": v["event_count"]}
                           for k, v in bias_map.items()},
-        "pair_verdicts": pair_verdicts,
+        "pair_verdicts": merged_verdicts,
     }
 
     history["runs"].append(run)
