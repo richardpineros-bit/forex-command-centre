@@ -384,8 +384,24 @@ function appendArmEvent(alert, timestamp) {
                     var verdicts = getCurrentPairVerdicts();
                     var biases   = getCurrentCurrencyBias();
                     var pair     = alert.pair || '';
-                    var base     = pair.substring(0,3);
-                    var quote    = pair.substring(3,6);
+                    // Index pairs need explicit base/quote (can't split at char 3)
+                    var INDEX_CURRENCIES = {
+                        'AU200AUD':('AUD','USD'),'CN50USD':('CNY','USD'),
+                        'HK33HKD':('HKD','USD'),'JP225YJPY':('JPY','USD'),
+                        'JP225USD':('JPY','USD'),'US30USD':('USD','USD'),
+                        'US2000USD':('USD','USD'),'SPX500USD':('USD','USD'),
+                        'NAS100USD':('USD','USD'),'UK100GBP':('GBP','USD'),
+                        'FR40EUR':('EUR','USD'),'EU50EUR':('EUR','USD'),
+                        'DE30EUR':('EUR','USD'),
+                    };
+                    var base, quote;
+                    if (INDEX_CURRENCIES[pair]) {
+                        base  = INDEX_CURRENCIES[pair][0];
+                        quote = INDEX_CURRENCIES[pair][1];
+                    } else {
+                        base  = pair.substring(0,3);
+                        quote = pair.substring(3,6);
+                    }
                     if (!verdicts[pair]) return null;
                     var verdict  = verdicts[pair];
                     // Determine confluence vs UTCC direction
