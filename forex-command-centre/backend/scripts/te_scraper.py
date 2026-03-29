@@ -710,16 +710,18 @@ def append_te_bias_run(history, normalised_events, bias_map, pair_verdicts):
             "source_site": e.get("source_site", "te_calendar"),
         })
 
-    # Merge: start with latest FF pair verdicts, override with TE verdicts where available
+    # Merge: start with best FF pair verdicts (last run with actual scores), override with TE
     merged_verdicts = {}
-    # Find most recent FF run
     ff_runs = [r for r in history.get("runs", []) if not r.get("run_id","").endswith("_te")]
-    if ff_runs:
-        latest_ff = sorted(ff_runs, key=lambda r: r.get("timestamp",""))[-1]
-        merged_verdicts = dict(latest_ff.get("pair_verdicts", {}))
-    # Override with TE verdicts (only pairs TE actually scored)
+    # Find most recent FF run that has non-neutral verdicts
+    for ff_run in sorted(ff_runs, key=lambda r: r.get("timestamp",""), reverse=True):
+        vd = ff_run.get("pair_verdicts", {})
+        if any(v.get("net_score", 0) != 0 for v in vd.values()):
+            merged_verdicts = dict(vd)
+            break
+    # Override with TE verdicts only for pairs TE has non-neutral signal on
     for pair, verdict in pair_verdicts.items():
-        if verdict.get("direction") != "NEUTRAL" or verdict.get("net_score", 0) != 0:
+        if verdict.get("net_score", 0) != 0:
             merged_verdicts[pair] = verdict
 
     run = {
