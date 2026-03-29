@@ -14,6 +14,9 @@
         updateEventDisplay: updateEventDisplay
     };
 
+    // Expose EVENT_REFERENCE globally for other modules (pre-session-brief)
+    window.EVENT_REFERENCE = EVENT_REFERENCE;
+
     // ============================================
     // EVENT REFERENCE DATA
     // Measures + Usual Effect for CRITICAL events

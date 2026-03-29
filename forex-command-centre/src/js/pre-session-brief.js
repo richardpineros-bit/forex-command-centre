@@ -323,7 +323,16 @@
             }
             html += '<div style="font-size:0.7rem;color:' + col + ';font-weight:600;min-width:44px;text-align:right;">' + countdown + '</div>';
             html += '</div>';
-            html += '<div id="' + eid + '" style="display:none;padding:5px 8px 8px 16px;background:var(--bg-secondary);font-size:0.76rem;color:var(--text-muted);font-style:italic;">Tap row to expand.</div>';
+            var ref = (window.EVENT_REFERENCE && window.EVENT_REFERENCE[e.title]) || null;
+            var detailHtml = '';
+            if (ref) {
+                detailHtml += '<div style="color:var(--text-secondary);margin-bottom:3px;"><strong>Measures:</strong> ' + ref.measures + '</div>';
+                detailHtml += '<div style="color:var(--text-secondary);margin-bottom:3px;"><strong>Usual effect:</strong> ' + ref.effect + '</div>';
+                if (ref.threshold) detailHtml += '<div style="color:var(--text-muted);font-style:italic;">' + ref.threshold + '</div>';
+            } else {
+                detailHtml = '<span style="font-style:italic;">No reference data for this event.</span>';
+            }
+            html += '<div id="' + eid + '" style="display:none;padding:6px 12px 10px 16px;background:var(--bg-secondary);font-size:0.76rem;line-height:1.5;">' + detailHtml + '</div>';
             html += '</div>';
         });
 
