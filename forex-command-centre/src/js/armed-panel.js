@@ -174,8 +174,16 @@
             return '<div class="armed-bias-row awaiting">&#x2014; News bias: insufficient data</div>';
         }
 
-        var baseCcy   = pair.substring(0, 3);
-        var quoteCcy  = pair.substring(3, 6);
+        // Index pairs need explicit base/quote — can't use simple substring split
+        var INDEX_CCY = {
+            'AU200AUD':'AUD','CN50USD':'CN5','HK33HKD':'HK3',
+            'JP225YJPY':'JPY','JP225USD':'JPY',
+            'US30USD':'US3','US2000USD':'US2','SPX500USD':'SPX',
+            'NAS100USD':'NAS','UK100GBP':'UK1',
+            'FR40EUR':'FR4','EU50EUR':'EU5','DE30EUR':'DE3',
+        };
+        var baseCcy   = INDEX_CCY[pair] || pair.substring(0, 3);
+        var quoteCcy  = INDEX_CCY[pair] ? 'USD' : pair.substring(3, 6);
         var baseBias  = base.bias  || 'NEUTRAL';
         var quoteBias = quote.bias || 'NEUTRAL';
         var baseArrow  = baseBias  === 'BULLISH' ? '\u25b2' : baseBias  === 'BEARISH' ? '\u25bc' : '\u25b6';
