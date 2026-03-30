@@ -33,7 +33,9 @@ $allowedFiles = [
     'regime' => 'regime.json',
     'playbook' => 'playbook.json',
     'app-state' => 'app-state.json',
-    'daily-context' => 'daily-context.json'
+    'daily-context' => 'daily-context.json',
+    'armed-exclude' => 'armed-exclude.json',
+    'dashboard-theme' => 'dashboard-theme.json'
 ];
 
 // ============================================================
