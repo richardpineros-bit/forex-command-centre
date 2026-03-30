@@ -1446,15 +1446,11 @@ function renderIGSentimentSummary(d) {
     var total = Object.keys(sentiment).length;
     var html = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center;">';
     var items = [
-        { key:'STRONG BULLISH', colour:'#4ade80', label:'Strong
-Bullish' },
-        { key:'SOFT BULLISH',   colour:'#86efac', label:'Soft
-Bullish' },
+        { key:'STRONG BULLISH', colour:'#4ade80', label:'Strong Bullish' },
+        { key:'SOFT BULLISH',   colour:'#86efac', label:'Soft Bullish' },
         { key:'NEUTRAL',        colour:'var(--text-muted)', label:'Neutral' },
-        { key:'SOFT BEARISH',   colour:'#fca5a5', label:'Soft
-Bearish' },
-        { key:'STRONG BEARISH', colour:'#f87171', label:'Strong
-Bearish' },
+        { key:'SOFT BEARISH',   colour:'#fca5a5', label:'Soft Bearish' },
+        { key:'STRONG BEARISH', colour:'#f87171', label:'Strong Bearish' },
     ];
     items.forEach(function(item) {
         var n = counts[item.key] || 0;
