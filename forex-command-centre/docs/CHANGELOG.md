@@ -1,3 +1,12 @@
+## [v5.4.3] - 2026-03-30
+### IG Client Sentiment Scraper — Satellite 3 fully operational
+- ig_sentiment_scraper.py v1.0.1: 45/45 markets fetched (28 forex + indices + metals + energy + crypto)
+- Fixed non-forex market IDs via API discovery
+- Added 65s rate limit pause every 25 requests (IG API limit)
+- index.js v2.7.0: GET /ig-sentiment/latest endpoint with 6h staleness check
+- Cron: every 4h via Unraid User Scripts
+- Config: /mnt/user/appdata/trading-state/data/ig-sentiment-config.json
+
 ## [v5.3.3] - 2026-03-28
 ### New: Armed Panel Filters in Settings + Index pairs for verdict calculation
 - Settings tab: Armed Panel Filters card with Bond/Index instrument checklists
