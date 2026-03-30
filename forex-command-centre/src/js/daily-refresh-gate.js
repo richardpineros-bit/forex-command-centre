@@ -118,8 +118,28 @@
     /**
      * Confirm briefing without changing it (just update timestamp)
      */
-    function confirmBriefing() {
-        return refreshBriefing(); // Same action - just updating timestamp
+    function confirmBriefing(btn) {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Confirming...';
+        }
+        // If no briefing data exists, stamp a fresh timestamp so gate clears
+        var contextRaw = localStorage.getItem(STORAGE_KEYS.dailyContext);
+        if (!contextRaw) {
+            var fresh = { timestamp: new Date().toISOString(), autoConfirmed: true };
+            localStorage.setItem(STORAGE_KEYS.dailyContext, JSON.stringify(fresh));
+        }
+        var result = refreshBriefing();
+        if (btn) {
+            btn.textContent = result ? '\u2713 Confirmed' : '\u26A0 No data - set context first';
+            btn.style.color = result ? '#4ade80' : '#f59e0b';
+            setTimeout(function() {
+                if (typeof DailyRefreshGate !== 'undefined') {
+                    DailyRefreshGate.updateFreshnessUI();
+                }
+            }, 600);
+        }
+        return result;
     }
 
     /**
@@ -149,8 +169,27 @@
     /**
      * Confirm game plan without changing it (just update timestamp)
      */
-    function confirmGamePlan() {
-        return refreshGamePlan(); // Same action - just updating timestamp
+    function confirmGamePlan(btn) {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Confirming...';
+        }
+        var playbookRaw = localStorage.getItem(STORAGE_KEYS.playbook);
+        if (!playbookRaw) {
+            var fresh = { timestamp: new Date().toISOString(), autoConfirmed: true };
+            localStorage.setItem(STORAGE_KEYS.playbook, JSON.stringify(fresh));
+        }
+        var result = refreshGamePlan();
+        if (btn) {
+            btn.textContent = result ? '\u2713 Confirmed' : '\u26A0 No data - set playbook first';
+            btn.style.color = result ? '#4ade80' : '#f59e0b';
+            setTimeout(function() {
+                if (typeof DailyRefreshGate !== 'undefined') {
+                    DailyRefreshGate.updateFreshnessUI();
+                }
+            }, 600);
+        }
+        return result;
     }
 
     // ============================================
@@ -258,10 +297,10 @@
                                 </div>
                             </div>
                             <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                                <button class="btn btn-sm btn-secondary" onclick="DailyRefreshGate.confirmBriefing(); DailyRefreshGate.updateFreshnessUI();">
+                                <button class="btn btn-sm btn-secondary" onclick="DailyRefreshGate.confirmBriefing(this);">
                                     Confirm
                                 </button>
-                                <button class="btn btn-sm btn-primary" onclick="showTab('context'); setTimeout(function() { DailyRefreshGate.updateFreshnessUI(); }, 500);">
+                                <button class="btn btn-sm btn-primary" onclick="this.disabled=true; this.textContent='Opening...'; showTab('context'); setTimeout(function() { DailyRefreshGate.updateFreshnessUI(); }, 800);">
                                     Refresh
                                 </button>
                             </div>
@@ -324,7 +363,7 @@
                                 </div>
                             </div>
                             <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                                <button class="btn btn-sm btn-secondary" onclick="DailyRefreshGate.confirmGamePlan(); DailyRefreshGate.updateFreshnessUI();">
+                                <button class="btn btn-sm btn-secondary" onclick="DailyRefreshGate.confirmGamePlan(this);">
                                     Confirm
                                 </button>
                                 <button class="btn btn-sm btn-primary" onclick="showTab('playbook'); setTimeout(function() { DailyRefreshGate.updateFreshnessUI(); }, 500);">
