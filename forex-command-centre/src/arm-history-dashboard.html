@@ -377,6 +377,7 @@ body {
     <div class="tab" onclick="showTab('events',this)">Raw Events</div>
     <div class="tab" onclick="showTab('newsbias',this);loadNewsBias()">News Bias</div>
     <div class="tab" onclick="showTab('tebriefing',this);loadTEBriefing()">&#x1F310; Macro</div>
+    <div class="tab" onclick="showTab('igsentiment',this);loadIGSentiment()">&#x1F9ED; Sentiment</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -535,6 +536,47 @@ body {
         <div class="card-body" style="padding:0;" id="te-bonds-body"><div class="loading" style="padding:14px;">&#x23F3;</div></div>
     </div>
 </div>
+
+<!-- IG CLIENT SENTIMENT TAB -->
+<div class="page" id="tab-igsentiment">
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F9ED; IG Retail Sentiment</span>
+            <span class="card-meta" id="igs-meta">Contrarian — fade the crowd</span>
+        </div>
+        <div class="card-body" style="padding:10px 14px 6px">
+            <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 10px">
+                <strong style="color:var(--color-pass)">Green</strong> = crowd on wrong side (contrarian confirms your trade) &nbsp;|&nbsp;
+                <strong style="color:var(--color-warning)">Amber</strong> = neutral / mixed &nbsp;|&nbsp;
+                <strong style="color:var(--color-fail)">Red</strong> = crowd agrees with trade direction (caution)
+            </p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 10px">
+            <select id="igs-filter-asset" onchange="renderIGSentiment()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Asset Classes</option>
+                <option value="forex">Forex</option>
+                <option value="indices">Indices</option>
+                <option value="metals">Metals</option>
+                <option value="energy">Energy</option>
+                <option value="crypto">Crypto</option>
+            </select>
+            <select id="igs-filter-signal" onchange="renderIGSentiment()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Signals</option>
+                <option value="STRONG BULLISH">Strong Bullish</option>
+                <option value="SOFT BULLISH">Soft Bullish</option>
+                <option value="NEUTRAL">Neutral</option>
+                <option value="SOFT BEARISH">Soft Bearish</option>
+                <option value="STRONG BEARISH">Strong Bearish</option>
+            </select>
+        </div>
+        <div class="card-body" style="padding:0;" id="igs-body"><div class="loading" style="padding:14px;">&#x23F3;</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><span class="card-title">&#x1F4CA; Sentiment Summary</span></div>
+        <div class="card-body" id="igs-summary-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+</div>
+
 <script>
 var API_BASE    = 'https://api.pineros.club';
 var currentDays = 30;
@@ -1273,6 +1315,160 @@ function loadData() {
 
 loadData();
 setInterval(loadData, 120000);
+
+// ── IG SENTIMENT ─────────────────────────────────────────────────────────────
+
+var _igSentimentData = null;
+
+// Asset class classification
+var IG_ASSET_CLASS = {
+    forex:   ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','EURGBP','EURJPY',
+               'GBPJPY','AUDJPY','NZDJPY','CADJPY','CHFJPY','EURAUD','EURCAD','EURCHF','EURNZD',
+               'GBPAUD','GBPCAD','GBPCHF','GBPNZD','AUDCAD','AUDCHF','AUDNZD','NZDCAD','NZDCHF','CADCHF'],
+    indices: ['JP225USD','JP225YJPY','AU200AUD','HK33HKD','US30USD','NAS100USD','UK100GBP','FR40EUR','EU50EUR','DE30EUR'],
+    metals:  ['XAUUSD','XAGUSD','XCUUSD'],
+    energy:  ['WTICOUSD','BCOUSD','NATGASUSD'],
+    crypto:  ['BTCUSD','ETHUSD'],
+};
+
+function getAssetClass(pair) {
+    for (var cls in IG_ASSET_CLASS) {
+        if (IG_ASSET_CLASS[cls].indexOf(pair) !== -1) return cls;
+    }
+    return 'other';
+}
+
+function igSentimentColour(signal, strength) {
+    if (strength === 'NEUTRAL') return 'var(--text-muted)';
+    if (signal === 'BULLISH') return strength === 'STRONG' ? '#4ade80' : '#86efac';
+    if (signal === 'BEARISH') return strength === 'STRONG' ? '#f87171' : '#fca5a5';
+    return 'var(--text-muted)';
+}
+
+function igSentimentBg(signal, strength) {
+    if (strength === 'NEUTRAL') return 'transparent';
+    if (signal === 'BULLISH') return strength === 'STRONG' ? 'rgba(74,222,128,0.08)' : 'rgba(74,222,128,0.04)';
+    if (signal === 'BEARISH') return strength === 'STRONG' ? 'rgba(248,113,113,0.08)' : 'rgba(248,113,113,0.04)';
+    return 'transparent';
+}
+
+function loadIGSentiment() {
+    if (_igSentimentData) { renderIGSentiment(); return; }
+    fetch(API_BASE + '/ig-sentiment/latest')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _igSentimentData = d;
+            var meta = document.getElementById('igs-meta');
+            if (meta) {
+                var updated = d.last_updated ? new Date(d.last_updated).toLocaleString('en-AU') : 'unknown';
+                meta.textContent = (d.stale ? '⚠ Stale — ' : 'Updated: ') + updated;
+                meta.style.color = d.stale ? 'var(--color-warning)' : 'var(--text-muted)';
+            }
+            renderIGSentiment();
+            renderIGSentimentSummary(d);
+        })
+        .catch(function() {
+            document.getElementById('igs-body').innerHTML =
+                '<div style="padding:14px;color:var(--text-muted)">&#x26A0; Could not load sentiment data</div>';
+        });
+}
+
+function renderIGSentiment() {
+    if (!_igSentimentData || !_igSentimentData.sentiment) return;
+    var sentiment = _igSentimentData.sentiment;
+    var assetFilter  = document.getElementById('igs-filter-asset')  ? document.getElementById('igs-filter-asset').value  : '';
+    var signalFilter = document.getElementById('igs-filter-signal') ? document.getElementById('igs-filter-signal').value : '';
+
+    var pairs = Object.keys(sentiment);
+
+    // Filter
+    pairs = pairs.filter(function(pair) {
+        if (assetFilter && getAssetClass(pair) !== assetFilter) return false;
+        if (signalFilter && sentiment[pair].label !== signalFilter) return false;
+        return true;
+    });
+
+    if (pairs.length === 0) {
+        document.getElementById('igs-body').innerHTML = '<div style="padding:14px;color:var(--text-muted)">No pairs match filters</div>';
+        return;
+    }
+
+    var html = '<table class="data-table"><thead><tr>' +
+        '<th>Pair</th><th>Asset</th>' +
+        '<th class="r">% Long</th><th class="r">% Short</th>' +
+        '<th>Crowd</th><th>Signal</th>' +
+        '</tr></thead><tbody>';
+
+    pairs.forEach(function(pair) {
+        var s   = sentiment[pair];
+        var cls = getAssetClass(pair);
+        var sigColour = igSentimentColour(s.contrarian_signal, s.strength);
+        var rowBg     = igSentimentBg(s.contrarian_signal, s.strength);
+        var longBar   = Math.round(s.long_pct);
+        var shortBar  = Math.round(s.short_pct);
+
+        html += '<tr style="background:' + rowBg + '">' +
+            '<td style="font-weight:600;font-family:var(--font-heading)">' + pair + '</td>' +
+            '<td style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase">' + cls + '</td>' +
+            '<td class="r">' +
+                '<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px">' +
+                    '<div style="width:50px;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden">' +
+                        '<div style="width:' + longBar + '%;height:100%;background:#4ade80;border-radius:3px"></div>' +
+                    '</div>' +
+                    '<span style="color:#4ade80;font-weight:600;font-size:0.8rem;min-width:36px">' + s.long_pct + '%</span>' +
+                '</div>' +
+            '</td>' +
+            '<td class="r">' +
+                '<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px">' +
+                    '<div style="width:50px;height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden">' +
+                        '<div style="width:' + shortBar + '%;height:100%;background:#f87171;border-radius:3px"></div>' +
+                    '</div>' +
+                    '<span style="color:#f87171;font-weight:600;font-size:0.8rem;min-width:36px">' + s.short_pct + '%</span>' +
+                '</div>' +
+            '</td>' +
+            '<td style="font-size:0.75rem;color:var(--text-secondary)">' + s.crowd_direction + '</td>' +
+            '<td style="font-weight:700;font-size:0.8rem;color:' + sigColour + '">' + s.label + '</td>' +
+        '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('igs-body').innerHTML = html;
+}
+
+function renderIGSentimentSummary(d) {
+    if (!d || !d.sentiment) return;
+    var sentiment = d.sentiment;
+    var counts = { 'STRONG BULLISH':0, 'SOFT BULLISH':0, 'NEUTRAL':0, 'SOFT BEARISH':0, 'STRONG BEARISH':0 };
+    Object.keys(sentiment).forEach(function(pair) {
+        var lbl = sentiment[pair].label;
+        if (counts[lbl] !== undefined) counts[lbl]++;
+    });
+    var total = Object.keys(sentiment).length;
+    var html = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center;">';
+    var items = [
+        { key:'STRONG BULLISH', colour:'#4ade80', label:'Strong
+Bullish' },
+        { key:'SOFT BULLISH',   colour:'#86efac', label:'Soft
+Bullish' },
+        { key:'NEUTRAL',        colour:'var(--text-muted)', label:'Neutral' },
+        { key:'SOFT BEARISH',   colour:'#fca5a5', label:'Soft
+Bearish' },
+        { key:'STRONG BEARISH', colour:'#f87171', label:'Strong
+Bearish' },
+    ];
+    items.forEach(function(item) {
+        var n = counts[item.key] || 0;
+        var pct = total > 0 ? Math.round(n / total * 100) : 0;
+        html += '<div style="background:var(--bg-tertiary);border-radius:8px;padding:10px 6px">' +
+            '<div style="font-size:1.4rem;font-weight:700;color:' + item.colour + '">' + n + '</div>' +
+            '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px">' + pct + '%</div>' +
+            '<div style="font-size:0.65rem;color:var(--text-secondary);margin-top:2px;white-space:pre-line">' + item.label + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    html += '<p style="font-size:0.7rem;color:var(--text-muted);margin:10px 0 0;text-align:center">' + total + ' instruments tracked via IG Client Sentiment API</p>';
+    document.getElementById('igs-summary-body').innerHTML = html;
+}
 </script>
 </body>
 </html>

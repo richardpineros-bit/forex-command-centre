@@ -1,8 +1,26 @@
 // armed-panel.js - Extracted from index.html Phase 2
 (function() {
     // Configuration
-    const STATE_URL = 'https://api.pineros.club/state';
+    const STATE_URL      = 'https://api.pineros.club/state';
+    const SENTIMENT_URL  = 'https://api.pineros.club/ig-sentiment/latest';
     const REFRESH_INTERVAL = 30000; // 30 seconds
+
+    // Sentiment cache (refreshed every 4h by cron, fetch once on load)
+    var _sentimentData  = null;
+    var _sentimentStale = true;
+
+    async function fetchSentiment() {
+        try {
+            var r = await fetch(SENTIMENT_URL, { cache: 'no-cache' });
+            if (!r.ok) return;
+            var d = await r.json();
+            if (d && d.sentiment) {
+                _sentimentData  = d.sentiment;
+                _sentimentStale = d.stale || false;
+            }
+        } catch(e) { /* advisory only - fail silently */ }
+    }
+    fetchSentiment();
 
     // ── Armed panel instrument filter (settings-driven) ─────────────────────
     // Reads excluded instruments from localStorage (set in Settings tab)
@@ -152,6 +170,61 @@
         };
     }
 
+    // Build sentiment sub-row (IG retail positioning - contrarian)
+    function buildSentimentRow(p) {
+        var pair = (p.pair || '').toUpperCase().replace('/', '');
+        if (!_sentimentData || !_sentimentData[pair]) {
+            return ''; // No data — show nothing (advisory only)
+        }
+        var s = _sentimentData[pair];
+        var longPct  = s.long_pct;
+        var shortPct = s.short_pct;
+        var label    = s.label || 'NEUTRAL';
+        var signal   = s.contrarian_signal || 'NEUTRAL';
+        var strength = s.strength || 'NEUTRAL';
+
+        // Soft gate: warn if retail crowd ALIGNS with trade direction
+        // (crowd on same side as you = danger sign)
+        var dir = (p.direction || '').toUpperCase();
+        var crowdDir = (s.crowd_direction || '').toUpperCase();
+        var crowdAligned = (dir === 'LONG' && crowdDir === 'LONG') ||
+                           (dir === 'SHORT' && crowdDir === 'SHORT');
+        var crowdContra  = (dir === 'LONG' && crowdDir === 'SHORT') ||
+                           (dir === 'SHORT' && crowdDir === 'LONG');
+
+        // Colour logic
+        var sigColour;
+        if (signal === 'NEUTRAL') {
+            sigColour = 'var(--text-muted)';
+        } else if (crowdAligned && strength !== 'NEUTRAL') {
+            sigColour = 'var(--color-fail)'; // crowd with you = danger
+        } else if (crowdContra && strength !== 'NEUTRAL') {
+            sigColour = 'var(--color-pass)'; // crowd against you = confirming
+        } else {
+            sigColour = signal === 'BULLISH' ? 'var(--color-pass)' : signal === 'BEARISH' ? 'var(--color-fail)' : 'var(--text-muted)';
+        }
+
+        // Warning badge when crowd aligns with your direction
+        var warningHtml = '';
+        if (crowdAligned && strength !== 'NEUTRAL') {
+            warningHtml = '<span style="color:var(--color-warning);font-size:0.65rem;font-weight:700;margin-left:6px">&#x26A0; CROWD WITH YOU</span>';
+        }
+
+        var staleHtml = _sentimentStale ? '<span style="color:var(--text-muted);font-size:0.6rem;margin-left:4px">(stale)</span>' : '';
+
+        return '<div class="armed-bias-row" style="color:var(--text-secondary)">' +
+            '<span style="color:var(--text-muted);font-size:0.7rem">IG Sentiment:</span>' +
+            '<span style="margin-left:6px;font-size:0.7rem">' +
+                '<span style="color:#4ade80">' + longPct + '% L</span>' +
+                '<span style="color:var(--text-muted)"> / </span>' +
+                '<span style="color:#f87171">' + shortPct + '% S</span>' +
+            '</span>' +
+            '<span style="margin-left:6px;font-size:0.7rem;font-weight:700;color:' + sigColour + '">' + label + '</span>' +
+            warningHtml +
+            staleHtml +
+        '</div>';
+    }
+
     // Build the bias sub-row for a pair
     function buildBiasRow(p) {
         var pair = (p.pair || '').toUpperCase().replace('/', '');
@@ -279,7 +352,8 @@
         }
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
-        var biasRowHtml = buildBiasRow(p);
+        var biasRowHtml     = buildBiasRow(p);
+        var sentimentRowHtml = buildSentimentRow(p);
         return '<div class="armed-pair-wrapper">' +
             '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
@@ -293,6 +367,7 @@
                 '<span class="armed-age">' + statusHtml + '</span>' +
             '</a>' +
             biasRowHtml +
+            sentimentRowHtml +
         '</div>';
     }
 
