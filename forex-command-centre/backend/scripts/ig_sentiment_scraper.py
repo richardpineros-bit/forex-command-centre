@@ -47,7 +47,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 # IG REST API base URL (Australia live — same endpoint as global)
 IG_API_BASE = "https://api.ig.com/gateway/deal"
@@ -336,6 +336,45 @@ def run_scrape(config_path, verbose=False):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def append_sentiment_history(data, history_path):
+    """
+    Append this scrape run to ig-sentiment-history.json.
+    Structure mirrors bias-history.json: list of runs, newest last.
+    Each run: { run_id, timestamp, sentiment: {PAIR: {long_pct, short_pct, label}} }
+    Keeps last 1080 entries (180 days at 6 runs/day).
+    """
+    MAX_ENTRIES = 1080
+
+    run_entry = {
+        "run_id":    "ig_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M"),
+        "timestamp": data["last_updated"],
+        "version":   data["version"],
+        "health":    data["health"],
+        "sentiment": data["sentiment"],
+    }
+
+    history = []
+    if os.path.exists(history_path):
+        try:
+            with open(history_path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+            if not isinstance(history, list):
+                history = []
+        except Exception:
+            history = []
+
+    history.append(run_entry)
+
+    if len(history) > MAX_ENTRIES:
+        history = history[-MAX_ENTRIES:]
+
+    os.makedirs(os.path.dirname(history_path), exist_ok=True)
+    with open(history_path, "w", encoding="utf-8") as f:
+        json.dump(history, f, separators=(",", ":"))  # compact - no indent
+
+    return len(history)
+
+
 def main():
     parser = argparse.ArgumentParser(description=f"IG Sentiment Scraper v{VERSION}")
     mode = parser.add_mutually_exclusive_group()
@@ -370,14 +409,20 @@ def main():
         return
 
     if args.unraid:
+        # Write latest snapshot (overwrite)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+
+        # Append to history (for edge discovery in Intel Hub)
+        history_path = output_path.replace("ig-sentiment.json", "ig-sentiment-history.json")
+        history_count = append_sentiment_history(data, history_path)
+
         h = data["health"]
         print(f"[ig_sentiment_scraper v{VERSION}] Done: "
               f"{h['unique_markets_fetched']}/{h['unique_markets_attempted']} markets fetched, "
               f"{h['fcc_pairs_mapped']} FCC pairs mapped. "
-              f"Written to {output_path}")
+              f"Written to {output_path} | History: {history_count} runs")
         if h["failed_ig_ids"]:
             print(f"  Failed markets: {', '.join(h['failed_ig_ids'])}")
     else:
