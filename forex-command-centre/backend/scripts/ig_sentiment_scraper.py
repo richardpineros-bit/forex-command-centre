@@ -158,7 +158,7 @@ def create_session(api_key, username, password):
     return cst, token
 
 
-def get_sentiment(api_key, cst, token, market_id):
+def get_sentiment(api_key, cst, token, market_id, verbose=False):
     """Fetch client sentiment for a single IG market ID.
     Returns dict with longPositionPercentage, shortPositionPercentage or None on failure."""
     url = f"{IG_API_BASE}/clientsentiment/{market_id}"
@@ -173,8 +173,12 @@ def get_sentiment(api_key, cst, token, market_id):
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
             return r.json()
+        if verbose:
+            print(f"    [{market_id}] HTTP {r.status_code}: {r.text[:120]}")
         return None
-    except Exception:
+    except Exception as e:
+        if verbose:
+            print(f"    [{market_id}] Exception: {e}")
         return None
 
 
@@ -275,7 +279,7 @@ def run_scrape(config_path, verbose=False):
         print(f"Fetching sentiment for {len(unique_ig_ids)} unique IG markets...")
 
     for ig_id in unique_ig_ids:
-        result = get_sentiment(api_key, cst, token, ig_id)
+        result = get_sentiment(api_key, cst, token, ig_id, verbose=verbose)
         time.sleep(0.3)   # Polite rate limiting
 
         if result and "longPositionPercentage" in result:
