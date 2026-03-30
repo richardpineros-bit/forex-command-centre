@@ -11,6 +11,7 @@ const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/data/structure.json';
 const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json';
 const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.json';
 const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
+const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.json';
 
 // ============================================================================
 // VERSION INFO
@@ -1803,6 +1804,43 @@ var server = http.createServer(function(req, res) {
             events: events,
             lastUpdate: data.lastUpdate
         }));
+        return;
+    }
+
+    // ========================================================================
+    // IG CLIENT SENTIMENT ENDPOINT (v2.7.0)
+    // ========================================================================
+
+    // GET /ig-sentiment/latest - Return IG retail sentiment per instrument
+    // Reads ig-sentiment.json written by ig_sentiment_scraper.py (every 4h)
+    if (req.method === 'GET' && req.url === '/ig-sentiment/latest') {
+        var STALE_HOURS_IG = 6;
+        try {
+            if (!fs.existsSync(IG_SENTIMENT_FILE)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: false,
+                    error: 'ig-sentiment.json not found. Run ig_sentiment_scraper.py --unraid first.',
+                    last_updated: null,
+                    stale: true
+                }));
+                return;
+            }
+            var igRaw = fs.readFileSync(IG_SENTIMENT_FILE, 'utf8');
+            var igData = JSON.parse(igRaw);
+            var isStale = true;
+            if (igData.last_updated) {
+                var ageMsIG = Date.now() - new Date(igData.last_updated).getTime();
+                isStale = ageMsIG > (STALE_HOURS_IG * 60 * 60 * 1000);
+            }
+            igData.stale = isStale;
+            igData.ok = true;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(igData));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'ig-sentiment read error: ' + e.message, stale: true }));
+        }
         return;
     }
 
