@@ -1,3 +1,28 @@
+## [v5.4.4] - 2026-03-31
+### Execute: optional levels + Oanda backfill + smart auto-link
+- **execute-integration.js v1.1.0**: entry/SL/TP fields are now optional
+  - Missing levels surface a blue backfill-ack-panel above EXECUTE button
+  - Trader must tick: "I confirm entry/SL/TP will be back-filled from Oanda immediately"
+  - Hard blocks remain non-negotiable: pair/direction, server permission gate, EXTENDED zone
+  - R:R check skipped (not blocked) when levels are absent
+- **Smart immediate Oanda link**: after execute, polls open trades every 5s for 30s
+  - Open found: captures actual entry, SL, TP, units, direction
+  - Closed found (immediate fill+close): captures everything including P&L, duration, R-value
+  - Timeout: notifies user to use manual Fetch button
+- **Fetch from Oanda button**: added to all pending/open trade cards
+  - Smart: checks open trades first, then closed history
+  - Calculates R-multiple and updates card on link
+  - Shows slippage (pips, signed) when planned entry exists
+- **trade-capture.js populateJournalFromTrade() extended**:
+  - trade-entry-zone, trade-vol-state, trade-mtf now auto-populated
+  - trade-units populated from Oanda
+  - trade-slippage auto-calculated (pips, signed)
+  - trade-r-display populated for closed trades
+  - trade-status set correctly (open/closed)
+  - trade-classification mapped from playbook name
+  - Backfill note appended to notes when levels were missing at capture
+- **index.html**: backfill-ack-panel added above EXECUTE button (hidden by default, JS-controlled)
+
 ## [v5.4.3] - 2026-03-30
 ### IG Client Sentiment Scraper — Satellite 3 fully operational
 - ig_sentiment_scraper.py v1.0.1: 45/45 markets fetched (28 forex + indices + metals + energy + crypto)

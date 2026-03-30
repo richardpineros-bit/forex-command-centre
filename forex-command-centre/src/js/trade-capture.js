@@ -511,10 +511,57 @@
             setChecked('exec-stop-invalidation', pre.executionChecks.stopInvalidation);
             setChecked('exec-spread-ok', pre.executionChecks.spreadOk);
         }
-        
+
+        // --- ADDITIONAL AUTO-POPULATE (v1.1.0) ---
+
+        // Hidden metadata fields
+        setValue('trade-entry-zone', pre.entryZone || '');
+        setValue('trade-vol-state',  pre.volState  || '');
+        setValue('trade-mtf',        pre.mtfAlignment || '');
+
+        // Units from Oanda
+        if (oanda.units) setValue('trade-units', oanda.units);
+
+        // Slippage (pips, with sign)
+        if (oanda.actualEntry && pre.plannedEntry) {
+            var pipMult = (pre.pair || '').includes('JPY') ? 100 : 10000;
+            var slip    = parseFloat(((oanda.actualEntry - pre.plannedEntry) * pipMult).toFixed(1));
+            setValue('trade-slippage', slip);
+        }
+
+        // R-multiple (closed trades only)
+        if (trade.review && trade.review.rMultiple !== null && trade.review.rMultiple !== undefined) {
+            setValue('trade-r-display', trade.review.rMultiple);
+        }
+
+        // Trade status
+        if (trade.status === 'open') setValue('trade-status', 'open');
+        else if (trade.status === 'closed_pending') setValue('trade-status', 'closed');
+
+        // Playbook
+        if (pre.playbook && pre.playbook.name) {
+            // trade-classification is the nearest mapping
+            setValue('trade-classification', pre.playbook.name);
+        }
+
+        // Append backfill note to notes field if levels were missing at capture
+        var notesEl = document.getElementById('trade-notes');
+        if (notesEl) {
+            var existingNotes = notesEl.value || '';
+            var hadMissingLevels = !pre.plannedEntry || !pre.plannedStop || !pre.plannedTP1;
+            if (hadMissingLevels) {
+                var backfillNote = '[Levels back-filled from Oanda after execution]';
+                if (existingNotes.indexOf(backfillNote) === -1) {
+                    notesEl.value = existingNotes
+                        ? existingNotes + '\n' + backfillNote
+                        : backfillNote;
+                }
+            }
+        }
+
         // Store reference
         window._currentEditingTrade = trade;
-        
+
         console.log('[TradeCapture] Populated journal from:', trade.id);
     }
 

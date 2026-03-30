@@ -1627,6 +1627,17 @@
                     </div>
                 </div>
                 
+                <!-- Backfill override: shown when entry/SL/TP are missing -->
+                <div id="backfill-ack-panel" style="display:none; margin-bottom:0.75rem; padding:0.6rem 0.75rem; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.4); border-radius:6px;">
+                    <label class="checkbox-wrapper" style="margin:0; align-items:flex-start;">
+                        <input type="checkbox" id="val-backfill-ack" onchange="updateValidationVerdict()">
+                        <span class="checkbox-label" style="font-size:0.8rem; color:var(--color-info);">
+                            &#x26A0; I confirm entry / SL / TP are not yet filled &mdash; I will back-fill from Oanda immediately after execution.
+                            Levels will auto-fetch when the trade links.
+                        </span>
+                    </label>
+                </div>
+
                 <button class="btn btn-primary btn-lg mt-lg" style="width: 100%;" id="execute-trade-btn" disabled onclick="executeTradeFromValidation()">
                     EXECUTE TRADE
                 </button>
