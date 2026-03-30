@@ -30,7 +30,9 @@
         'ftcc_settings': 'settings',
         'ftcc_regime': 'regime',
         'ftcc_playbook': 'playbook',
-        'fcc_daily_context': 'daily-context'
+        'fcc_daily_context': 'daily-context',
+        'fcc_armed_exclude': 'armed-exclude',
+        'fcc-dashboard-theme': 'dashboard-theme'
     };
 
     // Reverse map for intercept lookups

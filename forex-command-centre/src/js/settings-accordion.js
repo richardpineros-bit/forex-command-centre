@@ -195,16 +195,28 @@ var DEFAULT_ARMED_EXCLUSIONS = [
 ];
 
 function initArmedFilters() {
-    var excluded = [];
-    try {
-        var stored = localStorage.getItem('fcc_armed_exclude');
-        excluded = stored !== null ? JSON.parse(stored) : DEFAULT_ARMED_EXCLUSIONS;
-    } catch(e) {
-        excluded = DEFAULT_ARMED_EXCLUSIONS;
+    // Try server first, fall back to localStorage, then defaults
+    function applyExclusions(excluded) {
+        document.querySelectorAll('.armed-exclude-cb').forEach(function(cb) {
+            cb.checked = excluded.indexOf(cb.value) !== -1;
+        });
     }
-    document.querySelectorAll('.armed-exclude-cb').forEach(function(cb) {
-        cb.checked = excluded.indexOf(cb.value) !== -1;
-    });
+    if (window.ServerStorage && window.ServerStorage.loadFromServer) {
+        window.ServerStorage.loadFromServer('armed-exclude').then(function(result) {
+            var excluded = (result && result.data) ? result.data : DEFAULT_ARMED_EXCLUSIONS;
+            applyExclusions(excluded);
+        }).catch(function() {
+            try {
+                var stored = localStorage.getItem('fcc_armed_exclude');
+                applyExclusions(stored !== null ? JSON.parse(stored) : DEFAULT_ARMED_EXCLUSIONS);
+            } catch(e) { applyExclusions(DEFAULT_ARMED_EXCLUSIONS); }
+        });
+    } else {
+        try {
+            var stored = localStorage.getItem('fcc_armed_exclude');
+            applyExclusions(stored !== null ? JSON.parse(stored) : DEFAULT_ARMED_EXCLUSIONS);
+        } catch(e) { applyExclusions(DEFAULT_ARMED_EXCLUSIONS); }
+    }
 }
 
 function saveArmedFilters() {
@@ -212,15 +224,21 @@ function saveArmedFilters() {
     document.querySelectorAll('.armed-exclude-cb:checked').forEach(function(cb) {
         excluded.push(cb.value);
     });
+    // Save to server (auto-syncs to localStorage via STORAGE_MAP)
     localStorage.setItem('fcc_armed_exclude', JSON.stringify(excluded));
+    if (window.ServerStorage && window.ServerStorage.saveToServer) {
+        window.ServerStorage.saveToServer('armed-exclude', excluded);
+    }
     var msg = document.getElementById('filter-saved-msg');
     if (msg) { msg.style.display = 'inline'; setTimeout(function() { msg.style.display = 'none'; }, 2000); }
-    // Re-render armed panel
     if (window._lastArmedData && window.ArmedPanel) window.ArmedPanel.toggleContextFilter();
 }
 
 function resetArmedFilters() {
     localStorage.setItem('fcc_armed_exclude', JSON.stringify(DEFAULT_ARMED_EXCLUSIONS));
+    if (window.ServerStorage && window.ServerStorage.saveToServer) {
+        window.ServerStorage.saveToServer('armed-exclude', DEFAULT_ARMED_EXCLUSIONS);
+    }
     initArmedFilters();
     if (window._lastArmedData && window.ArmedPanel) window.ArmedPanel.toggleContextFilter();
 }
