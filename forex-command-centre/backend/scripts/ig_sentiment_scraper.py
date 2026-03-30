@@ -278,7 +278,14 @@ def run_scrape(config_path, verbose=False):
     if verbose:
         print(f"Fetching sentiment for {len(unique_ig_ids)} unique IG markets...")
 
-    for ig_id in unique_ig_ids:
+    for i, ig_id in enumerate(unique_ig_ids):
+        # IG API rate limit: ~30 requests/minute for sentiment endpoint
+        # Pause 65s every 25 requests to avoid 403 exceeded-api-key-allowance
+        if i > 0 and i % 25 == 0:
+            if verbose:
+                print(f"  [Rate limit pause 65s after {i} requests...]")
+            time.sleep(65)
+
         result = get_sentiment(api_key, cst, token, ig_id, verbose=verbose)
         time.sleep(0.3)   # Polite rate limiting
 
