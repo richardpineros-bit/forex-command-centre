@@ -23,6 +23,8 @@
     const API_URL = '/api/storage-api.php';
 
     // Map localStorage keys to server file keys
+    // v1.1.1 fix: corrected theme key (was fcc-dashboard-theme, app writes ftcc_theme)
+    //             added missing keys: scans, goals, no-trades
     const STORAGE_MAP = {
         'ftcc_trades': 'trades',
         'ftcc_circuit_breaker': 'circuit-breaker',
@@ -32,7 +34,10 @@
         'ftcc_playbook': 'playbook',
         'fcc_daily_context': 'daily-context',
         'fcc_armed_exclude': 'armed-exclude',
-        'fcc-dashboard-theme': 'dashboard-theme'
+        'ftcc_theme': 'dashboard-theme',
+        'ftcc_scans': 'scans',
+        'ftcc_goals': 'goals',
+        'ftcc_no_trades': 'no-trades'
     };
 
     // Reverse map for intercept lookups
