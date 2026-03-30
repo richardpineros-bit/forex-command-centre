@@ -417,13 +417,43 @@ function updateValidationVerdict() {
         className = 'verdict-ready';
         if (executeBtn) executeBtn.disabled = false;
     } else if (totalChecks >= totalRequired - 3) {
+        const checkLabels = {
+            pair: 'Pair selected',
+            direction: 'Direction selected',
+            utccScore: 'UTCC Armed (long or short)',
+            slStructure: 'SL: swing identified + buffer added',
+            tpStructure: 'TP: structure identified + path clear',
+            rrAcceptable: 'R:R acceptable',
+            entryStrategy: 'Entry timing (news / session / not Friday)',
+            slStrategy: 'SL strategy confirmed',
+            exitPlan: 'Exit plan (opposite signal + acknowledged)',
+            correlation: 'Correlation accepted',
+            finalStructure: 'Final: structure supports trade',
+            finalRisk: 'Final: position properly sized'
+        };
+        const failing = Object.entries(checks).filter(([k, v]) => !v).map(([k]) => checkLabels[k] || k);
         verdict = '&#x23F3; ALMOST READY';
-        desc = `${totalRequired - totalChecks} more checks needed`;
+        desc = 'Still needed: ' + failing.join(' \u2022 ');
         className = 'verdict-pending';
         if (executeBtn) executeBtn.disabled = true;
     } else {
+        const checkLabels = {
+            pair: 'Pair selected',
+            direction: 'Direction selected',
+            utccScore: 'UTCC Armed (long or short)',
+            slStructure: 'SL: swing identified + buffer added',
+            tpStructure: 'TP: structure identified + path clear',
+            rrAcceptable: 'R:R acceptable',
+            entryStrategy: 'Entry timing (news / session / not Friday)',
+            slStrategy: 'SL strategy confirmed',
+            exitPlan: 'Exit plan (opposite signal + acknowledged)',
+            correlation: 'Correlation accepted',
+            finalStructure: 'Final: structure supports trade',
+            finalRisk: 'Final: position properly sized'
+        };
+        const failing = Object.entries(checks).filter(([k, v]) => !v).map(([k]) => checkLabels[k] || k);
         verdict = '&#x23F3; INCOMPLETE';
-        desc = `Complete structure analysis and confirmations (${totalChecks}/${totalRequired})`;
+        desc = 'Still needed: ' + failing.join(' \u2022 ');
         className = 'verdict-pending';
         if (executeBtn) executeBtn.disabled = true;
     }
@@ -678,6 +708,12 @@ function handleCorrelationOverride() {
 
 
 function executeTradeFromValidation() {
+    // GHOST CLICK GUARD: Block accidental execute from armed pair bar navigation
+    // Mobile touch events can fire on execute button immediately after tab switch
+    if (window._lastArmedNavTime && (Date.now() - window._lastArmedNavTime) < 1000) {
+        console.log('[Execute] Blocked - navigation guard active (' + (Date.now() - window._lastArmedNavTime) + 'ms)');
+        return;
+    }
     // Get core validation data
     const pair = document.getElementById('val-pair')?.value;
     const direction = document.getElementById('val-direction')?.value;

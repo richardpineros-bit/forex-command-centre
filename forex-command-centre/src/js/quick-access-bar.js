@@ -79,7 +79,7 @@ const QuickAccessBar = (function() {
                 const colour = pnl >= 0 ? '#22c55e' : '#ef4444';
                 const dirEmoji = trade.direction === 'long' || trade.direction === 'buy' ? '📈' : '📉';
                 
-                html += '<div class="quick-item open-position" onclick="showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (trade.pair || '') + '\'; }, 100);">' +
+                html += '<div class="quick-item open-position" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (trade.pair || '') + '\'; }, 100);">' +
                     '<span class="quick-item-emoji">' + dirEmoji + '</span>' +
                     '<span class="quick-item-label">' +
                         '<span class="quick-item-pair">' + (trade.pair || '?') + '</span>' +
@@ -97,7 +97,7 @@ const QuickAccessBar = (function() {
                 const itemClass = ttlStatus.state === 'fomo' ? 'armed-fomo' : 'armed-ready';
                 const statusLabel = ttlStatus.state === 'fomo' ? 'FOMO' : 'READY';
                 
-                html += '<div class="quick-item ' + itemClass + '" onclick="showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (armed.pair || '') + '\'; updateInstitutionalChecklist(); }, 100);" title="' + (armed.pair || '') + ' \u2014 ' + statusLabel + '">' +
+                html += '<div class="quick-item ' + itemClass + '" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (armed.pair || '') + '\'; updateInstitutionalChecklist(); }, 100);" title="' + (armed.pair || '') + ' \u2014 ' + statusLabel + '">' +
                     '<span class="quick-item-emoji">' + dirEmoji + '</span>' +
                     '<span class="quick-item-label">' +
                         '<span class="quick-item-pair">' + (armed.pair || '?') + '</span>' +
