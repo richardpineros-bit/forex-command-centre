@@ -47,7 +47,7 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 # IG REST API base URL (Australia live — same endpoint as global)
 IG_API_BASE = "https://api.ig.com/gateway/deal"
@@ -98,32 +98,28 @@ INSTRUMENT_MAP = {
     "JP225USD":  "JP225",
     "JP225YJPY": "JP225",    # Same IG market, different FCC naming
     "AU200AUD":  "AU200",
-    "HK33HKD":   "HK33",
-    "CN50USD":   "CN50",
+    "HK33HKD":   "HS34",    # IG marketId for Hang Seng / HK50
     # ── Other indices ────────────────────────────────────────────────────────
     "US30USD":   "WALL",
-    "US2000USD": "US2000",
-    "SPX500USD": "SPX500",
-    "NAS100USD": "NASDAQ",
-    "UK100GBP":  "UK100",
-    "FR40EUR":   "FRANCE40",
-    "EU50EUR":   "STOXX50",
-    "DE30EUR":   "GERMANY40",
+    "NAS100USD": "USTECH",
+    "UK100GBP":  "FT100",
+    "FR40EUR":   "FR40",
+    "EU50EUR":   "EU50",
+    "DE30EUR":   "DE30",
+    # CN50USD, US2000USD, SPX500USD — no IG client sentiment available, excluded
     # ── Metals ───────────────────────────────────────────────────────────────
-    "XAUUSD":   "GOLD",
-    "XAGUSD":   "SILVER",
-    "XPTUSD":   "PLATINUM",
+    "XAUUSD":   "GC",
+    "XAGUSD":   "SI",
     "XCUUSD":   "COPPER",
+    # XPTUSD (Platinum) — no IG client sentiment available, excluded
     # ── Energy ───────────────────────────────────────────────────────────────
-    "WTICOUSD": "CRUDE",
-    "BCOUSD":   "BRENT",
-    "NATGASUSD":"NATURALGAS",
+    "WTICOUSD": "CL",
+    "BCOUSD":   "LCO",
+    "NATGASUSD":"NG",
     # ── Crypto ───────────────────────────────────────────────────────────────
     "BTCUSD":   "BITCOIN",
-    "ETHUSD":   "ETHEREUM",
-    "BCHUSD":   "BITCOINCASH",
-    "LTCUSD":   "LITECOIN",
-    # MBTCUSD — no IG market ID, excluded
+    "ETHUSD":   "ETHUSD",
+    # BCHUSD, LTCUSD, MBTCUSD — no IG client sentiment available, excluded
 }
 
 # Deduplicated IG market IDs (JP225 appears twice in FCC names)
