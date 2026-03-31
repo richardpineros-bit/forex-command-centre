@@ -669,7 +669,7 @@ function renderStats(data) {
     var avg = sc.length ? Math.round(sc.reduce(function(a,b){return a+b;},0)/sc.length) : 0;
     var longs   = events.filter(function(e){ var d=(e.direction||'').toUpperCase(); return d==='LONG'||d==='BULL'; }).length;
     var longPct = total > 0 ? Math.round((longs/total)*100) : 0;
-    var full5   = events.filter(function(e){return e.criteria>=5;}).length;
+    var full5   = events.filter(function(e){return e.criteria>=4;}).length;
     var qPct    = total > 0 ? Math.round((full5/total)*100) : 0;
     var imp     = events.filter(function(e){return e.riskMult && e.riskMult<1.0;}).length;
     var iPct    = total > 0 ? Math.round((imp/total)*100) : 0;
@@ -679,7 +679,7 @@ function renderStats(data) {
         sc3('Top Pair',     topPair,       topCnt+' arms',                                                 'blue') +
         sc3('Avg Score',    avg||'--',     'Across all arms',                                              avg>=83?'green':avg>=80?'blue':'amber') +
         sc3('Long Bias',    longPct+'%',   longs+' of '+total,                                             'green') +
-        sc3('5/5 Quality',  qPct+'%',      full5+' full setups',                                           'purple') +
+        sc3('4/4 Quality',  qPct+'%',      full5+' full setups',                                           'purple') +
         sc3('Impaired Arms',iPct+'%',      imp+' arms with reduced risk',                                  iPct>20?'red':'');
 }
 function sc3(label, val, sub, cls) {
@@ -791,7 +791,7 @@ function renderPairDetail(data) {
         sc3('Total Arms',   t.total,              '', 'blue') +
         sc3('Avg Score',    t.avgScore||'--',      '', t.avgScore>=83?'green':'amber') +
         sc3('Avg RSI',      t.avgRsi||'--',        'At arm time', '') +
-        sc3('Quality Rate', (t.qualityRate||0)+'%','5/5 criteria', t.qualityRate>=80?'green':'amber') +
+        sc3('Quality Rate', (t.qualityRate||0)+'%','4/4 criteria', t.qualityRate>=80?'green':'amber') +
         '</div>';
 
     // Playbooks

@@ -1689,7 +1689,7 @@ var server = http.createServer(function(req, res) {
                     sessions: {}, scores: [], zones: {},
                     playbooks: {}, volStates: {}, volBehaviours: {},
                     days: {}, hours: [], rsiValues: [],
-                    riskMults: [], criteria5: 0, mtf3: 0,
+                    riskMults: [], criteria4: 0, mtf3: 0,
                     impaired: 0  // arms where riskMult < 1.0
                 };
             }
@@ -1735,7 +1735,7 @@ var server = http.createServer(function(req, res) {
             if (e.riskMult !== undefined) t.riskMults.push(e.riskMult);
 
             // Quality flags
-            if (e.criteria >= 5) t.criteria5++;
+            if (e.criteria >= 4) t.criteria4++;
             if (e.mtf >= 3)      t.mtf3++;
             if (e.riskMult < 1.0) t.impaired++;
         });
@@ -1777,8 +1777,8 @@ var server = http.createServer(function(req, res) {
                 ? vsKeys.sort(function(a,b){ return t.volStates[b]-t.volStates[a]; })[0]
                 : '';
 
-            // Quality rate: criteria5 + mtf3 / total
-            t.qualityRate = t.total > 0 ? Math.round((t.criteria5 / t.total) * 100) : 0;
+            // Quality rate: criteria4 / total
+            t.qualityRate = t.total > 0 ? Math.round((t.criteria4 / t.total) * 100) : 0;
 
             // Impaired rate
             t.impairedRate = t.total > 0 ? Math.round((t.impaired / t.total) * 100) : 0;
