@@ -376,7 +376,7 @@ function toggleBiasDetail() {
     if (!detail) return;
     var isOpen = detail.style.display !== 'none';
     detail.style.display = isOpen ? 'none' : 'block';
-    if (btn) btn.textContent = isOpen ? '&#x25BC; Details' : '&#x25B2; Details';
+    if (btn) btn.innerHTML = isOpen ? '&#x25BC; Details' : '&#x25B2; Details';
 }
 
 // Expose for val-pair onchange
