@@ -28,20 +28,7 @@ function updateInstitutionalChecklist() {
         updateNewsGateWarning(pair);
     }
     
-    // ============================================
-    // STRUCTURE GATE (v2.2.0) - VETO LAYER
-    // Checks ProZones proximity data from alert server.
-    // Renders banner in #structure-gate-banner.
-    // Blocks execution button if price is buying into resistance / shorting into support.
-    // Fail-closed: no data = orange warning displayed.
-    // ============================================
-    if (pair && typeof window.structureGate !== 'undefined') {
-        // Normalise direction value from dropdown
-        var sgDirection = direction.toUpperCase().includes('LONG') || direction.toUpperCase().includes('BULL') ? 'LONG' :
-                          direction.toUpperCase().includes('SHORT') || direction.toUpperCase().includes('BEAR') ? 'SHORT' : '';
-        window.structureGate.checkPair(pair, sgDirection);
-    }
-    
+
     // ============================================
     // CHECK 1: UTCC Armed State (HARD)
     // ============================================
