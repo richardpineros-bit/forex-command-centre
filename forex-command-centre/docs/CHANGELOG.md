@@ -1,3 +1,14 @@
+## [v5.4.2] - 2026-03-31
+### Fix: Quality rate always 0% — criteria threshold corrected to 4/4
+- `forex-alert-server/index.js`: `criteria5` renamed to `criteria4`, threshold changed from `>= 5` to `>= 4`
+- `arm-history-dashboard.html`: overview filter `e.criteria >= 5` → `>= 4`, labels `5/5 Quality` → `4/4 Quality`, `5/5 criteria` → `4/4 criteria`
+- Root cause: Pine Script `utcc-forex` only has 4 criteria (trend score, MTF, volatility, news safety). ATR is a gate on alert-firing, not counted in `criteriaMet`. Max value of `criteriaMet` is 4 — `>= 5` could never trigger.
+
+## [v5.4.1] - 2026-03-31
+### Fix: Session heatmap — Tokyo and London always showing 0
+- `arm-history-dashboard.html`: added `'TOKYO':'TOKYO'` and `'LONDON':'LONDON'` to `SESSION_MAP`
+- Root cause: alert server pre-normalises session labels to uppercase (`TOKYO`, `LONDON`, `NY`) before storing in arm history tally. Dashboard `SESSION_MAP` only had mixed-case source keys (`'Tokyo'`, `'London'`), so uppercase variants fell through silently. Only `'NY':'NY'` matched because the server value was already `NY`.
+
 ## [ProZones v3.6.0] - 2026-03-31
 ### ProZones indicator — auto-calibration for asset class
 - Added `Auto-Calibration` settings group with `Auto-calibrate for asset class` toggle (ON by default)
