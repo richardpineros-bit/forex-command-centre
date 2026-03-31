@@ -1,3 +1,16 @@
+## [ProZones v3.6.0] - 2026-03-31
+### ProZones indicator — auto-calibration for asset class
+- Added `Auto-Calibration` settings group with `Auto-calibrate for asset class` toggle (ON by default)
+- Detects asset class at runtime using `syminfo.type` + ticker string matching (Forex / Metals / Energy / Crypto / Indices)
+- All critical zone parameters (`effSens`, `effClATRMax`, `effClPctMax`, `effMergeATR`, `effTouchCooldown`, `effWVol`) computed automatically per asset class
+- Forex profile preserves proven working values: Sens=85, ATR×=0.8, %=0.0015, Merge=2.5
+- Non-forex: `%` cap raised to 0.01 so ATR× governs zone width on high-price assets (Gold, Oil, BTC etc.)
+- Crypto: tighter ATR×0.4, narrower merge span 1.2, longer cooldown 10 bars, reduced volume weight 0.5
+- Energy: ATR×0.5, Sens 72
+- Debug panel header now shows detected class + mode, e.g. `METALS AUTO S:85`
+- Disable `autoCalib` to revert to full manual control via existing inputs
+- File: `utcc-indicators/multi-touch-zones.pine`
+
 ## [v5.4.4] - 2026-03-31
 ### Execute: optional levels + Oanda backfill + smart auto-link
 - **execute-integration.js v1.1.0**: entry/SL/TP fields are now optional
