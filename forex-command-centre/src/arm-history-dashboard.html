@@ -765,7 +765,10 @@ function renderHeatmap(data) {
 
 // ── PAIR BREAKDOWN ────────────────────────────────────────────────────────────
 function renderPairChips(data) {
-    var tally = data.tally || [];
+    var tally = (data.tally || []).filter(function(t) {
+        var ac = getAssetClass(t.pair);
+        return ac === 'forex' || ac === 'metals' || ac === 'crypto';
+    });
     document.getElementById('pair-chips').innerHTML = tally.map(function(t){
         var cls = selectedPair === t.pair ? ' active' : '';
         return '<div class="pair-chip'+cls+'" onclick="selectPair(\''+t.pair+'\')">' +
