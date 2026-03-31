@@ -1,3 +1,8 @@
+## [v5.4.3] - 2026-03-31
+### Pair breakdown — filter to forex, metals, crypto only
+- `arm-history-dashboard.html`: `renderPairChips()` now filters tally to pairs where `getAssetClass` returns `forex`, `metals`, or `crypto`
+- Indices, bonds, energy excluded — session data is meaningless for exchange-hours instruments (they always fire during their own cash session)
+
 ## [v5.4.2] - 2026-03-31
 ### Fix: Quality rate always 0% — criteria threshold corrected to 4/4
 - `forex-alert-server/index.js`: `criteria5` renamed to `criteria4`, threshold changed from `>= 5` to `>= 4`
