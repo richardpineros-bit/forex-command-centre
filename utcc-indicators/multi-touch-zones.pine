@@ -1,5 +1,5 @@
 //@version=6
-indicator("Pro S/R Zones v3.5.0 - Proximity + Structure Gate", shorttitle="ProZones_V3", overlay=true, max_lines_count=500, max_labels_count=100, max_boxes_count=200)
+indicator("Pro S/R Zones v3.6.0 - Auto-Calibration + Proximity + Structure Gate", shorttitle="ProZones_V3", overlay=true, max_lines_count=500, max_labels_count=100, max_boxes_count=200)
 
 //========================
 // CORE INPUTS
@@ -80,12 +80,51 @@ proxAlertATR    = input.float(1.0,  "Alert when within (ATR)",         minval=0.
 
 dbgOn = input.bool(true, "Show debug panel", group="Debug")
 
+grpAuto = "Auto-Calibration"
+autoCalib = input.bool(true, "Auto-calibrate for asset class", group=grpAuto, tooltip="Detects Forex / Metals / Energy / Crypto / Indices and automatically optimises zone width, merge span, touch cooldown and sensitivity. Disable to use manual settings.")
+
 //========================
 // PERFORMANCE OPTIMIZATIONS - Calculate once per bar
 //========================
 atr14 = ta.atr(14)
 lowestLow = ta.lowest(low, 10)
 highestHigh = ta.highest(high, 10)
+
+//========================
+// ASSET CLASS AUTO-DETECTION
+//========================
+_ticker = syminfo.ticker
+_isForex  = syminfo.type == "forex"
+_isCrypto = syminfo.type == "crypto"
+_isIndex  = syminfo.type == "index"
+_isMetal  = str.contains(_ticker, "XAU") or str.contains(_ticker, "XAG") or
+             str.contains(_ticker, "GOLD") or str.contains(_ticker, "SILVER") or
+             syminfo.basecurrency == "XAU" or syminfo.basecurrency == "XAG"
+_isEnergy = str.contains(_ticker, "USOIL") or str.contains(_ticker, "UKOIL") or
+             str.contains(_ticker, "WTI") or str.contains(_ticker, "BRENT") or
+             str.contains(_ticker, "OIL") or str.contains(_ticker, "NATGAS") or
+             str.contains(_ticker, "NG1") or str.contains(_ticker, "CL1") or
+             str.contains(_ticker, "LCO") or str.contains(_ticker, "BCO")
+
+_assetClass = _isMetal  ? "METALS"  :
+              _isEnergy ? "ENERGY"  :
+              _isCrypto ? "CRYPTO"  :
+              _isIndex  ? "INDICES" :
+              _isForex  ? "FOREX"   : "OTHER"
+
+// Effective parameters — auto when autoCalib ON, manual otherwise
+//   Crypto:  narrow ATR cap, looser merge, longer cooldown, moderate vol weight
+//   Energy:  slightly tighter ATR cap
+//   Metals/Indices/Other: standard ATR cap, wide % cap so ATR governs
+//   Forex:   existing tight % cap is correct
+// Forex baseline: sens=85, ATR×0.8, %=0.0015, merge=2.5 (proven working values)
+// Non-forex: % cap raised to 0.01 so ATR× governs on high-price assets
+effSens          = autoCalib ? (_isCrypto ? 68 : _isEnergy ? 72 : 85) : sens
+effClATRMax      = autoCalib ? (_isCrypto ? 0.4 : _isEnergy ? 0.5 : 0.8) : clATRMax
+effClPctMax      = autoCalib ? (_isForex ? 0.0015 : 0.01) : clPctMax
+effMergeATR      = autoCalib ? (_isCrypto ? 1.2 : 2.5) : mergeATR
+effTouchCooldown = autoCalib ? (_isCrypto ? 10 : 6) : touchCooldown
+effWVol          = autoCalib ? (_isCrypto ? 0.5 : wVol) : wVol
 
 //========================
 // HELPER FUNCTIONS
@@ -102,8 +141,8 @@ f_get_f(a, i) => (i >= 0 and i < array.size(a)) ? array.get(a, i) : na
 f_get_i(a, i) => (i >= 0 and i < array.size(a)) ? array.get(a, i) : 0
 f_get_b(a, i) => (i >= 0 and i < array.size(a)) ? array.get(a, i) : false
 
-f_kSwingATR_auto() => 0.20 + (100 - sens) * (0.30/100.0)
-f_kATR_tol_auto() => 0.25 + (100 - sens) * (0.35/100.0)
+f_kSwingATR_auto() => 0.20 + (100 - effSens) * (0.30/100.0)
+f_kATR_tol_auto() => 0.25 + (100 - effSens) * (0.35/100.0)
 
 f_tol(kATR, kPct, kTick, _atr) =>
     _spread = spreadTol * syminfo.mintick * 10
@@ -155,7 +194,7 @@ f_clamp_width(_lo, _hi, _atr) =>
         [_lo, _hi]
     else
         _half = (_hi - _lo) * 0.5
-        _cap = math.min(clATRMax * _atr, clPctMax * close)
+        _cap = math.min(effClATRMax * _atr, effClPctMax * close)
         if _half > _cap
             _mid = (_lo + _hi) * 0.5
             [_mid - _cap, _mid + _cap]
@@ -244,7 +283,7 @@ f_add_or_expand(_p, _ts, _tol, _isSess) =>
             array.set(arrLo, _idx, loM)
             array.set(arrHi, _idx, hiM)
             _lastBar = f_get_i(arrLastTouchBar, _idx)
-            if (bar_index - _lastBar) >= touchCooldown and not f_get_b(arrBroken, _idx)
+            if (bar_index - _lastBar) >= effTouchCooldown and not f_get_b(arrBroken, _idx)
                 array.set(arrTch, _idx, f_get_i(arrTch, _idx) + 1)
                 array.set(arrLastTouchBar, _idx, bar_index)
             if f_get_i(arrFirst, _idx) == 0
@@ -302,7 +341,7 @@ f_merge_capped() =>
                     if not na(aLo) and not na(aHi) and not na(bLo) and not na(bHi) and f_overlap(aLo, aHi, bLo, bHi)
                         loU = math.min(aLo, bLo)
                         hiU = math.max(aHi, bHi)
-                        allow = (hiU - loU) <= (mergeATR * atr14)
+                        allow = (hiU - loU) <= (effMergeATR * atr14)
                         if allow
                             [loM, hiM] = f_clamp_width(loU, hiU, atr14)
                             array.set(arrLo, i, loM)
@@ -478,7 +517,7 @@ f_interest_and_events() =>
                 
                 if _rej and not f_get_b(arrBroken, i)
                     _lastRejBar = f_get_i(arrLastReject, i)
-                    if (bar_index - _lastRejBar) >= touchCooldown
+                    if (bar_index - _lastRejBar) >= effTouchCooldown
                         array.set(arrReject, i, f_get_i(arrReject, i) + 1)
                         array.set(arrLastReject, i, bar_index)
                 if _broke
@@ -498,14 +537,14 @@ f_interest_and_events() =>
                 
                 _volWeight = useVolWeight ? math.log10(1 + f_get_f(arrVol, i) / volume) : 1.0
                 
-                _sc = wEntry * f_get_f(arrEntR, i) + wPass * f_get_f(arrPasR, i) + wBoundary * f_get_f(arrBndR, i) + wPeak * f_get_f(arrPkR, i) + wReject * f_get_i(arrReject, i) + wVol * _volWeight
+                _sc = wEntry * f_get_f(arrEntR, i) + wPass * f_get_f(arrPasR, i) + wBoundary * f_get_f(arrBndR, i) + wPeak * f_get_f(arrPkR, i) + wReject * f_get_i(arrReject, i) + effWVol * _volWeight
                 _sc *= _ageWeight
                 
                 array.set(arrScore, i, _sc)
                 
                 if (_ent or _bnd) and not f_get_b(arrBroken, i)
                     _lastTchBar = f_get_i(arrLastTouchBar, i)
-                    if (bar_index - _lastTchBar) >= touchCooldown
+                    if (bar_index - _lastTchBar) >= effTouchCooldown
                         array.set(arrTch, i, f_get_i(arrTch, i) + 1)
                         array.set(arrLastTouchBar, i, bar_index)
                 
@@ -598,7 +637,7 @@ else
         if array.size(idxs) > 1
             f_sort_by_score_desc(idxs)
 
-targetN = int(8 * math.pow(1.05, sens))
+targetN = int(8 * math.pow(1.05, effSens))
 targetN := f_clamp(targetN, 8, maxDraw)
 
 while array.size(idxs) > maxDraw
@@ -878,7 +917,7 @@ if dbgOn
         T := table.new(position.top_right, 2, 12, border_width=1, frame_color=color.new(color.white, 80))
     
     table.cell(T, 0, 0, "PRO S/R ZONES • " + tfOpt, text_color=color.white, bgcolor=color.new(color.blue, 60))
-    table.cell(T, 1, 0, "Sens: " + str.tostring(sens))
+    table.cell(T, 1, 0, _assetClass + (autoCalib ? " AUTO" : " MANUAL") + " S:" + str.tostring(effSens))
     
     table.cell(T, 0, 1, "Zones (Mem/Draw)", text_color=color.white, bgcolor=color.new(color.gray, 80))
     cellText = str.tostring(_nZones) + "/" + str.tostring(maxKept) + " • " + str.tostring(cnt) + "/" + str.tostring(maxDraw)
@@ -888,11 +927,11 @@ if dbgOn
     table.cell(T, 1, 2, str.tostring(thrScore, "#.##"))
     
     table.cell(T, 0, 3, "Width Clamp", text_color=color.white, bgcolor=color.new(color.gray, 80))
-    clampText = useClamp ? "ATR×" + str.tostring(clATRMax) + " / " + str.tostring(clPctMax*100, "#.##") + "%" : "OFF"
+    clampText = useClamp ? "ATR×" + str.tostring(effClATRMax) + " / " + str.tostring(effClPctMax*100, "#.##") + "%" : "OFF"
     table.cell(T, 1, 3, clampText)
     
     table.cell(T, 0, 4, "Merge Limit", text_color=color.white, bgcolor=color.new(color.gray, 80))
-    mergeText = "ATR×" + str.tostring(mergeATR) + " / " + str.tostring(_merges) + " passes"
+    mergeText = "ATR×" + str.tostring(effMergeATR) + " / " + str.tostring(_merges) + " passes"
     table.cell(T, 1, 4, mergeText)
     
     table.cell(T, 0, 5, "Display Filter", text_color=color.white, bgcolor=color.new(color.gray, 80))
