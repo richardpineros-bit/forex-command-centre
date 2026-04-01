@@ -1,13 +1,18 @@
-// armed-panel.js - Extracted from index.html Phase 2
+// armed-panel.js v1.1.0 - Quality tier sorting + session dismiss
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
     const SENTIMENT_URL  = 'https://api.pineros.club/ig-sentiment/latest';
     const REFRESH_INTERVAL = 30000; // 30 seconds
+    const API_URL        = '/api/storage-api.php';
 
-    // Sentiment cache (refreshed every 4h by cron, fetch once on load)
+    // Sentiment cache
     var _sentimentData  = null;
     var _sentimentStale = true;
+
+    // Dismissed pairs state (server-side, session-scoped per calendar date AEST)
+    var _dismissedPairs    = new Set();
+    var _dismissedExpanded = false;
 
     async function fetchSentiment() {
         try {
@@ -18,14 +23,50 @@
                 _sentimentData  = d.sentiment;
                 _sentimentStale = d.stale || false;
             }
-        } catch(e) { /* advisory only - fail silently */ }
+        } catch(e) {}
     }
     fetchSentiment();
 
-    // ── Armed panel instrument filter (settings-driven) ─────────────────────
-    // Reads excluded instruments from localStorage (set in Settings tab)
-    // Default: bonds excluded, all indices shown (user can trade them)
+    // Dismiss storage helpers
+    function getTodayAEST() {
+        var now = new Date(Date.now() + 10 * 60 * 60 * 1000);
+        return now.toISOString().slice(0, 10);
+    }
 
+    async function loadDismissed() {
+        try {
+            var r = await fetch(API_URL + '?file=armed-dismissed');
+            if (!r.ok) return;
+            var result = await r.json();
+            if (result.success && result.data) {
+                var d = result.data;
+                var today = getTodayAEST();
+                if (d.date === today && Array.isArray(d.pairs)) {
+                    _dismissedPairs = new Set(d.pairs);
+                } else {
+                    _dismissedPairs = new Set();
+                    saveDismissed();
+                }
+            }
+        } catch(e) {}
+    }
+
+    async function saveDismissed() {
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file: 'armed-dismissed',
+                    data: { date: getTodayAEST(), pairs: Array.from(_dismissedPairs) }
+                })
+            });
+        } catch(e) {}
+    }
+
+    loadDismissed();
+
+    // Armed panel instrument filter
     function getExcludedPairs() {
         try {
             var stored = localStorage.getItem('fcc_armed_exclude');
@@ -35,7 +76,6 @@
     }
 
     function getDefaultExclusions() {
-        // Bonds excluded by default only
         return [
             'USB02YUSD','USB05YUSD','USB10YUSD','USB30YUSD',
             'UK10YGBP','DE10YEUR','JP10YJPY',
@@ -49,12 +89,11 @@
     }
 
     function toggleContextFilter() {
-        if (window._lastArmedData) renderState(window._lastArmedData);
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
     }
 
-    // Elements
-    const countEl = document.getElementById('armed-count');
-    const listEl = document.getElementById('armed-list');
+    const countEl   = document.getElementById('armed-count');
+    const listEl    = document.getElementById('armed-list');
     const refreshEl = document.getElementById('armed-refresh');
     
     if (!countEl || !listEl || !refreshEl) {
@@ -62,7 +101,54 @@
         return;
     }
 
-    // Score colour helper
+    // Quality Tier - returns 'PRIME' | 'STANDARD' | 'DEGRADED'
+    function qualityTier(p) {
+        var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
+        var atrLabel = null;
+        if (atrPct !== null) {
+            if (atrPct >= 80)      atrLabel = 'EXHAUSTED';
+            else if (atrPct >= 60) atrLabel = 'ELEVATED';
+            else if (atrPct >= 30) atrLabel = 'NORMAL';
+            else                   atrLabel = 'IDEAL';
+        }
+
+        var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
+
+        var biasConf = null;
+        if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
+            var verdict = window.NewsBiasEngine.getVerdict(
+                (p.pair || '').toUpperCase().replace('/', ''),
+                (p.direction || '').toLowerCase()
+            );
+            if (verdict) biasConf = verdict.confluence;
+        }
+
+        var crowdAligned = false;
+        if (_sentimentData) {
+            var sym = (p.pair || '').toUpperCase().replace('/', '');
+            var s   = _sentimentData[sym];
+            if (s && (s.strength || 'NEUTRAL') !== 'NEUTRAL') {
+                var dir = (p.direction || '').toUpperCase();
+                var cd  = (s.crowd_direction || '').toUpperCase();
+                crowdAligned = (dir === 'LONG' && cd === 'LONG') ||
+                               (dir === 'SHORT' && cd === 'SHORT');
+            }
+        }
+
+        if (structRaw === 'EXTENDED' || atrLabel === 'EXHAUSTED' ||
+            biasConf === 'CONFLICTING' || crowdAligned) {
+            return 'DEGRADED';
+        }
+
+        if (structRaw === 'FRESH' &&
+            (atrLabel === 'IDEAL' || atrLabel === 'NORMAL') &&
+            biasConf !== 'CONFLICTING' && !crowdAligned) {
+            return 'PRIME';
+        }
+
+        return 'STANDARD';
+    }
+
     function scoreColour(score) {
         if (score >= 85) return 'var(--color-pass)';
         if (score >= 75) return 'var(--color-info)';
@@ -70,28 +156,25 @@
         return 'var(--text-muted)';
     }
 
-    // Bias confluence colour helper
     function biasColour(confluence) {
         if (!confluence || confluence === 'NEUTRAL') return 'var(--text-muted)';
-        if (confluence === 'ALIGNED')    return 'var(--color-pass)';
+        if (confluence === 'ALIGNED')     return 'var(--color-pass)';
         if (confluence === 'CONFLICTING') return 'var(--color-fail)';
         return 'var(--text-muted)';
     }
 
-    // ATR behaviour colour helper
     function atrColour(behaviour) {
         if (!behaviour) return 'var(--text-muted)';
         var b = behaviour.toUpperCase();
-        if (b === 'TREND') return 'var(--color-pass)';
-        if (b === 'EXHAUSTED') return 'var(--color-fail)';
-        if (b === 'SPIKE') return '#f97316';
+        if (b === 'TREND')          return 'var(--color-pass)';
+        if (b === 'EXHAUSTED')      return 'var(--color-fail)';
+        if (b === 'SPIKE')          return '#f97316';
         if (b === 'EXPANDING_FAST') return '#eab308';
         if (b === 'EXPANDING_SLOW') return '#86efac';
-        if (b === 'CONTRACTING') return 'var(--text-muted)';
+        if (b === 'CONTRACTING')    return 'var(--text-muted)';
         return 'var(--text-secondary)';
     }
 
-    // Build TradingView URLs for a pair
     function tvWebUrl(pair) {
         var sym = (pair || '').replace('/', '').toUpperCase();
         return 'https://www.tradingview.com/chart/?symbol=OANDA:' + sym + '&interval=240';
@@ -100,23 +183,17 @@
         var sym = (pair || '').replace('/', '').toUpperCase();
         return 'tradingview://chart?symbol=OANDA:' + sym + '&interval=240';
     }
-    // Try native app, fallback to web
     function openTV(pair) {
         var native = tvNativeUrl(pair);
-        var web = tvWebUrl(pair);
+        var web    = tvWebUrl(pair);
         var iframe = document.createElement('iframe');
         iframe.style.display = 'none';
         document.body.appendChild(iframe);
         iframe.src = native;
-        setTimeout(function() {
-            document.body.removeChild(iframe);
-        }, 500);
-        setTimeout(function() {
-            window.open(web, '_blank');
-        }, 600);
+        setTimeout(function() { document.body.removeChild(iframe); }, 500);
+        setTimeout(function() { window.open(web, '_blank'); }, 600);
     }
 
-    // Permission CSS class
     function permClass(perm) {
         if (!perm) return 'permission-legacy';
         var p = perm.toUpperCase();
@@ -125,7 +202,6 @@
         return 'permission-legacy';
     }
 
-    // Permission display class
     function permDisplayClass(perm) {
         if (!perm) return '';
         var p = perm.toUpperCase();
@@ -135,25 +211,19 @@
         return '';
     }
 
-    // === PHASE 5: TTL & FOMO State Calculation ===
     function calculateTTLState(p) {
-        var now = new Date();
+        var now       = new Date();
         var timestamp = p.timestamp ? new Date(p.timestamp) : now;
-        var ageMs = now - timestamp;
-        var ageHours = ageMs / (1000 * 60 * 60);
+        var ageMs     = now - timestamp;
+        var ageHours  = ageMs / (1000 * 60 * 60);
         
-        var ttlState = 'fresh';
-        var fomoBlocked = false;
+        var ttlState      = 'fresh';
+        var fomoBlocked   = false;
         var fomoCountdown = '';
         
-        // TTL: 24h threshold
-        if (ageHours > 24) {
-            ttlState = 'expired';
-        } else if (ageHours > 8) {
-            ttlState = 'ageing';
-        }
+        if (ageHours > 24)     ttlState = 'expired';
+        else if (ageHours > 8) ttlState = 'ageing';
         
-        // FOMO gate: < 1 hour (forced analysis pause)
         if (ageHours < 1) {
             fomoBlocked = true;
             var remainingMins = Math.ceil((1 - ageHours) * 60);
@@ -162,55 +232,45 @@
             fomoCountdown = rH > 0 ? '~' + rH + 'h ' + rM + 'm' : '~' + rM + 'm';
         }
         
-        return {
-            ttlState: ttlState,
-            fomoBlocked: fomoBlocked,
-            fomoCountdown: fomoCountdown,
-            ageHours: ageHours
-        };
+        return { ttlState: ttlState, fomoBlocked: fomoBlocked,
+                 fomoCountdown: fomoCountdown, ageHours: ageHours };
     }
 
-    // Build sentiment sub-row (IG retail positioning - contrarian)
     function buildSentimentRow(p) {
         var pair = (p.pair || '').toUpperCase().replace('/', '');
-        if (!_sentimentData || !_sentimentData[pair]) {
-            return ''; // No data — show nothing (advisory only)
-        }
-        var s = _sentimentData[pair];
+        if (!_sentimentData || !_sentimentData[pair]) return '';
+        var s        = _sentimentData[pair];
         var longPct  = s.long_pct;
         var shortPct = s.short_pct;
         var label    = s.label || 'NEUTRAL';
         var signal   = s.contrarian_signal || 'NEUTRAL';
         var strength = s.strength || 'NEUTRAL';
 
-        // Soft gate: warn if retail crowd ALIGNS with trade direction
-        // (crowd on same side as you = danger sign)
-        var dir = (p.direction || '').toUpperCase();
+        var dir      = (p.direction || '').toUpperCase();
         var crowdDir = (s.crowd_direction || '').toUpperCase();
         var crowdAligned = (dir === 'LONG' && crowdDir === 'LONG') ||
                            (dir === 'SHORT' && crowdDir === 'SHORT');
         var crowdContra  = (dir === 'LONG' && crowdDir === 'SHORT') ||
                            (dir === 'SHORT' && crowdDir === 'LONG');
 
-        // Colour logic
         var sigColour;
         if (signal === 'NEUTRAL') {
             sigColour = 'var(--text-muted)';
         } else if (crowdAligned && strength !== 'NEUTRAL') {
-            sigColour = 'var(--color-fail)'; // crowd with you = danger
+            sigColour = 'var(--color-fail)';
         } else if (crowdContra && strength !== 'NEUTRAL') {
-            sigColour = 'var(--color-pass)'; // crowd against you = confirming
+            sigColour = 'var(--color-pass)';
         } else {
-            sigColour = signal === 'BULLISH' ? 'var(--color-pass)' : signal === 'BEARISH' ? 'var(--color-fail)' : 'var(--text-muted)';
+            sigColour = signal === 'BULLISH' ? 'var(--color-pass)' :
+                        signal === 'BEARISH' ? 'var(--color-fail)' : 'var(--text-muted)';
         }
 
-        // Warning badge when crowd aligns with your direction
         var warningHtml = '';
         if (crowdAligned && strength !== 'NEUTRAL') {
             warningHtml = '<span style="color:var(--color-warning);font-size:0.65rem;font-weight:700;margin-left:6px">&#x26A0; CROWD WITH YOU</span>';
         }
-
-        var staleHtml = _sentimentStale ? '<span style="color:var(--text-muted);font-size:0.6rem;margin-left:4px">(stale)</span>' : '';
+        var staleHtml = _sentimentStale ?
+            '<span style="color:var(--text-muted);font-size:0.6rem;margin-left:4px">(stale)</span>' : '';
 
         return '<div class="armed-bias-row" style="color:var(--text-secondary)">' +
             '<span style="color:var(--text-muted);font-size:0.7rem">IG Sentiment:</span>' +
@@ -220,12 +280,10 @@
                 '<span style="color:#f87171">' + shortPct + '% S</span>' +
             '</span>' +
             '<span style="margin-left:6px;font-size:0.7rem;font-weight:700;color:' + sigColour + '">' + label + '</span>' +
-            warningHtml +
-            staleHtml +
+            warningHtml + staleHtml +
         '</div>';
     }
 
-    // Build the bias sub-row for a pair
     function buildBiasRow(p) {
         var pair = (p.pair || '').toUpperCase().replace('/', '');
         var dir  = (p.direction || '').toLowerCase();
@@ -241,9 +299,7 @@
 
         var base  = verdict.base_bias  || {};
         var quote = verdict.quote_bias || {};
-        // Don't show "insufficient data" — always show the verdict, even if NEUTRAL
 
-        // Index pairs need explicit base/quote — can't use simple substring split
         var INDEX_CCY = {
             'AU200AUD':['AUD','USD'],'CN50USD':['CNY','USD'],'HK33HKD':['HKD','USD'],
             'JP225YJPY':['JPY','USD'],'JP225USD':['JPY','USD'],
@@ -281,10 +337,27 @@
         '</div>';
     }
 
-    // Build a pair row (used for both armed and candidates) - PHASE 5 ENHANCED
-    function buildRow(p, emoji) {
-        var permCls = permClass(p.permission);
-        var permDisp = permDisplayClass(p.permission);
+    function buildTierHeader(tier, count) {
+        var label, cls;
+        if (tier === 'PRIME') {
+            label = '&#x2B50; PRIME';
+            cls   = 'tier-prime';
+        } else if (tier === 'STANDARD') {
+            label = 'STANDARD';
+            cls   = 'tier-standard';
+        } else {
+            label = '&#x26A0; DEGRADED';
+            cls   = 'tier-degraded';
+        }
+        return '<div class="armed-tier-header ' + cls + '">' +
+            label + '<span class="tier-count">' + count + '</span>' +
+        '</div>';
+    }
+
+    // tier param: 'prime' | 'standard' | 'degraded' | '' (watchlist - no dismiss btn)
+    function buildRow(p, emoji, tier) {
+        var permCls   = permClass(p.permission);
+        var permDisp  = permDisplayClass(p.permission);
         var permLabel = p.permission || '\u2014';
         if (permLabel === 'CONDITIONAL') permLabel = 'COND';
 
@@ -305,25 +378,19 @@
         }
 
         var atrBehav = (p.volBehaviour || '').toUpperCase();
-        var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
+        var atrPct   = p.volLevel ? Math.round(Number(p.volLevel)) : null;
 
-        // Derive actionable label from ATR percentile — matches UTCC Pine Script exactly
-        // <30: IDEAL (expansion likely), 30-59: NORMAL, 60-79: ELEVATED (reduce size 50%), >=80: EXHAUSTED (pass/exit only)
         var atrLabel, atrLabelColour;
         if (atrPct === null) {
             atrLabel = null;
         } else if (atrPct >= 80) {
-            atrLabel = 'EXHAUSTED';
-            atrLabelColour = 'var(--color-fail)';
+            atrLabel = 'EXHAUSTED'; atrLabelColour = 'var(--color-fail)';
         } else if (atrPct >= 60) {
-            atrLabel = 'ELEVATED';
-            atrLabelColour = '#eab308';
+            atrLabel = 'ELEVATED';  atrLabelColour = '#eab308';
         } else if (atrPct >= 30) {
-            atrLabel = 'NORMAL';
-            atrLabelColour = 'var(--color-pass)';
+            atrLabel = 'NORMAL';    atrLabelColour = 'var(--color-pass)';
         } else {
-            atrLabel = 'IDEAL';
-            atrLabelColour = '#86efac';
+            atrLabel = 'IDEAL';     atrLabelColour = '#86efac';
         }
 
         var atrHtml;
@@ -337,8 +404,6 @@
             atrHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
         }
 
-
-        // Structural extension display
         var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
         var structHtml;
         if (structRaw === 'FRESH') {
@@ -350,11 +415,23 @@
         } else {
             structHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
         }
+
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
-        var biasRowHtml     = buildBiasRow(p);
+        // Dismiss button - only for active armed pairs (tier param truthy)
+        var dismissBtn = '';
+        if (tier) {
+            var dOnClick = 'event.stopPropagation();dismissArmedPair(\'' + (p.pair || '') + '\');return false;';
+            dismissBtn = '<button class="armed-dismiss-btn" onclick="' + dOnClick + '" title="Dismiss this session">&#x2716;</button>';
+        }
+
+        var wrapperCls = 'armed-pair-wrapper' + (tier ? ' ' + tier : '');
+
+        var biasRowHtml      = buildBiasRow(p);
         var sentimentRowHtml = buildSentimentRow(p);
-        return '<div class="armed-pair-wrapper">' +
+
+        return '<div class="' + wrapperCls + '">' +
+            dismissBtn +
             '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
                 '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
@@ -371,8 +448,32 @@
         '</div>';
     }
 
+    function buildDismissedSection(dismissedItems) {
+        var count     = dismissedItems.length;
+        var display   = _dismissedExpanded ? 'block' : 'none';
+        var arrow     = _dismissedExpanded ? '\u25b2' : '\u25bc';
+        var toggleTxt = arrow + ' ' + count + ' dismissed \u2014 ' + (_dismissedExpanded ? 'hide' : 'show');
 
-    // Column headers row
+        var html = '<div class="armed-dismissed-toggle" onclick="toggleArmedDismissed()">' +
+            '<span id="armed-dismissed-label">' + toggleTxt + '</span>' +
+        '</div>';
+
+        html += '<div id="armed-dismissed-body" class="armed-dismissed-body" style="display:' + display + '">';
+        for (var i = 0; i < dismissedItems.length; i++) {
+            var p = dismissedItems[i];
+            var rOnClick = 'event.stopPropagation();restoreArmedPair(\'' + (p.pair || '') + '\');return false;';
+            html += '<div class="armed-pair-wrapper dismissed">' +
+                '<div class="armed-dismissed-row">' +
+                    '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
+                    '<span style="color:var(--text-muted);font-size:0.75rem">' + (p.primary || '') + '</span>' +
+                    '<button class="armed-restore-btn" onclick="' + rOnClick + '">Restore</button>' +
+                '</div>' +
+            '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
     function buildColHeaders() {
         return '<div class="armed-col-headers">' +
             '<span></span>' +
@@ -388,13 +489,9 @@
         '</div>';
     }
     
-    // Fetch and render state
     async function fetchArmedState() {
         try {
-            const response = await fetch(STATE_URL, { 
-                method: 'GET',
-                cache: 'no-cache'
-            });
+            const response = await fetch(STATE_URL, { method: 'GET', cache: 'no-cache' });
             if (!response.ok) throw new Error('HTTP ' + response.status);
             const data = await response.json();
             renderArmedState(data);
@@ -404,75 +501,102 @@
     }
     
     function renderArmedState(data) {
-        var armedCount = data.count || 0;
-        var candidateCount = data.candidateCount || 0;
-        var totalCount = armedCount + candidateCount;
+        window._lastArmedData = data;
 
-        // Update count badge -- active armed only (excludes R-OFFSESSION)
-        var activeArmedCount = (data.pairs || []).filter(function(p) { return p.primary !== 'R-OFFSESSION'; }).length;
-        countEl.textContent = activeArmedCount;
-        countEl.className = 'armed-panel-count' + (activeArmedCount === 0 ? ' zero' : '');
+        var rawPairs = (data.pairs || []).filter(function(p) { return !isExcluded(p.pair); });
 
-        // PWA Badge API — show armed count on app icon
+        var allActivePairs  = rawPairs.filter(function(p) { return p.primary !== 'R-OFFSESSION'; });
+        var offSessionPairs = rawPairs.filter(function(p) { return p.primary === 'R-OFFSESSION'; });
+
+        // Separate dismissed from active
+        var dismissedItems = allActivePairs.filter(function(p) { return _dismissedPairs.has(p.pair); });
+        var activePairs    = allActivePairs.filter(function(p) { return !_dismissedPairs.has(p.pair); });
+
+        var activeArmedCount = allActivePairs.length;
+        countEl.textContent  = activeArmedCount;
+        countEl.className    = 'armed-panel-count' + (activeArmedCount === 0 ? ' zero' : '');
+
         if ('setAppBadge' in navigator) {
-            if (activeArmedCount > 0) {
-                navigator.setAppBadge(activeArmedCount).catch(function() {});
-            } else {
-                navigator.clearAppBadge().catch(function() {});
-            }
+            if (activeArmedCount > 0) navigator.setAppBadge(activeArmedCount).catch(function() {});
+            else                      navigator.clearAppBadge().catch(function() {});
         }
         
-        // Update refresh time
         refreshEl.textContent = formatTime(new Date());
         
-        // Build HTML
         var html = '';
 
-        // --- ARMED INSTRUMENTS section ---
+        // Armed Instruments header
         html += '<div class="armed-section-header">' +
             'Armed Instruments ' +
             '<span class="armed-section-count' + (activeArmedCount > 0 ? ' armed' : '') + '">' + activeArmedCount + '</span>' +
         '</div>';
 
-        // Split armed pairs: R-OFFSESSION goes to watchlist pending section
-        var pairs = data.pairs || [];
-        window._lastArmedData = data;
-
-        // Apply context filter (bonds/indices hidden by default)
-        // Apply exclusion filter from settings
-        pairs = pairs.filter(function(p) { return !isExcluded(p.pair); });
-
-        var activePairs = pairs.filter(function(p) { return p.primary !== 'R-OFFSESSION'; });
-        var offSessionPairs = pairs.filter(function(p) { return p.primary === 'R-OFFSESSION'; });
-
         if (activePairs.length > 0) {
+            // Compute quality tier
+            activePairs.forEach(function(p) { p._tier = qualityTier(p); });
+
+            // Sort: PRIME first, then STANDARD, then DEGRADED; score desc within tier
+            activePairs.sort(function(a, b) {
+                var order = { 'PRIME': 0, 'STANDARD': 1, 'DEGRADED': 2 };
+                var ta = order[a._tier] !== undefined ? order[a._tier] : 1;
+                var tb = order[b._tier] !== undefined ? order[b._tier] : 1;
+                if (ta !== tb) return ta - tb;
+                return (b.score || 0) - (a.score || 0);
+            });
+
+            var primeGroup    = activePairs.filter(function(p) { return p._tier === 'PRIME'; });
+            var standardGroup = activePairs.filter(function(p) { return p._tier === 'STANDARD'; });
+            var degradedGroup = activePairs.filter(function(p) { return p._tier === 'DEGRADED'; });
+
             html += buildColHeaders();
-            for (var i = 0; i < activePairs.length; i++) {
-                html += buildRow(activePairs[i], '&#x1F7E2;');
+
+            if (primeGroup.length > 0) {
+                html += buildTierHeader('PRIME', primeGroup.length);
+                for (var i = 0; i < primeGroup.length; i++) {
+                    html += buildRow(primeGroup[i], '&#x1F7E2;', 'prime');
+                }
             }
-        } else {
+            if (standardGroup.length > 0) {
+                html += buildTierHeader('STANDARD', standardGroup.length);
+                for (var j = 0; j < standardGroup.length; j++) {
+                    html += buildRow(standardGroup[j], '&#x1F7E2;', 'standard');
+                }
+            }
+            if (degradedGroup.length > 0) {
+                html += buildTierHeader('DEGRADED', degradedGroup.length);
+                for (var k = 0; k < degradedGroup.length; k++) {
+                    html += buildRow(degradedGroup[k], '&#x1F7E2;', 'degraded');
+                }
+            }
+        } else if (allActivePairs.length === 0) {
             html += '<div class="armed-empty">No instruments armed</div>';
+        } else {
+            html += '<div class="armed-empty" style="font-style:italic">All pairs dismissed \u2014 see below</div>';
         }
 
-        // --- WATCHLIST section (candidates + off-session armed) ---
+        // Dismissed section
+        if (dismissedItems.length > 0) {
+            html += buildDismissedSection(dismissedItems);
+        }
+
+        // Watchlist (candidates + off-session)
         var candidates = data.candidates || [];
-        // Remove candidates already in active armed list
         var armedNames = {};
-        for (var k = 0; k < activePairs.length; k++) {
-            if (activePairs[k].pair) armedNames[activePairs[k].pair] = true;
+        for (var m = 0; m < allActivePairs.length; m++) {
+            if (allActivePairs[m].pair) armedNames[allActivePairs[m].pair] = true;
         }
         candidates = candidates.filter(function(c) { return !armedNames[c.pair]; });
         var watchlistItems = offSessionPairs.concat(candidates);
+
         if (watchlistItems.length > 0) {
             html += '<div class="armed-section-header">' +
                 'Watchlist ' +
                 '<span class="armed-section-count candidate">' + watchlistItems.length + '</span>' +
             '</div>';
             html += buildColHeaders();
-            for (var j = 0; j < watchlistItems.length; j++) {
-                // Orange circle for off-session armed, yellow for candidates
-                var emoji = offSessionPairs.indexOf(watchlistItems[j]) !== -1 ? '&#x1F7E0;' : '&#x1F7E1;';
-                html += buildRow(watchlistItems[j], emoji);
+            for (var n = 0; n < watchlistItems.length; n++) {
+                var wEmoji = offSessionPairs.indexOf(watchlistItems[n]) !== -1 ? '&#x1F7E0;' : '&#x1F7E1;';
+                html += buildRow(watchlistItems[n], wEmoji, '');
             }
         }
 
@@ -488,19 +612,39 @@
         return date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
     }
     
-    // Initial fetch
     fetchArmedState();
-    
-    // Auto-refresh
     setInterval(fetchArmedState, REFRESH_INTERVAL);
     
-    // Expose manual refresh globally
+    // Global API
     window.refreshArmedPanel = fetchArmedState;
     window.ArmedPanel = { toggleContextFilter: toggleContextFilter };
-    // Expose openTV globally for row onclick handlers
     window.openTV = openTV;
-    
-    // Show/hide Clear Expired button after each render
+
+    window.dismissArmedPair = function(pairName) {
+        _dismissedPairs.add(pairName);
+        saveDismissed();
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
+    };
+
+    window.restoreArmedPair = function(pairName) {
+        _dismissedPairs.delete(pairName);
+        saveDismissed();
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
+    };
+
+    window.toggleArmedDismissed = function() {
+        _dismissedExpanded = !_dismissedExpanded;
+        var body  = document.getElementById('armed-dismissed-body');
+        var label = document.getElementById('armed-dismissed-label');
+        if (body)  body.style.display = _dismissedExpanded ? 'block' : 'none';
+        if (label) {
+            var count = _dismissedPairs.size;
+            var arrow = _dismissedExpanded ? '\u25b2' : '\u25bc';
+            label.textContent = arrow + ' ' + count + ' dismissed \u2014 ' +
+                                (_dismissedExpanded ? 'hide' : 'show');
+        }
+    };
+
     function updateClearExpiredButton() {
         var btn = document.getElementById('btn-clear-expired');
         if (!btn) return;
@@ -508,17 +652,14 @@
         btn.style.display = expired.length > 0 ? 'inline-block' : 'none';
     }
     
-    // Observe armed list changes to update button visibility
     var _clearBtnObserver = new MutationObserver(updateClearExpiredButton);
     if (listEl) {
         _clearBtnObserver.observe(listEl, { childList: true, subtree: true });
     }
 })();
 
-// Clear expired armed instruments by sending BLOCKED to server
+// Clear expired armed instruments
 async function clearExpiredArmed() {
-    var expiredRows = document.querySelectorAll('#armed-list .ttl-expired');
-    // Also get pair names from rows with armed-ttl-expired status
     var expiredPairs = [];
     document.querySelectorAll('#armed-list .armed-ttl-expired').forEach(function(el) {
         var row = el.closest('.armed-pair-row');
@@ -534,11 +675,10 @@ async function clearExpiredArmed() {
     }
     
     var stateUrl = 'https://api.pineros.club';
-    var cleared = 0;
+    var cleared  = 0;
     
     for (var i = 0; i < expiredPairs.length; i++) {
         try {
-            // Server expects pipe-delimited text: TYPE|PAIR|REASON
             await fetch(stateUrl + '/webhook', {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
@@ -554,7 +694,6 @@ async function clearExpiredArmed() {
         showToast('Cleared ' + cleared + '/' + expiredPairs.length + ' expired instruments', 'success');
     }
     
-    // Refresh the panel
     if (typeof window.refreshArmedPanel === 'function') {
         setTimeout(window.refreshArmedPanel, 500);
     }

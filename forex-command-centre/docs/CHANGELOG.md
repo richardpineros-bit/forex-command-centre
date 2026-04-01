@@ -1790,3 +1790,25 @@ Instead of relying on trader memory ("Did I check if conditions changed?"), the 
 - INDEX_PAIR_CURRENCIES map added to both scrapers and alert server
 - All 13 index instruments in display; 10 scrapeable ones drive bias scoring
 - US30/NAS100/US2000 display-only (TE pages require browser fingerprinting)
+
+## v5.5.0 - Armed Panel Quality Tier Sorting + Session Dismiss
+
+### New Features
+- **Quality Tier System**: Armed pairs now classified into PRIME / STANDARD / DEGRADED
+  - PRIME: FRESH structure + IDEAL/NORMAL ATR + not CONFLICTING bias + no CROWD WITH YOU
+  - DEGRADED: any of EXT structure, EXHAUSTED ATR, CONFLICTING bias, CROWD WITH YOU
+  - STANDARD: everything else
+- **Quality Sort**: Armed panel sorted PRIME first, then STANDARD, then DEGRADED; score descending within each tier
+- **Tier Headers**: Visual tier separators with amber (PRIME), muted (STANDARD), red (DEGRADED) styling
+- **Session Dismiss**: Hover any armed pair to reveal × dismiss button
+  - Dismissed pairs collapse to a muted "N dismissed — show" footer row
+  - Click footer to expand/collapse dismissed section
+  - "Restore" button per dismissed pair brings it back
+- **Server-Side Dismiss Storage**: Dismissals persisted to `armed-dismissed.json` via storage-api.php
+  - Available across all devices immediately
+  - Auto-clears at AEST date rollover (new trading day = clean slate)
+
+### Files Changed
+- `src/js/armed-panel.js` — v1.1.0
+- `src/css/dashboard.css` — tier headers, dismiss/restore buttons, dismissed section
+- `backend/api/storage-api.php` — added `armed-dismissed` to allowed files whitelist

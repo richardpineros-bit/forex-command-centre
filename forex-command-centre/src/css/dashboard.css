@@ -779,3 +779,130 @@ a.armed-pair-row.armed-row-link:active {
 .armed-bias-ccy { font-weight: 600; }
 .armed-bias-sep { color: var(--text-muted); }
 .armed-bias-net { letter-spacing: 0.02em; }
+
+/* ── Quality Tier Headers ────────────────────────────────────────────────── */
+.armed-tier-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.armed-tier-header.tier-prime {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.07);
+    border-left: 2px solid #f59e0b;
+}
+
+.armed-tier-header.tier-standard {
+    color: var(--text-muted);
+    background: transparent;
+    border-left: 2px solid var(--border-color);
+}
+
+.armed-tier-header.tier-degraded {
+    color: var(--color-fail);
+    background: rgba(239, 68, 68, 0.05);
+    border-left: 2px solid var(--color-fail);
+}
+
+.armed-tier-header .tier-count {
+    background: var(--bg-tertiary);
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: 0.58rem;
+    font-weight: 700;
+}
+
+/* ── Pair wrapper tier overrides ─────────────────────────────────────────── */
+.armed-pair-wrapper {
+    position: relative;
+}
+
+.armed-pair-wrapper.prime {
+    background: rgba(245, 158, 11, 0.03);
+}
+
+.armed-pair-wrapper.degraded {
+    opacity: 0.72;
+}
+
+/* ── Dismiss button ──────────────────────────────────────────────────────── */
+.armed-dismiss-btn {
+    position: absolute;
+    right: 6px;
+    top: 10px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.68rem;
+    padding: 2px 5px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+    line-height: 1;
+    z-index: 2;
+}
+
+.armed-pair-wrapper:hover .armed-dismiss-btn {
+    opacity: 1;
+}
+
+.armed-dismiss-btn:hover {
+    color: var(--color-fail);
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* ── Dismissed section ───────────────────────────────────────────────────── */
+.armed-dismissed-toggle {
+    padding: 7px 12px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: center;
+    margin-top: 6px;
+    border-top: 1px dashed var(--border-color);
+    user-select: none;
+}
+
+.armed-dismissed-toggle:hover {
+    color: var(--text-secondary);
+}
+
+.armed-dismissed-body {
+    border-top: 1px solid var(--border-color);
+}
+
+.armed-pair-wrapper.dismissed {
+    opacity: 0.45;
+}
+
+.armed-dismissed-row {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+}
+
+.armed-restore-btn {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.armed-restore-btn:hover {
+    color: var(--color-pass);
+    border-color: var(--color-pass);
+}
