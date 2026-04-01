@@ -1285,7 +1285,7 @@
                         outcome: trade.outcome || this._classifyOutcome(trade.realizedPL),
 
                         // UTCC data (from alert match or empty for manual review)
-                        utccArmed: !!(alertData || utccState),
+                        utccArmed: !!(alertData),
                         trendScore: alertData ? alertData.score : null,
                         grade: this._deriveGrade(
                             alertData ? alertData.score : null,
