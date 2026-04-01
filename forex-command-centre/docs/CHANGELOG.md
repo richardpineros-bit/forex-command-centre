@@ -1,3 +1,8 @@
+## [v5.4.5] - 2026-04-01
+### Fix: scans, goals, no-trades returning 400 from storage-api.php
+- `storage-api.php`: added `scans`, `goals`, `no-trades` to `$allowedFiles` whitelist
+- Three keys were being polled by `server-storage.js` every 30s but not registered — returning 400 on every cycle
+
 ## [v5.4.4] - 2026-04-01
 ### Fix: ReferenceError utccState is not defined in _createNewEntry
 - `broker-dashboard.js`: `utccArmed: !!(alertData || utccState)` → `!!(alertData)`
