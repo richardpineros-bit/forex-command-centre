@@ -1,3 +1,10 @@
+## [v5.4.4] - 2026-04-01
+### Fix: ReferenceError utccState is not defined in _createNewEntry
+- `broker-dashboard.js`: `utccArmed: !!(alertData || utccState)` → `!!(alertData)`
+- `utccState` is declared in `processClosedTrade()` but was referenced inside `_createNewEntry()` which is a separate function — out of scope
+- Safe fix: by the time `_createNewEntry` is called, any `utccState` data has already been merged into `alertData` upstream
+- Was causing auto-journal to fail silently on every trade close
+
 ## [v5.4.3] - 2026-03-31
 ### Pair breakdown — filter to forex, metals, crypto only
 - `arm-history-dashboard.html`: `renderPairChips()` now filters tally to pairs where `getAssetClass` returns `forex`, `metals`, or `crypto`
