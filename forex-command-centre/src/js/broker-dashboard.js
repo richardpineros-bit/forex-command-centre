@@ -1113,7 +1113,7 @@
                     if (!response.ok) return null;
 
                     var data = await response.json();
-                    var allPairs = (data.pairs || []).concat(data.candidates || []);
+                    var allPairs = data.pairs || [];
 
                     for (var i = 0; i < allPairs.length; i++) {
                         var p = (allPairs[i].pair || '').replace(/_/g, '').toUpperCase();

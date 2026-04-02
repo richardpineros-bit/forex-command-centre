@@ -325,10 +325,6 @@
                             '<td>&#x1F7E2;</td>' +
                             '<td>Allowed to execute if setup appears. Full permission.</td>' +
                             '<td>Scan for playbook entries</td></tr>' +
-                        '<tr><td><strong style="color:var(--color-warning)">CANDIDATE</strong></td>' +
-                            '<td>&#x1F7E1;</td>' +
-                            '<td>Prep only; one or more conditions not yet met.</td>' +
-                            '<td>Watch; wait for upgrade to ARMED</td></tr>' +
                         '<tr><td><strong style="color:var(--color-fail)">BLOCKED</strong></td>' +
                             '<td>&#x1F534;</td>' +
                             '<td>No trade. Hard-block condition present.</td>' +
@@ -447,7 +443,7 @@
                     '<div class="step-marker">6</div>' +
                     '<div class="step-body">' +
                         '<h4>Permission Outcome</h4>' +
-                        '<p>The five inputs above resolve to: <strong>ARMED</strong>, <strong>CANDIDATE</strong>, or <strong>BLOCKED</strong>.</p>' +
+                        '<p>The five inputs above resolve to: <strong>ARMED</strong> or <strong>BLOCKED</strong>.</p>' +
                     '</div>' +
                 '</div>' +
 
@@ -455,7 +451,7 @@
                     '<div class="step-marker">7</div>' +
                     '<div class="step-body">' +
                         '<h4>Only Then &mdash; Scan for Playbook</h4>' +
-                        '<p>If ARMED: scan for entries matching the locked regime. If CANDIDATE: watch only. If BLOCKED: levels and observation only.</p>' +
+                        '<p>If ARMED: scan for entries matching the locked regime. If BLOCKED: levels and observation only.</p>' +
                     '</div>' +
                 '</div>' +
 
@@ -571,19 +567,6 @@
                     '</div>' +
                 '</div>' +
 
-                '<div class="alert-card alert-candidate">' +
-                    '<div class="alert-header">' +
-                        '<span class="alert-icon">&#x1F7E1;</span>' +
-                        '<span class="alert-name">CANDIDATE</span>' +
-                    '</div>' +
-                    '<div class="alert-body">' +
-                        '<p><strong>What it means:</strong> "Heads-up. Conditions forming but not complete."</p>' +
-                        '<p><strong>What you do:</strong> Add to Watchlist. Do NOT trade from this alert. Wait for upgrade.</p>' +
-                        '<p><strong>Contains:</strong> Pair, Primary Reason, Score, Permission (CONDITIONAL), Max Risk (reduced).</p>' +
-                        '<p><strong>Think of it as:</strong> A spotlight on a potential setup, not a green light.</p>' +
-                    '</div>' +
-                '</div>' +
-
                 '<div class="alert-card alert-disarmed">' +
                     '<div class="alert-header">' +
                         '<span class="alert-icon">&#x1F534;</span>' +
@@ -607,11 +590,6 @@
                         '<p><strong>What you do:</strong> Wipe all bias. Re-rank your watchlist. Build Session Board.</p>' +
                         '<p><strong>Think of it as:</strong> The "start of the game" &mdash; not just a notification.</p>' +
                     '</div>' +
-                '</div>' +
-
-                '<div class="guide-box guide-box-fail">' +
-                    '<strong>&#x1F6D1; Critical Rule</strong>' +
-                    '<p><strong>Never trade on CANDIDATE.</strong> CANDIDATE is a spotlight, not permission. Wait for ARMED before doing anything.</p>' +
                 '</div>' +
 
                 '<h3>Alert Anatomy</h3>' +
@@ -682,7 +660,6 @@
                         '<ul>' +
                             '<li>Check alerts since last session</li>' +
                             '<li>Any BLOCKED &#x2192; delete those ideas</li>' +
-                            '<li>Any CANDIDATE during Off-Hours &#x2192; mark "prep-only"</li>' +
                             '<li>Any ARMED during Off-Hours &#x2192; note it, wait for tradeable session</li>' +
                             '<li><strong>Decide which session you will trade today</strong></li>' +
                         '</ul>' +
@@ -707,25 +684,6 @@
 
                 '<div class="workflow-step">' +
                     '<div class="step-marker">3</div>' +
-                    '<div class="step-body">' +
-                        '<h4>When CANDIDATE Hits</h4>' +
-                        '<p><strong>If tradeable session (Tokyo/London):</strong> 1-minute triage</p>' +
-                        '<ul>' +
-                            '<li>Open chart</li>' +
-                            '<li>Identify: Playbook, zone (HOT/OPTIMAL), S/R</li>' +
-                            '<li>If clean &#x2192; mark "Candidate, waiting for ARMED"</li>' +
-                            '<li>If messy &#x2192; ignore. No explanation needed.</li>' +
-                        '</ul>' +
-                        '<p><strong>If prep-only session:</strong> 30-second triage</p>' +
-                        '<ul>' +
-                            '<li>Mark "prep-only, check next session"</li>' +
-                            '<li>Do nothing else</li>' +
-                        '</ul>' +
-                    '</div>' +
-                '</div>' +
-
-                '<div class="workflow-step">' +
-                    '<div class="step-marker">4</div>' +
                     '<div class="step-body">' +
                         '<h4>When ARMED Hits</h4>' +
                         '<p>If tradeable session, run the Command Centre checklist:</p>' +
@@ -1081,15 +1039,15 @@
                 '<h3>Asset-Specific Thresholds</h3>' +
                 '<table class="guide-table">' +
                     '<thead>' +
-                        '<tr><th>Asset Class</th><th>ARMED</th><th>CANDIDATE</th><th>Notes</th></tr>' +
+                        '<tr><th>Asset Class</th><th>ARMED Score</th><th>Notes</th></tr>' +
                     '</thead>' +
                     '<tbody>' +
-                        '<tr><td>Forex</td><td>80</td><td>85</td><td>Default &mdash; moderate noise</td></tr>' +
-                        '<tr><td>Crypto</td><td>85</td><td>90</td><td>Higher bar due to noise</td></tr>' +
-                        '<tr><td>Indices</td><td>75</td><td>80</td><td>Cleaner structure, lower bar</td></tr>' +
-                        '<tr><td>Bonds</td><td>70</td><td>75</td><td>Low volatility</td></tr>' +
-                        '<tr><td>Energy</td><td>78</td><td>83</td><td>Volatile, moderate filter</td></tr>' +
-                        '<tr><td>Metals</td><td>76</td><td>82</td><td>Gold clean, silver needs buffer</td></tr>' +
+                        '<tr><td>Forex</td><td>80</td><td>Default &mdash; moderate noise</td></tr>' +
+                        '<tr><td>Crypto</td><td>85</td><td>Higher bar due to noise</td></tr>' +
+                        '<tr><td>Indices</td><td>75</td><td>Cleaner structure, lower bar</td></tr>' +
+                        '<tr><td>Bonds</td><td>70</td><td>Low volatility</td></tr>' +
+                        '<tr><td>Energy</td><td>78</td><td>Volatile, moderate filter</td></tr>' +
+                        '<tr><td>Metals</td><td>76</td><td>Gold clean, silver needs buffer</td></tr>' +
                     '</tbody>' +
                 '</table>' +
 
@@ -1293,7 +1251,6 @@
                 '<div class="rules-list rules-dont">' +
                     '<h3>&#x274C; NEVER Do These</h3>' +
                     '<ol>' +
-                        '<li><strong>No trade on CANDIDATE</strong> &mdash; Wait for ARMED</li>' +
                         '<li><strong>No same-candle entry</strong> &mdash; Wait 1+ candle after alert</li>' +
                         '<li><strong>No unnamed playbook</strong> &mdash; Name it or pass</li>' +
                         '<li><strong>No trade in TRANSITION</strong> &mdash; Unclear = no trade</li>' +
@@ -1357,7 +1314,6 @@
                 '<div class="guide-box">' +
                     '<p>Across your pairs each day:</p>' +
                     '<ul>' +
-                        '<li><strong>CANDIDATE alerts:</strong> ~2&ndash;5 per day</li>' +
                         '<li><strong>ARMED alerts:</strong> ~1&ndash;3 per day</li>' +
                         '<li><strong>Trades taken:</strong> 0&ndash;2 per session</li>' +
                     '</ul>' +
@@ -1452,11 +1408,11 @@
                             '<tr><td><strong>Structure</strong></td><td>Minor Overlap</td></tr>' +
                             '<tr><td><strong>Volatility</strong></td><td>Quiet</td></tr>' +
                             '<tr><td><strong>Session</strong></td><td>Acceptable (late Tokyo)</td></tr>' +
-                            '<tr><td><strong>Permission</strong></td><td style="color:var(--color-warning)"><strong>CANDIDATE &mdash; CONDITIONAL</strong></td></tr>' +
+                            '<tr><td><strong>Permission</strong></td><td style="color:var(--color-warning)"><strong>CONDITIONAL &mdash; Off-session pair</strong></td></tr>' +
                         '</tbody>' +
                     '</table>' +
                     '<p><strong>Allowed:</strong> Range extreme fade only; reduced size (0.25&ndash;0.5R); tighter filters.</p>' +
-                    '<p><strong>What you do:</strong> Mark levels. Watch for upgrade to ARMED if structure cleans up. Do NOT execute from CANDIDATE state.</p>' +
+                    '<p><strong>What you do:</strong> Wait for your tradeable session window before executing.</p>' +
                 '</div>' +
 
                 // --- Example C ---

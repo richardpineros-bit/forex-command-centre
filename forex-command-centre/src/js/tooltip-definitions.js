@@ -40,7 +40,6 @@ const TOOLTIP_DEFS = {
     
     // UTCC State
     'armed': 'UTCC conditions met. Permission to search for entry. NOT a trade signal.',
-    'candidate': 'Conditions close but not all met. Watchlist. Do not trade. Just monitor.',
     'blocked': 'Conditions failed. UTCC revoked permission. No trading until conditions improve.',
     'disarmed': 'Previously armed pair lost conditions. Context changed. Cancel pending plans.'
 };
@@ -104,7 +103,6 @@ const TOOLTIP_LABELS = {
     
     // UTCC State
     'ARMED': 'armed',
-    'CANDIDATE': 'candidate',
     'BLOCKED': 'blocked',
     'DISARMED': 'disarmed'
 };

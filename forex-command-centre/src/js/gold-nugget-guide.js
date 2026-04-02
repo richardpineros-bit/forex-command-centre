@@ -89,15 +89,6 @@
                 <div class="gng-section">
                     <h4>&#x1F514; Alert Meanings (No Interpretation Needed)</h4>
                     
-                    <div class="gng-alert-box gng-candidate">
-                        <div class="gng-alert-header">
-                            <span class="gng-alert-icon">&#x1F440;</span>
-                            <span class="gng-alert-name">CONTEXT CANDIDATE (&#x2191;/&#x2193;)</span>
-                        </div>
-                        <div class="gng-alert-meaning"><strong>Meaning:</strong> "Heads-up; this could become tradeable. Watch it."</div>
-                        <div class="gng-alert-action"><strong>Action:</strong> Put it on the watchlist; do NOT trade from this alert.</div>
-                    </div>
-                    
                     <div class="gng-alert-box gng-armed">
                         <div class="gng-alert-header">
                             <span class="gng-alert-icon">&#x2705;</span>
@@ -136,7 +127,6 @@
                             <p>Goal: Start clean; no emotional carry-over.</p>
                             <ul>
                                 <li>DISARMED &#x2192; delete those ideas</li>
-                                <li>CANDIDATE during Off-Hours &#x2192; mark "prep-only"</li>
                                 <li>ARMED during Off-Hours &#x2192; mark "permission noted; wait for tradeable session"</li>
                                 <li>Decide what session you will trade today</li>
                             </ul>
@@ -161,26 +151,6 @@
                     
                     <div class="gng-step">
                         <div class="gng-step-num">3</div>
-                        <div class="gng-step-content">
-                            <strong>When a CANDIDATE Alert Hits</strong>
-                            <p><em>If Tokyo or London (tradeable):</em> 1-minute triage</p>
-                            <ul>
-                                <li>Open chart</li>
-                                <li>Identify direction, playbook, zone (HOT/OPTIMAL), S/R</li>
-                                <li>If clean &#x2192; mark "Candidate; waiting for ARMED"</li>
-                                <li>If messy &#x2192; ignore. No explanation needed.</li>
-                            </ul>
-                            <p><em>If Off-Hours / NY / LON+NY (prep-only):</em> 30-second triage</p>
-                            <ul>
-                                <li>Mark "prep-only; check next tradeable session"</li>
-                                <li>Do nothing else.</li>
-                            </ul>
-                            <p class="gng-nugget">&#x1F4A1; Candidate is a spotlight; not a green light.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="gng-step">
-                        <div class="gng-step-num">4</div>
                         <div class="gng-step-content">
                             <strong>When an ARMED Alert Hits</strong>
                             <p>If Tokyo or London: Run the Command Centre checklist (non-negotiable)</p>
@@ -252,7 +222,6 @@
                 <div class="gng-section gng-rules">
                     <h4>&#x1F6D1; 4 Non-Negotiable Rules</h4>
                     <ol class="gng-non-neg">
-                        <li>No trade on CANDIDATE.</li>
                         <li>ARMED starts the process; does not force execution.</li>
                         <li>Off-Hours = prep-only.</li>
                         <li>DISARMED cancels bias; stop hunting.</li>
@@ -286,7 +255,6 @@
                     <h4>&#x1F4CA; Recommended Alert Volume</h4>
                     <p>Across your 3 pairs:</p>
                     <ul>
-                        <li><strong>CANDIDATE:</strong> ~2-5 per day</li>
                         <li><strong>ARMED:</strong> ~1-3 per day</li>
                         <li><strong>Trades taken:</strong> usually 0-2 per session, not "every alert"</li>
                     </ul>

@@ -1856,3 +1856,28 @@ Instead of relying on trader memory ("Did I check if conditions changed?"), the 
 - `src/js/armed-panel.js` — v1.1.0
 - `src/css/dashboard.css` — tier headers, dismiss/restore buttons, dismissed section
 - `backend/api/storage-api.php` — added `armed-dismissed` to allowed files whitelist
+
+## [v5.6.0] - 2026-04-03
+### Remove CANDIDATE alert type — concept retired
+
+CANDIDATE was a below-threshold alert (score in gap band between ARMED minimum and a secondary threshold).
+With the 1-hour FOMO gate already providing analysis time post-ARMED, CANDIDATE generated cognitive overhead
+on unqualified setups. Removed entirely. Flow is now: ARMED → FOMO gate → analyse → execute or pass.
+
+**Alert server (`index.js`):**
+- Removed `CANDIDATE_FILE` const and `CANDIDATE_TTL_HOURS` config
+- Removed `loadCandidates()`, `saveCandidates()`, `cleanupExpiredCandidates()` functions
+- Removed candidate build block from `GET /state` response (`candidateCount`, `candidates` fields)
+- Removed candidate cleanup from ARMED and BLOCKED webhook handlers
+- Removed candidate session clearing from INFO SESSION_RESET handler
+- Removed entire CANDIDATE webhook handler block
+- Incoming CANDIDATE alerts now hit the `else { not tracked }` branch (backward compat parsing retained)
+
+**Frontend:**
+- `armed-panel.js`: Watchlist section rebuilt as Off-Session only; candidate fetch and render removed
+- `broker-dashboard.js`: Removed `.concat(data.candidates || [])` from pair lookup
+- `tooltip-definitions.js`: Removed `candidate` definition and `CANDIDATE` alias
+- `trading-guide.js`: Removed CANDIDATE alert card, state table row, workflow step, asset threshold column, NEVER rule, volume estimate
+- `gold-nugget-guide.js`: Removed CANDIDATE alert box, daily loop reference, "When CANDIDATE Hits" step, non-negotiable rule, volume estimate
+
+**Pine Script (manual action required):** Remove the CANDIDATE alert branch from all UTCC indicators in TradingView.

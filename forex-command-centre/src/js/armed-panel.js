@@ -655,24 +655,15 @@
             html += buildDismissedSection(dismissedItems);
         }
 
-        // Watchlist (candidates + off-session)
-        var candidates = data.candidates || [];
-        var armedNames = {};
-        for (var m = 0; m < allActivePairs.length; m++) {
-            if (allActivePairs[m].pair) armedNames[allActivePairs[m].pair] = true;
-        }
-        candidates = candidates.filter(function(c) { return !armedNames[c.pair]; });
-        var watchlistItems = offSessionPairs.concat(candidates);
-
-        if (watchlistItems.length > 0) {
+        // Off-session pairs (watchlist)
+        if (offSessionPairs.length > 0) {
             html += '<div class="armed-section-header">' +
-                'Watchlist ' +
-                '<span class="armed-section-count candidate">' + watchlistItems.length + '</span>' +
+                'Off-Session ' +
+                '<span class="armed-section-count candidate">' + offSessionPairs.length + '</span>' +
             '</div>';
             html += buildColHeaders();
-            for (var n = 0; n < watchlistItems.length; n++) {
-                var wEmoji = offSessionPairs.indexOf(watchlistItems[n]) !== -1 ? '&#x1F7E0;' : '&#x1F7E1;';
-                html += buildRow(watchlistItems[n], wEmoji, '');
+            for (var n = 0; n < offSessionPairs.length; n++) {
+                html += buildRow(offSessionPairs[n], '&#x1F7E0;', '');
             }
         }
 

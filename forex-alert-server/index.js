@@ -6,7 +6,6 @@ const webpush = require('web-push');
 const PORT = process.env.PORT || 3847;
 const STATE_FILE = process.env.STATE_FILE || '/data/armed.json';
 const UTCC_FILE = process.env.UTCC_FILE || '/data/utcc-alerts.json';
-const CANDIDATE_FILE = process.env.CANDIDATE_FILE || '/data/candidates.json';
 const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/data/structure.json';
 const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json';
 const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.json';
@@ -38,7 +37,6 @@ const CONFIG = {
     UTCC_ALERT_TTL_HOURS: 4,        // Alerts expire after 4 hours
     UTCC_MAX_ALERTS_PER_PAIR: 10,   // Keep last 10 alerts per pair
     UTCC_CLEANUP_INTERVAL_MS: 300000, // Cleanup every 5 minutes
-    CANDIDATE_TTL_HOURS: 4,         // Candidates expire after 4 hours
     STRUCTURE_TTL_HOURS: 4          // Structure alerts expire after 4 hours
 };
 
@@ -273,45 +271,6 @@ function saveState(state) {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-// ============================================================================
-// STATE MANAGEMENT - CANDIDATES (separate from ARMED)
-// ============================================================================
-
-function loadCandidates() {
-    try {
-        if (fs.existsSync(CANDIDATE_FILE)) {
-            return JSON.parse(fs.readFileSync(CANDIDATE_FILE, 'utf8'));
-        }
-    } catch (e) {
-        console.error('Error loading candidates:', e.message);
-    }
-    return { pairs: {}, lastUpdate: null };
-}
-
-function saveCandidates(data) {
-    data.lastUpdate = new Date().toISOString();
-    fs.writeFileSync(CANDIDATE_FILE, JSON.stringify(data, null, 2));
-}
-
-function cleanupExpiredCandidates() {
-    const data = loadCandidates();
-    const now = Date.now();
-    const ttlMs = CONFIG.CANDIDATE_TTL_HOURS * 60 * 60 * 1000;
-    let cleaned = 0;
-
-    for (const pair of Object.keys(data.pairs)) {
-        const ts = new Date(data.pairs[pair].timestamp).getTime();
-        if (now - ts > ttlMs) {
-            delete data.pairs[pair];
-            cleaned++;
-        }
-    }
-
-    if (cleaned > 0) {
-        saveCandidates(data);
-        console.log('[Cleanup] Removed ' + cleaned + ' expired candidates');
-    }
-}
 
 // ============================================================================
 // STATE MANAGEMENT - ARM HISTORY (append-only log)
@@ -907,10 +866,9 @@ var server = http.createServer(function(req, res) {
     // ARMED PAIRS ENDPOINTS
     // ========================================================================
 
-    // GET /state - Return current armed state + candidates
+    // GET /state - Return current armed state
     if (req.method === 'GET' && req.url === '/state') {
         var state = loadState();
-        var candidateData = loadCandidates();
 
         // Build armed pairs response (new format)
         var pairs = Object.keys(state.pairs).map(function(pair) {
@@ -944,43 +902,10 @@ var server = http.createServer(function(req, res) {
             return new Date(b.timestamp) - new Date(a.timestamp);
         });
 
-        // Build candidates response
-        var candidates = Object.keys(candidateData.pairs).map(function(pair) {
-            var d = candidateData.pairs[pair];
-            return {
-                pair: pair,
-                alertType: 'CANDIDATE',
-                primary: d.primary || '',
-                permission: d.permission || 'CONDITIONAL',
-                maxRisk: d.maxRisk || '0.25R',
-                score: d.score || 0,
-                riskState: d.riskState || 'K-NORMAL',
-                session: d.session || '',
-                timestamp: d.timestamp,
-                age: getAge(d.timestamp),
-                // v2.1.0: UTCC context fields
-                direction: d.direction || '',
-                entryZone: d.entryZone || '',
-                mtf: d.mtf || 0,
-                criteria: d.criteria || 0,
-                volState: d.volState || '',
-                volBehaviour: d.volBehaviour || '',
-                volLevel: d.volLevel || '',
-                riskMult: d.riskMult || 1.0,
-                playbook: d.playbook || '',
-                structExt: d.structExt || '',
-                structBars: d.structBars !== undefined ? d.structBars : null
-            };
-        }).sort(function(a, b) {
-            return new Date(b.timestamp) - new Date(a.timestamp);
-        });
-
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             count: pairs.length,
             pairs: pairs,
-            candidateCount: candidates.length,
-            candidates: candidates,
             lastUpdate: state.lastUpdate
         }));
         return;
@@ -1046,12 +971,6 @@ var server = http.createServer(function(req, res) {
                 saveState(state);
                 appendArmEvent(alert, timestamp);
 
-                // If pair was a candidate, remove from candidates
-                var cands = loadCandidates();
-                if (cands.pairs[alert.pair]) {
-                    delete cands.pairs[alert.pair];
-                    saveCandidates(cands);
-                }
 
                 console.log('  -> ARMED ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-') + ' | struct:' + (alert.structExt || 'NONE'));
 
@@ -1077,12 +996,6 @@ var server = http.createServer(function(req, res) {
                     saveState(state);
                 }
 
-                // Also remove from candidates if present
-                var cands = loadCandidates();
-                if (cands.pairs[alert.pair]) {
-                    delete cands.pairs[alert.pair];
-                    saveCandidates(cands);
-                }
 
                 // Cancel FOMO timer if pair was waiting
                 if (fomoTimers[alert.pair]) {
@@ -1114,20 +1027,10 @@ var server = http.createServer(function(req, res) {
                                 cleared++;
                             }
                         }
-                        // Also clear candidates for this session
-                        var cands = loadCandidates();
-                        for (var cp in cands.pairs) {
-                            if (cands.pairs[cp].session &&
-                                cands.pairs[cp].session.toLowerCase() === sessionName.toLowerCase()) {
-                                delete cands.pairs[cp];
-                            }
-                        }
-                        saveCandidates(cands);
                     } else {
                         // No session specified — clear all
                         cleared = Object.keys(state.pairs).length;
                         state.pairs = {};
-                        saveCandidates({ pairs: {}, lastUpdate: null });
                     }
 
                     saveState(state);
@@ -1135,34 +1038,6 @@ var server = http.createServer(function(req, res) {
                 } else {
                     console.log('  -> INFO ' + alert.pair + ' (acknowledged)');
                 }
-            }
-            // ----------------------------------------------------------------
-            // CANDIDATE: Store in separate candidates state
-            // ----------------------------------------------------------------
-            else if (alert.type === 'CANDIDATE') {
-                var cands = loadCandidates();
-                cands.pairs[alert.pair] = {
-                    primary: alert.primary || '',
-                    permission: alert.permission || 'CONDITIONAL',
-                    maxRisk: alert.maxRisk || '0.25R',
-                    score: alert.score || 0,
-                    riskState: alert.riskState || 'K-NORMAL',
-                    session: alert.session || '',
-                    timestamp: timestamp,
-                    // v2.1.0: UTCC context from JSON body
-                    direction: alert.direction || '',
-                    entryZone: alert.entryZone || '',
-                    mtf: alert.mtf || 0,
-                    criteria: alert.criteria || 0,
-                    volState: alert.volState || '',
-                    volBehaviour: alert.volBehaviour || '',
-                    structExt: alert.structExt || '',
-                    structBars: alert.structBars !== undefined ? alert.structBars : null,
-                    riskMult: alert.riskMult || 1.0,
-                    playbook: alert.playbook || ''
-                };
-                saveCandidates(cands);
-                console.log('  -> CANDIDATE ' + alert.pair + ' | ' + alert.primary + ' | score:' + alert.score);
             }
             else {
                 console.log('  -> ' + alert.type + ' (not tracked)');
@@ -1888,16 +1763,14 @@ server.listen(PORT, function() {
     console.log('Port:           ' + PORT);
     console.log('State file:     ' + STATE_FILE);
     console.log('UTCC file:      ' + UTCC_FILE);
-    console.log('Candidate file: ' + CANDIDATE_FILE);
     console.log('Structure file: ' + STRUCTURE_FILE);
     console.log('Arm history:    ' + ARM_HISTORY_FILE);
     console.log('Alert TTL:      ' + CONFIG.UTCC_ALERT_TTL_HOURS + ' hours');
-    console.log('Candidate TTL:  ' + CONFIG.CANDIDATE_TTL_HOURS + ' hours');
     console.log('Structure TTL:  ' + CONFIG.STRUCTURE_TTL_HOURS + ' hours');
     console.log('');
     console.log('Armed Pairs Endpoints:');
     console.log('  POST /webhook       - Receive alerts (old + new format)');
-    console.log('  GET  /state         - Get armed state + candidates');
+    console.log('  GET  /state         - Get armed state');
     console.log('');
     console.log('UTCC Alert Queue Endpoints:');
     console.log('  POST /webhook/utcc  - Receive UTCC alert data');
