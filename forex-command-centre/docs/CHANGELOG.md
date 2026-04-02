@@ -1881,3 +1881,21 @@ on unqualified setups. Removed entirely. Flow is now: ARMED → FOMO gate → an
 - `gold-nugget-guide.js`: Removed CANDIDATE alert box, daily loop reference, "When CANDIDATE Hits" step, non-negotiable rule, volume estimate
 
 **Pine Script (manual action required):** Remove the CANDIDATE alert branch from all UTCC indicators in TradingView.
+
+## [UTCC Universal v3.1.0] - 2026-04-03
+### Remove CANDIDATE alert type from Pine Script
+
+- Removed all 6 `*_candidateThreshold` input.int declarations (FX/Crypto/Metals/Energy/Bonds/Indices)
+- Removed `enableContextCandidate` input.bool
+- Removed `candidateThreshold` runtime var and all per-category overrides
+- Removed `alertPerfectThreshold` and `scoreGapPassesPerfect` (unused chain)
+- Removed `ALERT_CANDIDATE` string constant
+- Removed ALERT_CANDIDATE branches from `f_alertEmoji()` and `f_alertPrefix()`
+- Removed `wasCandidate_rt`, `wasCandidate_close`, `wasCandidateDir_rt` persistent vars
+- Removed CANDIDATE branch from `resolvedAlertType` logic (now resolves to INFO)
+- Removed CANDIDATE colour branch from status display
+- Removed entire CANDIDATE CONDITION block (candidateMeets*, contextJustCandidate*)
+- Removed `perfectBullishCondition` / `perfectBearishCondition` (never used downstream)
+- Removed two `alertcondition()` CANDIDATE blocks
+- Removed two `alert()` CANDIDATE dispatch blocks (Long/Short)
+- Updated comments: header, tooltip, section label, footer threshold table

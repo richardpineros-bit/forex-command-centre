@@ -18,7 +18,7 @@ indicator("UTCC Universal v3.0.0 - Institutional",
 // v3.0.0 CHANGES:
 // - Merged utcc-forex / crypto / metals / energy / bonds / indices into one file
 // - Auto-detection runs on every bar (syminfo.* is constant per symbol)
-// - 6 per-category input groups: ARMED threshold, CANDIDATE threshold,
+// - 6 per-category input groups: ARMED threshold,
 //   ATR filter %, Accept QUIET, ADX threshold — with correct category defaults
 // - Runtime selection picks the active category's settings
 // - Alert JSON payload uses detected asset_class (not hardcoded "FX")
@@ -114,7 +114,7 @@ headerFontSize = input.string("Normal", "Header Font Size",
 statusFontSize = input.string("Large", "Status Font Size", 
      options=["Tiny", "Small", "Normal", "Large", "Huge"], 
      group=GRP_VISUAL,
-     tooltip="Alert type (ARMED / CANDIDATE / BLOCKED / INFO)")
+     tooltip="Alert type (ARMED / BLOCKED / INFO)")
 dataFontSize = input.string("Small", "Data Font Size", 
      options=["Tiny", "Small", "Normal", "Large", "Huge"], 
      group=GRP_VISUAL,
@@ -140,7 +140,6 @@ showAlertDiagnostics = input.bool(false, "Alert Diagnostics Panel", tooltip="Sho
 // ============================================================================
 GRP_FX = "FX Settings"
 fx_armedThreshold    = input.int(80, "ARMED Threshold",     minval=60, maxval=95, group=GRP_FX, tooltip="Score required to ARM for forex pairs. Standard threshold.")
-fx_candidateThreshold = input.int(85, "CANDIDATE Threshold", minval=60, maxval=95, group=GRP_FX)
 fx_atrFilterPct      = input.int(80, "ATR Filter %",        minval=0, maxval=150, step=5, group=GRP_FX, tooltip="80% = soft filter. 0% = disabled. 120% = strict.")
 fx_acceptQuiet       = input.bool(true, "Accept: QUIET",    group=GRP_FX, tooltip="Forex: QUIET consolidations are acceptable.")
 fx_adxThreshold      = input.int(20, "ADX Threshold",       minval=10, maxval=50, group=GRP_FX)
@@ -151,7 +150,6 @@ fx_adxThreshold      = input.int(20, "ADX Threshold",       minval=10, maxval=50
 // ============================================================================
 GRP_CRYPTO = "Crypto Settings"
 cr_armedThreshold    = input.int(85, "ARMED Threshold",     minval=60, maxval=95, group=GRP_CRYPTO, tooltip="Higher threshold for crypto — momentum is noisier, require stronger confirmation.")
-cr_candidateThreshold = input.int(88, "CANDIDATE Threshold", minval=60, maxval=95, group=GRP_CRYPTO, tooltip="88 keeps it elite without making it nearly impossible to fire.")
 cr_atrFilterPct      = input.int(80, "ATR Filter %",        minval=0, maxval=150, step=5, group=GRP_CRYPTO, tooltip="80% — same as FX. ATR filter compares current to its own baseline, so 60% was backwards (permissive when quiet = dangerous for crypto).")
 cr_acceptQuiet       = input.bool(false, "Accept: QUIET",   group=GRP_CRYPTO, tooltip="QUIET disabled by default — crypto consolidations can break violently without warning.")
 cr_adxThreshold      = input.int(25, "ADX Threshold",       minval=10, maxval=50, group=GRP_CRYPTO, tooltip="25 minimum — crypto noise below this level is extreme. Filters fake trends.")
@@ -162,7 +160,6 @@ cr_adxThreshold      = input.int(25, "ADX Threshold",       minval=10, maxval=50
 // ============================================================================
 GRP_METALS = "Metals Settings"
 mt_armedThreshold    = input.int(79, "ARMED Threshold",     minval=60, maxval=95, group=GRP_METALS, tooltip="Close to FX standard — gold trades as a macro instrument and is at least as reliable when trending.")
-mt_candidateThreshold = input.int(84, "CANDIDATE Threshold", minval=60, maxval=95, group=GRP_METALS, tooltip="84 acknowledges slightly wider pullback swings vs FX without over-lowering the filter.")
 mt_atrFilterPct      = input.int(80, "ATR Filter %",        minval=0, maxval=150, step=5, group=GRP_METALS)
 mt_acceptQuiet       = input.bool(true, "Accept: QUIET",    group=GRP_METALS, tooltip="Metals: QUIET phases often precede strong breakouts — acceptable with other filters.")
 mt_adxThreshold      = input.int(20, "ADX Threshold",       minval=10, maxval=50, group=GRP_METALS)
@@ -173,7 +170,6 @@ mt_adxThreshold      = input.int(20, "ADX Threshold",       minval=10, maxval=50
 // ============================================================================
 GRP_ENERGY = "Energy Settings"
 en_armedThreshold    = input.int(78, "ARMED Threshold",     minval=60, maxval=95, group=GRP_ENERGY)
-en_candidateThreshold = input.int(83, "CANDIDATE Threshold", minval=60, maxval=95, group=GRP_ENERGY)
 en_atrFilterPct      = input.int(80, "ATR Filter %",        minval=0, maxval=150, step=5, group=GRP_ENERGY)
 en_acceptQuiet       = input.bool(false, "Accept: QUIET",   group=GRP_ENERGY, tooltip="QUIET disabled by default — energy consolidations break aggressively (supply/demand shocks).")
 en_adxThreshold      = input.int(19, "ADX Threshold",       minval=10, maxval=50, group=GRP_ENERGY, tooltip="19 is the compromise — crude can trend at 17 but whipsaws badly at that level, especially NatGas.")
@@ -184,7 +180,6 @@ en_adxThreshold      = input.int(19, "ADX Threshold",       minval=10, maxval=50
 // ============================================================================
 GRP_BONDS = "Bonds Settings"
 bd_armedThreshold    = input.int(72, "ARMED Threshold",     minval=60, maxval=95, group=GRP_BONDS, tooltip="72 — lower than FX but not 70. Bonds score well on volatility and trend components, so 70 accepts genuinely mediocre setups.")
-bd_candidateThreshold = input.int(78, "CANDIDATE Threshold", minval=60, maxval=95, group=GRP_BONDS, tooltip="78 — keeps candidate meaningful without making it unreachable on slower bond moves.")
 bd_atrFilterPct      = input.int(80, "ATR Filter %",        minval=0, maxval=150, step=5, group=GRP_BONDS)
 bd_acceptQuiet       = input.bool(true, "Accept: QUIET",    group=GRP_BONDS, tooltip="Bonds: QUIET is normal. Low ATR is expected, not a warning.")
 bd_adxThreshold      = input.int(18, "ADX Threshold",       minval=10, maxval=50, group=GRP_BONDS, tooltip="Bonds trend at lower ADX than forex. 18 recommended.")
@@ -195,7 +190,6 @@ bd_adxThreshold      = input.int(18, "ADX Threshold",       minval=10, maxval=50
 // ============================================================================
 GRP_INDICES = "Indices Settings"
 ix_armedThreshold    = input.int(78, "ARMED Threshold",     minval=60, maxval=95, group=GRP_INDICES, tooltip="78 — indices gap and react violently to macro news. 75 is too permissive; treat them more like FX.")
-ix_candidateThreshold = input.int(83, "CANDIDATE Threshold", minval=60, maxval=95, group=GRP_INDICES, tooltip="83 — pre-FOMC consolidation setups need to be high quality before candidacy is granted.")
 ix_atrFilterPct      = input.int(80, "ATR Filter %",        minval=0, maxval=150, step=5, group=GRP_INDICES)
 ix_acceptQuiet       = input.bool(true, "Accept: QUIET",    group=GRP_INDICES, tooltip="Indices: QUIET phases during consolidation are tradeable with range breakout playbook.")
 ix_adxThreshold      = input.int(20, "ADX Threshold",       minval=10, maxval=50, group=GRP_INDICES)
@@ -274,16 +268,13 @@ sepTolerance = input.float(0.20, "Separation Tolerance", minval=0.01, maxval=0.5
 eqTolerance = input.float(0.40, "Equality Tolerance", minval=0.05, maxval=0.50, step=0.01, group=GRP_ATR)
 
 // ============================================================================
-// INPUTS - ALERT SETTINGS (ARMED/CANDIDATE thresholds now per-category)
+// INPUTS - ALERT SETTINGS
 // ============================================================================
 GRP_ALERTS = "Context Alerts"
 alertMode = input.string("alert() per bar", "Alert Mode",
      options=["alertcondition", "alert() per bar", "alert() bar close"],
      group=GRP_ALERTS,
      tooltip="alertcondition = Use TradingView trigger options\\nalert() per bar = Mid-bar via Any alert() function call\\nalert() bar close = Bar close via Any alert() function call")
-enableContextCandidate = input.bool(true, "CONTEXT CANDIDATE Alert",
-     group=GRP_ALERTS,
-     tooltip="Elite early heads-up (intra-bar). Not permission to trade — just watch and prepare.")
 enableContextArmed = input.bool(true, "CONTEXT ARMED Alert", 
      group=GRP_ALERTS,
      tooltip="Fires when context becomes valid for trading. Permission to observe, not act.")
@@ -433,7 +424,6 @@ int alertPerfectThreshold = candidateThreshold
 // ============================================================================
 
 ALERT_INFO      = "INFO"
-ALERT_CANDIDATE = "CANDIDATE"
 ALERT_ARMED     = "ARMED"
 ALERT_BLOCKED   = "BLOCKED"
 
@@ -451,8 +441,6 @@ f_alertEmoji(string alertType) =>
     string emoji = "⚪"
     if alertType == ALERT_ARMED
         emoji := "🟢"
-    else if alertType == ALERT_CANDIDATE
-        emoji := "🟡"
     else if alertType == ALERT_BLOCKED
         emoji := "🔴"
     else
@@ -463,8 +451,6 @@ f_alertPrefix(string alertType) =>
     string prefix = "[I]"
     if alertType == ALERT_ARMED
         prefix := "[A]"
-    else if alertType == ALERT_CANDIDATE
-        prefix := "[C]"
     else if alertType == ALERT_BLOCKED
         prefix := "[B]"
     else
@@ -819,10 +805,6 @@ var string currentPlaybook = "NO TRADE"
 var bool wasArmed = false
 var int wasArmedDirection = 0
 var string lastSession = ""
-
-var bool wasCandidate_rt = false
-var bool wasCandidate_close = false
-var int wasCandidateDir_rt = 0
 
 sessionJustChanged = currentSession != lastSession
 sessionResetEvent = sessionJustChanged and barstate.isnew
@@ -1305,8 +1287,6 @@ if finalPermission == "STAND_DOWN"
     resolvedAlertType := ALERT_BLOCKED
 else if finalPermission == "FULL" and isArmed and allCriteriaMet
     resolvedAlertType := ALERT_ARMED
-else if finalPermission == "CONDITIONAL" or (allCriteriaMet and not isArmed)
-    resolvedAlertType := ALERT_CANDIDATE
 else
     resolvedAlertType := ALERT_INFO
 
@@ -1358,9 +1338,6 @@ var color instStatusText = color.rgb(100, 149, 237)
 if resolvedAlertType == ALERT_ARMED
     instStatusBg := color.rgb(0, 60, 0)
     instStatusText := color.rgb(34, 197, 94)
-else if resolvedAlertType == ALERT_CANDIDATE
-    instStatusBg := color.rgb(60, 50, 0)
-    instStatusText := color.rgb(234, 179, 8)
 else if resolvedAlertType == ALERT_BLOCKED
     instStatusBg := color.rgb(60, 0, 0)
     instStatusText := color.rgb(239, 68, 68)
@@ -1929,27 +1906,7 @@ entryIncludesAcceptable = entryIsHotOrOptimal or str.contains(entryZoneQuality, 
 entryPassesForStrong = strongEntryRequirement == "Any Zone" ? true : strongEntryRequirement == "Include ACCEPTABLE" ? entryIncludesAcceptable : entryIsHotOrOptimal
 srProximityPasses = distToNearestSR >= srProximityFilter
 scoreGapPassesStrong = overallScore >= (alertStrongThreshold + scoreGapRequired)
-scoreGapPassesPerfect = overallScore >= (alertPerfectThreshold + scoreGapRequired)
 qualityFiltersPassed = entryPassesForStrong and srProximityPasses
-
-// ============================================================================
-// CANDIDATE CONDITION (v2.0)
-// ============================================================================
-
-candidateMeetsLong = allCriteriaMet and mtfAlignCount == 3 and trendDirection == 1 and entryIsHotOrOptimal and srProximityPasses and overallScore >= candidateThreshold
-candidateMeetsShort = allCriteriaMet and mtfAlignCount == 3 and trendDirection == -1 and entryIsHotOrOptimal and srProximityPasses and overallScore >= candidateThreshold
-candidateMeets = candidateMeetsLong or candidateMeetsShort
-candidateDirection = candidateMeetsLong ? 1 : candidateMeetsShort ? -1 : 0
-
-contextJustCandidateLong = candidateMeetsLong and (not wasCandidate_rt or wasCandidateDir_rt != 1)
-contextJustCandidateShort = candidateMeetsShort and (not wasCandidate_rt or wasCandidateDir_rt != -1)
-contextJustCandidate = contextJustCandidateLong or contextJustCandidateShort
-
-wasCandidate_rt := candidateMeets
-wasCandidateDir_rt := candidateDirection
-
-if barstate.isconfirmed
-    wasCandidate_close := candidateMeets
 
 // ============================================================================
 // ALERT DIAGNOSTICS PANEL
@@ -2164,8 +2121,6 @@ lockPassesShort = enableSessionLock ? (isArmed and armedDirection == -1) : true
 
 strongBullishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesStrong and qualityFiltersPassed and mtfAlignCount == 3 and trendDirection == 1 and lockPassesLong)
 strongBearishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesStrong and qualityFiltersPassed and mtfAlignCount == 3 and trendDirection == -1 and lockPassesShort)
-perfectBullishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesPerfect and entryIsHotOrOptimal and srProximityPasses and mtfAlignCount == 3 and trendDirection == 1 and rsiAllBull and lockPassesLong)
-perfectBearishCondition = debugMode ? true : (allCriteriaMet and scoreGapPassesPerfect and entryIsHotOrOptimal and srProximityPasses and mtfAlignCount == 3 and trendDirection == -1 and rsiAllBear and lockPassesShort)
 
 // MTF Degradation tracking
 var int prev1HDirection = 0
@@ -2218,14 +2173,6 @@ playbookShort = str.contains(currentPlaybook, "CONTINUATION") ? "CONTINUATION" :
 // REGISTER ALERT CONDITIONS (alertcondition mode)
 // ============================================================================
 
-alertcondition(enableContextCandidate and contextJustCandidateLong, 
-     title="CANDIDATE Long",
-     message='🟡 [C] CANDIDATE | {{ticker}} | R-TRANSITION | K-NORMAL | CONDITIONAL')
-
-alertcondition(enableContextCandidate and contextJustCandidateShort, 
-     title="CANDIDATE Short",
-     message='🟡 [C] CANDIDATE | {{ticker}} | R-TRANSITION | K-NORMAL | CONDITIONAL')
-
 alertcondition(enableContextArmed and contextJustArmedLong and barstate.isconfirmed, 
      title="ARMED Long",
      message='🟢 [A] ARMED | {{ticker}} | R-EXPANSION | K-NORMAL | FULL')
@@ -2262,20 +2209,6 @@ useAlertBarClose = alertMode == "alert() bar close"
 alertFreq = useAlertBarClose ? alert.freq_once_per_bar_close : alert.freq_once_per_bar
 
 if useAlertPerBar or useAlertBarClose
-    // CANDIDATE (Long)
-    if enableContextCandidate and contextJustCandidateLong
-        string candAlertType = finalPermission == "STAND_DOWN" ? ALERT_BLOCKED : ALERT_CANDIDATE
-        string candHeader = f_alertHeader(candAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string candJson = f_buildJson(candAlertType, syminfo.ticker, detectedClass, primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
-        alert(candHeader + "\n" + candJson, alert.freq_once_per_bar)
-    
-    // CANDIDATE (Short)
-    if enableContextCandidate and contextJustCandidateShort
-        string candSAlertType = finalPermission == "STAND_DOWN" ? ALERT_BLOCKED : ALERT_CANDIDATE
-        string candSHeader = f_alertHeader(candSAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
-        string candSJson = f_buildJson(candSAlertType, syminfo.ticker, detectedClass, primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
-        alert(candSHeader + "\n" + candSJson, alert.freq_once_per_bar)
-    
     // ARMED (Long)
     if enableContextArmed and contextJustArmedLong and barstate.isconfirmed
         string armLHeader = f_alertHeader(resolvedAlertType, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
@@ -2308,12 +2241,12 @@ if useAlertPerBar or useAlertBarClose
 //   CRYPTO > METALS > ENERGY > BONDS > INDICES > FX (default)
 //
 // PER-CATEGORY DEFAULTS (reviewed & rationale-backed):
-//   FX      — ARMED: 80  | CANDIDATE: 85  | ATR: 80% | QUIET: YES | ADX: 20
-//   CRYPTO  — ARMED: 85  | CANDIDATE: 88  | ATR: 80% | QUIET: NO  | ADX: 25
-//   METALS  — ARMED: 79  | CANDIDATE: 84  | ATR: 80% | QUIET: YES | ADX: 20
-//   ENERGY  — ARMED: 78  | CANDIDATE: 83  | ATR: 80% | QUIET: NO  | ADX: 19
-//   BONDS   — ARMED: 72  | CANDIDATE: 78  | ATR: 80% | QUIET: YES | ADX: 18
-//   INDICES — ARMED: 78  | CANDIDATE: 83  | ATR: 80% | QUIET: YES | ADX: 20
+//   FX      — ARMED: 80  | ATR: 80% | QUIET: YES | ADX: 20
+//   CRYPTO  — ARMED: 85  | ATR: 80% | QUIET: NO  | ADX: 25
+//   METALS  — ARMED: 79  | ATR: 80% | QUIET: YES | ADX: 20
+//   ENERGY  — ARMED: 78  | ATR: 80% | QUIET: NO  | ADX: 19
+//   BONDS   — ARMED: 72  | ATR: 80% | QUIET: YES | ADX: 18
+//   INDICES — ARMED: 78  | ATR: 80% | QUIET: YES | ADX: 20
 //
 // ALERT PAYLOAD: asset_class field reflects detected class, not hardcoded "FX"
 // PANEL: ASSET CLASS row shows detected category at all times
