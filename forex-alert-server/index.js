@@ -515,7 +515,6 @@ function cleanupExpiredAlerts() {
 
 // Start periodic cleanup
 setInterval(cleanupExpiredAlerts, CONFIG.UTCC_CLEANUP_INTERVAL_MS);
-setInterval(cleanupExpiredCandidates, CONFIG.UTCC_CLEANUP_INTERVAL_MS);
 setInterval(cleanupExpiredStructure, CONFIG.UTCC_CLEANUP_INTERVAL_MS);
 
 // ============================================================================
