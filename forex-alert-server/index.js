@@ -16,8 +16,9 @@ const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.j
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.6.0';
+const VERSION = '2.7.0';
 const CHANGES = [
+    '2.7.0 - pushBlocked(): PWA push notification on BLOCKED alerts — position management signal with human-readable disarm reason',
     '2.6.0 - GET /te-snapshot: serve te-snapshot.json (Trading Economics macro briefing) with 8h staleness check',
     '2.5.0 - PWA push notifications: ARMED, FOMO cleared (1hr), news gate, circuit breaker',
     '2.4.1 - CRITICAL: All data file paths moved from /app/ to /data/ (mounted volume) — arm-history.json, structure.json, armed.json, utcc-alerts.json, candidates.json now survive container restarts',
@@ -167,6 +168,33 @@ function pushFomoCleared(pair) {
         requireInteraction: false,
         data:    { type: 'FOMO_CLEARED', pair: pair }
     }, 'fomoCleared');
+}
+
+function pushBlocked(alert) {
+    var pair    = alert.pair || '';
+    var reason  = alert.primary || '';
+    var score   = alert.score || 0;
+    var dir     = (alert.direction || '').toUpperCase();
+    // Human-readable reason from reason codes
+    var reasonText = reason === 'U-EMA-FLAT'            ? 'EMA compressed — trend lost'
+                   : reason === 'U-MTF-MISALIGN'        ? 'MTF alignment broken'
+                   : reason === 'U-EFFICIENCY-COLLAPSE'  ? 'Directional efficiency collapsed'
+                   : reason === 'R-CHAOS'                ? 'Volatility regime — MIXED'
+                   : reason === 'R-COMPRESSION'          ? 'Market compressing'
+                   : reason === 'R-OFFSESSION'           ? 'Session ended'
+                   : reason === 'K-LOCKED'               ? 'Risk governor LOCKED'
+                   : reason;
+    var wasDir  = dir && dir !== 'NONE' ? ' | Was ' + dir : '';
+    var body    = reasonText + wasDir + ' | Score ' + score;
+    sendPushToAll({
+        title:   'BLOCKED: ' + pair,
+        body:    body,
+        icon:    '/icons/icon-192.png',
+        tag:     'blocked-' + pair,
+        vibrate: [300, 100, 300, 100, 300],
+        requireInteraction: true,
+        data:    { type: 'BLOCKED', pair: pair, reason: reason }
+    }, 'blocked');
 }
 
 function pushNewsWarning(payload) {
@@ -1062,6 +1090,10 @@ var server = http.createServer(function(req, res) {
                     delete fomoTimers[alert.pair];
                     console.log('  -> FOMO timer cancelled for ' + alert.pair);
                 }
+
+                // Push notification — position management signal
+                pushBlocked(alert);
+
                 console.log('  -> BLOCKED ' + alert.pair + ' (removed)');
             }
             // ----------------------------------------------------------------
