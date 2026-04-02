@@ -4,7 +4,14 @@
  * + Auto-Journal Engine + Review Queue (Phase 3-4)
  * Version: 1.9.1
  * 
- * v1.8.0 Changes:
+ * v1.9.2 Changes:
+ *   - FIX: submitReview() now saves lessons under both 'lessons' AND 'lessonsLearned' keys
+ *     so journal editTrade() populates the Lessons field correctly
+ *   - FIX: executionQuality also saved as 'execQualityRating' alias for edit form mapping
+ *   - FIX: Manually closed journal trades now get 'closed_pending_review' status
+ *     so they appear in the review queue banner (see journal-crud.js)
+ *
+ * v1.9.1 Changes:
  *   - ADD: _fetchUTCCState() fetches live UTCC state from Armed Dashboard API
  *   - ADD: processClosedTrade merges state API data as final fallback
  *   - ADD: Priority chain: AlertQueue > TradeCapture > UTCC State API
@@ -70,7 +77,7 @@
     // CONSTANTS
     // ============================================
 
-    const VERSION = '1.8.0';
+    const VERSION = '1.9.2';
     const STORAGE_KEY = 'ftcc_trades';
     const UTCC_STATE_URL = 'https://api.pineros.club/state';
     const SETTINGS_KEY = 'ftcc_settings';
@@ -1705,8 +1712,10 @@
 
                     // Update trade
                     trades[idx].status = STATUS.COMPLETE;
-                    trades[idx].executionQuality = execQuality;
-                    trades[idx].lessonsLearned = lessons;
+                    trades[idx].executionQuality = execQuality;   // numeric 1-5
+                    trades[idx].execQualityRating = execQuality;  // FIX v1.9.2: alias for edit form
+                    trades[idx].lessonsLearned = lessons;          // keep for backwards compat
+                    trades[idx].lessons = lessons;                 // FIX v1.9.2: matches journal-crud field name
                     trades[idx].reviewedAt = new Date().toISOString();
 
                     if (grade) trades[idx].grade = grade;

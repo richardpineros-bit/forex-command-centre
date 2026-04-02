@@ -684,6 +684,39 @@ function generateClaudeExport() {
         }
         report.push('');
         
+        // Performance by Trade Classification (behavioural audit)
+        report.push('### Trade Classification Breakdown (Behavioural Audit)');
+        report.push('');
+        report.push('*Did I lose because the model failed, or because I failed the model?*');
+        report.push('');
+        const classTypes = [
+            { key: 'model-win',           label: 'Model Win (system worked)' },
+            { key: 'model-loss',          label: 'Model Loss (valid, market moved against)' },
+            { key: 'execution-error',     label: 'Execution Error (good setup, poor execution)' },
+            { key: 'permission-violation',label: 'Permission Violation (should not have traded)' }
+        ];
+        let totalClassified = 0;
+        classTypes.forEach(({ key, label }) => {
+            const ct = closedTrades.filter(t => t.classification === key);
+            if (ct.length > 0) {
+                totalClassified += ct.length;
+                const wins = ct.filter(t => (t.rMultiple || 0) > 0).length;
+                const r = ct.reduce((sum, t) => sum + (t.rMultiple || 0), 0);
+                report.push(`- **${label}:** ${ct.length} trades, ${formatNumber((wins/ct.length)*100, 0)}% WR, ${r >= 0 ? '+' : ''}${formatNumber(r, 2)}R`);
+            }
+        });
+        const unclassified = closedTrades.filter(t => !t.classification).length;
+        if (unclassified > 0) {
+            report.push(`- **Unclassified:** ${unclassified} trades (no classification entered)`);
+        }
+        const selfInflicted = closedTrades.filter(t => t.classification === 'execution-error' || t.classification === 'permission-violation').length;
+        if (selfInflicted > 0) {
+            const selfPct = formatNumber((selfInflicted / closedTrades.length) * 100, 1);
+            report.push('');
+            report.push(`> **${selfPct}% of losses were self-inflicted** (execution errors + permission violations)`);
+        }
+        report.push('');
+        
         // Performance by Exit Reason
         report.push('### Performance by Exit Reason');
         report.push('');
@@ -797,6 +830,15 @@ function generateClaudeExport() {
             report.push(`- **Entry Zone:** ${t.entryZone ? t.entryZone.toUpperCase() : 'Not logged'}`);
             report.push(`- **Volatility State:** ${t.volState || 'Not logged'}`);
             report.push(`- **Exit Reason:** ${t.exitReason || 'Not logged'}`);
+            if (t.classification) {
+                const classLabels = {
+                    'model-win': 'Model Win (system worked as designed)',
+                    'model-loss': 'Model Loss (valid setup, market moved against)',
+                    'execution-error': 'Execution Error (good setup, poor execution)',
+                    'permission-violation': 'Permission Violation (should not have traded)'
+                };
+                report.push(`- **Trade Classification:** ${classLabels[t.classification] || t.classification}`);
+            }
             report.push(`- **Risk Amount:** ${t.riskAmount ? formatCurrency(t.riskAmount) : 'Not logged'}`);
             report.push(`- **R-Multiple:** ${t.rMultiple != null ? (t.rMultiple >= 0 ? '+' : '') + formatNumber(t.rMultiple, 2) + 'R' : 'Not calculated'}`);
             report.push(`- **P&L:** ${t.pnl != null ? formatCurrency(t.pnl) : 'Not calculated'}`);

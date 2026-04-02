@@ -1,3 +1,27 @@
+## [v5.5.4] - 2026-04-03
+### Feature: Trade Classification added to Claude Export
+
+- `performance-analytics.js`: Classification field now included per-trade in Detailed Trade Log
+- New **Trade Classification Breakdown (Behavioural Audit)** section in Performance Summary
+- Shows win rate and R by classification bucket (Model Win / Model Loss / Execution Error / Permission Violation)
+- Self-inflicted loss % callout: execution errors + permission violations as % of all trades
+- Surfaces the key coaching question: *"Did I lose because the model failed, or because I failed the model?"*
+
+## [v5.5.3] - 2026-04-03
+### Fix: Review queue field mismatches + manually closed trades not surfacing for review
+
+**Bug 1 -- Lessons field blank in Edit after completing a review (`broker-dashboard.js` v1.9.2):**
+- Root cause: `submitReview()` saved lessons as `lessonsLearned` but `editTrade()` in journal-crud reads `trade.lessons`
+- Fix: `submitReview()` now saves under both `lessons` AND `lessonsLearned` — edit form populates correctly
+
+**Bug 2 -- Execution quality rating captured but invisible in Edit (`broker-dashboard.js` v1.9.2):**
+- `executionQuality` (1–5 rating) now also saved as `execQualityRating` alias for future edit form mapping
+
+**Bug 3 -- Manually entered/closed trades never appearing in Review Queue banner (`journal-crud.js` v2.11.0):**
+- Root cause: Review queue only surfaces trades with status `closed_pending_review`; manual journal saves used `closed` — queue never picked them up
+- Fix: `saveTrade()` and `quickCloseTrade()` now promote status to `closed_pending_review` for any trade closed without review data (`!reviewedAt && !classification && !lessons`)
+- Trades that already have review data stay `closed` (no regression)
+
 ## [v5.5.2] - 2026-04-03
 ### Fix: Review queue reappearing + No UTCC badge on armed trades
 - `broker-dashboard.js` (v1.9.1): Two bugs in the auto-journal review queue

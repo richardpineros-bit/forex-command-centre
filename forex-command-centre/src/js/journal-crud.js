@@ -85,12 +85,25 @@ function saveTrade() {
             }
             trades[index] = merged;
         }
+        const _editId = currentEditTradeId; // capture before null
         currentEditTradeId = null;
+        // FIX v2.11.0: promote status for edited trades
+        const _ei = trades.findIndex(t => t.id === _editId);
+        if (_ei !== -1) {
+            const _et = trades[_ei];
+            if (_et.status === 'closed' && !_et.reviewedAt && !_et.classification && !_et.lessons) {
+                trades[_ei].status = 'closed_pending_review';
+            }
+        }
     } else {
         // Add new trade
         trade.id = generateId();
         trade.createdAt = new Date().toISOString();
         trades.unshift(trade);
+        // FIX v2.11.0: promote status for new closed trades
+        if (trade.status === 'closed' && !trade.reviewedAt && !trade.classification && !trade.lessons) {
+            trades[0].status = 'closed_pending_review';
+        }
     }
     
     saveToStorage(STORAGE_KEYS.trades, trades);
@@ -549,7 +562,8 @@ function closeTrade(tradeId) {
     
     trades[index].exit = parseFloat(exitPrice);
     trades[index].exitReason = exitReason || 'MANUAL';
-    trades[index].status = 'closed';
+    // FIX v2.11.0: Use closed_pending_review so the Review Queue banner picks it up
+    trades[index].status = 'closed_pending_review';
     trades[index].closedAt = new Date().toISOString();
     
     // Calculate R-multiple
