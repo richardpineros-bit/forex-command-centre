@@ -380,44 +380,35 @@ colorText = input.color(color.white, "Text", group=GRP_STYLE, inline="table3")
 // ============================================================================
 
 int alertStrongThreshold = fx_armedThreshold
-int candidateThreshold   = fx_candidateThreshold
 int atrFilterPercent     = fx_atrFilterPct
 bool acceptQuiet         = fx_acceptQuiet
 int adxThreshold         = fx_adxThreshold
 
 if detectedClass == "CRYPTO"
     alertStrongThreshold := cr_armedThreshold
-    candidateThreshold   := cr_candidateThreshold
     atrFilterPercent     := cr_atrFilterPct
     acceptQuiet          := cr_acceptQuiet
     adxThreshold         := cr_adxThreshold
 else if detectedClass == "METALS"
     alertStrongThreshold := mt_armedThreshold
-    candidateThreshold   := mt_candidateThreshold
     atrFilterPercent     := mt_atrFilterPct
     acceptQuiet          := mt_acceptQuiet
     adxThreshold         := mt_adxThreshold
 else if detectedClass == "ENERGY"
     alertStrongThreshold := en_armedThreshold
-    candidateThreshold   := en_candidateThreshold
     atrFilterPercent     := en_atrFilterPct
     acceptQuiet          := en_acceptQuiet
     adxThreshold         := en_adxThreshold
 else if detectedClass == "BONDS"
     alertStrongThreshold := bd_armedThreshold
-    candidateThreshold   := bd_candidateThreshold
     atrFilterPercent     := bd_atrFilterPct
     acceptQuiet          := bd_acceptQuiet
     adxThreshold         := bd_adxThreshold
 else if detectedClass == "INDICES"
     alertStrongThreshold := ix_armedThreshold
-    candidateThreshold   := ix_candidateThreshold
     atrFilterPercent     := ix_atrFilterPct
     acceptQuiet          := ix_acceptQuiet
     adxThreshold         := ix_adxThreshold
-
-// Perfect threshold = candidate threshold for this category
-int alertPerfectThreshold = candidateThreshold
 
 // ============================================================================
 // CALCULATIONS: INSTITUTIONAL ALERT BUILDER (v2.5.0)
