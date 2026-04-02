@@ -1,3 +1,27 @@
+## [Alert Server v2.7.0 / UTCC Universal v3.0.0] - 2026-04-02
+### UTCC Universal indicator + BLOCKED push notification
+
+**utcc-indicators/utcc-universal.pine (NEW)**
+- Single indicator replacing all 6 category-specific UTCC indicators (forex/crypto/metals/energy/bonds/indices)
+- Auto-detects asset class via `syminfo.type` + ticker pattern matching. Priority: CRYPTO > METALS > ENERGY > BONDS > INDICES > FX
+- 6 dedicated settings groups with reviewed per-category defaults:
+  - FX: ARMED 80, CANDIDATE 85, ATR 80%, QUIET YES, ADX 20
+  - CRYPTO: ARMED 85, CANDIDATE 88, ATR 80%, QUIET NO, ADX 25
+  - METALS: ARMED 79, CANDIDATE 84, ATR 80%, QUIET YES, ADX 20
+  - ENERGY: ARMED 78, CANDIDATE 83, ATR 80%, QUIET NO, ADX 19
+  - BONDS: ARMED 72, CANDIDATE 78, ATR 80%, QUIET YES, ADX 18
+  - INDICES: ARMED 78, CANDIDATE 83, ATR 80%, QUIET YES, ADX 20
+- Runtime selection maps detected class to active thresholds — all downstream code unchanged
+- Alert JSON payload uses `detectedClass` (not hardcoded "FX") in `asset_class` field
+- Panel: ASSET CLASS row (colour-coded per category) added to Tier 1
+- Diagnostics panel shows active ARMED threshold + detected class label
+
+**forex-alert-server/index.js (v2.7.0)**
+- `pushBlocked()`: PWA push notification fires on every BLOCKED alert
+- Human-readable disarm reason translated from reason codes (EMA flat, MTF misalign, efficiency collapse, regime chaos, etc.)
+- `requireInteraction: true` — notification stays on screen until dismissed
+- Closes the exit signal gap: ARMED push fires on entry signal, BLOCKED push fires on structural breakdown
+
 ## [v5.4.5] - 2026-04-01
 ### Fix: scans, goals, no-trades returning 400 from storage-api.php
 - `storage-api.php`: added `scans`, `goals`, `no-trades` to `$allowedFiles` whitelist
