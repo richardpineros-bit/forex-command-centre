@@ -448,15 +448,15 @@ else if riskGovernorState == "REDUCED"
     riskCode := "K-REDUCED"
 
 f_alertEmoji(string alertType) =>
-    string emoji = "\u26AA"
+    string emoji = "⚪"
     if alertType == ALERT_ARMED
-        emoji := "\U0001F7E2"
+        emoji := "🟢"
     else if alertType == ALERT_CANDIDATE
-        emoji := "\U0001F7E1"
+        emoji := "🟡"
     else if alertType == ALERT_BLOCKED
-        emoji := "\U0001F534"
+        emoji := "🔴"
     else
-        emoji := "\u26AA"
+        emoji := "⚪"
     emoji
 
 f_alertPrefix(string alertType) =>
@@ -903,11 +903,11 @@ newsNextEventTime = "None 24h"
 
 criterion1Pass = trendScore >= minTrendScore
 criterion1Value = str.tostring(math.round(trendScore)) + "/100"
-criterion1Status = criterion1Pass ? "\u2705" : "\u274C"
+criterion1Status = criterion1Pass ? "✅" : "❌"
 
 criterion2Pass = mtfFullAlignment
 criterion2Value = mtfAlignmentBullish ? "BULL 3/3" : mtfBearCount == 3 ? "BEAR 3/3" : str.tostring(mtfBullCount) + "/3"
-criterion2Status = criterion2Pass ? "\u2705" : "\u274C"
+criterion2Status = criterion2Pass ? "✅" : "❌"
 
 var bool criterion3Pass = false
 var string criterion3Detail = ""
@@ -937,11 +937,11 @@ else
     criterion3Detail := atrState
 
 criterion3Value = criterion3Detail
-criterion3Status = criterion3Pass ? "\u2705" : "\u274C"
+criterion3Status = criterion3Pass ? "✅" : "❌"
 
 criterion4Pass = not newsRiskHigh
 criterion4Value = newsRiskHigh ? "HIGH RISK" : "CLEAR"
-criterion4Status = criterion4Pass ? "\u2705" : "\u274C"
+criterion4Status = criterion4Pass ? "✅" : "❌"
 
 atrPercentileValue = math.round(atrPercentile)
 atrGuidance = atrPercentileValue < 30 ? "IDEAL" : atrPercentileValue < 60 ? "NORMAL" : atrPercentileValue < 80 ? "ELEVATED" : "EXHAUSTED"
@@ -2220,27 +2220,27 @@ playbookShort = str.contains(currentPlaybook, "CONTINUATION") ? "CONTINUATION" :
 
 alertcondition(enableContextCandidate and contextJustCandidateLong, 
      title="CANDIDATE Long",
-     message='\U0001F7E1 [C] CANDIDATE | {{ticker}} | R-TRANSITION | K-NORMAL | CONDITIONAL')
+     message='🟡 [C] CANDIDATE | {{ticker}} | R-TRANSITION | K-NORMAL | CONDITIONAL')
 
 alertcondition(enableContextCandidate and contextJustCandidateShort, 
      title="CANDIDATE Short",
-     message='\U0001F7E1 [C] CANDIDATE | {{ticker}} | R-TRANSITION | K-NORMAL | CONDITIONAL')
+     message='🟡 [C] CANDIDATE | {{ticker}} | R-TRANSITION | K-NORMAL | CONDITIONAL')
 
 alertcondition(enableContextArmed and contextJustArmedLong and barstate.isconfirmed, 
      title="ARMED Long",
-     message='\U0001F7E2 [A] ARMED | {{ticker}} | R-EXPANSION | K-NORMAL | FULL')
+     message='🟢 [A] ARMED | {{ticker}} | R-EXPANSION | K-NORMAL | FULL')
 
 alertcondition(enableContextArmed and contextJustArmedShort and barstate.isconfirmed, 
      title="ARMED Short",
-     message='\U0001F7E2 [A] ARMED | {{ticker}} | R-EXPANSION | K-NORMAL | FULL')
+     message='🟢 [A] ARMED | {{ticker}} | R-EXPANSION | K-NORMAL | FULL')
 
 alertcondition(enableContextDisarmed and contextJustDisarmed and barstate.isconfirmed, 
      title="BLOCKED",
-     message='\U0001F534 [B] BLOCKED | {{ticker}} | R-COMPRESSION | STAND_DOWN')
+     message='🔴 [B] BLOCKED | {{ticker}} | R-COMPRESSION | STAND_DOWN')
 
 alertcondition(enableSessionReset and sessionResetEvent, 
      title="INFO Session Reset",
-     message='\u26AA [I] INFO | {{ticker}} | SESSION_RESET')
+     message='⚪ [I] INFO | {{ticker}} | SESSION_RESET')
 
 // ============================================================================
 // INSTITUTIONAL ALERT DISPATCH (v2.5.0 / v3.0.0)
@@ -2296,7 +2296,7 @@ if useAlertPerBar or useAlertBarClose
     
     // INFO: Session Reset
     if enableSessionReset and sessionResetEvent
-        string infoHeader = "\u26AA [I] INFO | " + syminfo.ticker + " | SESSION_RESET | " + currentSession
+        string infoHeader = "⚪ [I] INFO | " + syminfo.ticker + " | SESSION_RESET | " + currentSession
         string infoJson = '{"type":"INFO","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","primary":"SESSION_RESET","contributing":"","permission":"N/A","execution":{"max_risk":"NONE","max_trades":0,"adds":"DISABLED"},"context":{"direction":"none","score":0,"criteria":0,"entry":"N/A","vol_state":"' + atrState + '","mtf":0,"rsi":0,"session":"' + currentSession + '","playbook":"NONE","regime":"' + alertRegimeClean + '","risk_state":"' + alertRiskClean + '"}}'
         alert(infoHeader + "\n" + infoJson, alert.freq_once_per_bar)
 
