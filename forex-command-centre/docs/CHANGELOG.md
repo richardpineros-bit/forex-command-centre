@@ -1,3 +1,18 @@
+## [v5.5.2] - 2026-04-03
+### Fix: Review queue reappearing + No UTCC badge on armed trades
+- `broker-dashboard.js` (v1.9.1): Two bugs in the auto-journal review queue
+
+**Bug 1 -- Reviewed trades kept reappearing as "awaiting review":**
+- Root cause: `_updateExistingEntry()` unconditionally set `status = PENDING_REVIEW` on every Oanda sync poll, overwriting the `complete` status set during review
+- Fix: Guard added -- `if (trades[idx].status !== STATUS.COMPLETE)` before the status assignment
+- Reviewed trades now survive subsequent sync cycles without being reset
+
+**Bug 2 -- "No UTCC" badge on trades that were armed pairs:**
+- Root cause: By the time a trade closes, the armed state is cleared from the server -- `alertData` was null at sync time, so `utccArmed`, `trendScore`, `utccTier` were never stored on the journal entry
+- Fix 1: When reviewer enters a score during review, `utccArmed = true` is now also set -- badge turns green on save
+- Fix 2: UTCC enrichment fields are now individually guarded (not gated behind single `!trendScore` check) -- missing fields get backfilled on later syncs if `alertData` becomes available
+
+
 ## [v5.5.1] - 2026-04-03
 ### Armed Panel: Directional verdict badges + fleet summary
 - `armed-panel.js` (v1.2.0): `buildDirectionalVerdict(p)` added - derives LONG/SHORT verdict from UTCC direction (primary), modulated by bias confluence, IG sentiment contrarian signal, and struct_ext state

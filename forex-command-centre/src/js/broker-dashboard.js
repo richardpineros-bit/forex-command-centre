@@ -2,7 +2,7 @@
  * Broker Dashboard Integration
  * Links live broker data to Account Overview + Active Trades Panel
  * + Auto-Journal Engine + Review Queue (Phase 3-4)
- * Version: 1.8.0
+ * Version: 1.9.1
  * 
  * v1.8.0 Changes:
  *   - ADD: _fetchUTCCState() fetches live UTCC state from Armed Dashboard API
@@ -1196,7 +1196,12 @@
                     if (idx === -1) return;
 
                     // Update with broker close data
-                    trades[idx].status = STATUS.PENDING_REVIEW;
+                    // FIX v1.9.1: Only set PENDING_REVIEW if trade has not already been reviewed.
+                    // Previously this reset status unconditionally on every Oanda sync, causing
+                    // reviewed trades to reappear in the queue on next poll.
+                    if (trades[idx].status !== STATUS.COMPLETE) {
+                        trades[idx].status = STATUS.PENDING_REVIEW;
+                    }
                     trades[idx].oandaTradeId = String(trade.id);
                     trades[idx].exitPrice = trade.exitPrice || null;
                     trades[idx].exit = trade.exitPrice || null;
@@ -1211,14 +1216,15 @@
                     trades[idx].autoJournalled = true;
                     trades[idx].autoJournalledAt = new Date().toISOString();
 
-                    // Enrich with alert data if we have it and entry is missing UTCC
-                    if (alertData && !trades[idx].trendScore) {
+                    // Enrich with alert data - individual guards so any missing field
+                    // gets backfilled on subsequent syncs if alertData becomes available.
+                    if (alertData) {
                         trades[idx].utccArmed = true;
-                        trades[idx].trendScore = alertData.score;
-                        trades[idx].utccTier = alertData.tier;
-                        trades[idx].utccCriteriaPass = alertData.criteriaPass;
-                        trades[idx].entryZone = alertData.entryZone;
-                        trades[idx].alertId = alertData.alertId;
+                        if (!trades[idx].trendScore && alertData.score) trades[idx].trendScore = alertData.score;
+                        if (!trades[idx].utccTier && alertData.tier) trades[idx].utccTier = alertData.tier;
+                        if (!trades[idx].utccCriteriaPass && alertData.criteriaPass) trades[idx].utccCriteriaPass = alertData.criteriaPass;
+                        if (!trades[idx].entryZone && alertData.entryZone) trades[idx].entryZone = alertData.entryZone;
+                        if (!trades[idx].alertId && alertData.alertId) trades[idx].alertId = alertData.alertId;
                     }
 
                     // Enrich with TradeCapture permission data if available
@@ -1706,6 +1712,9 @@
                     if (grade) trades[idx].grade = grade;
                     if (playbook) trades[idx].playbook = playbook;
                     if (score && !trades[idx].trendScore) trades[idx].trendScore = score;
+                    // FIX v1.9.1: Mark utccArmed so the UTCC badge turns green
+                    // when reviewer confirms score, even if armed state was cleared at close time.
+                    if (score) trades[idx].utccArmed = true;
 
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(trades));
 
