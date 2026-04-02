@@ -1494,6 +1494,12 @@
                     <div class="correlation-status-text">Select a pair to check correlation</div>
                 </div>
                 
+                <!-- Manual re-check fallback (for when pair is set programmatically) -->
+                <div id="correlation-recheck-hint" style="padding: 0 var(--spacing-md) var(--spacing-sm); display: flex; align-items: center; gap: var(--spacing-sm);">
+                    <button class="btn btn-sm btn-secondary" onclick="checkCorrelation()" style="font-size: 0.75rem; padding: 2px 10px;">&#x21BB; Re-check</button>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">If pair is already selected above</span>
+                </div>
+                
                 <!-- Correlation Block Warning (shows when correlated) -->
                 <div id="correlation-block" style="display: none; padding: var(--spacing-md); background: rgba(239, 68, 68, 0.15); border: 2px solid var(--color-fail); border-radius: var(--radius-md); margin: var(--spacing-md);">
                     <div style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
