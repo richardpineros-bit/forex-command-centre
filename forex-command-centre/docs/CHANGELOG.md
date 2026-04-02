@@ -1,3 +1,11 @@
+## [v5.5.1] - 2026-04-03
+### Armed Panel: Directional verdict badges + fleet summary
+- `armed-panel.js` (v1.2.0): `buildDirectionalVerdict(p)` added - derives LONG/SHORT verdict from UTCC direction (primary), modulated by bias confluence, IG sentiment contrarian signal, and struct_ext state
+- Confidence scoring: ALIGNED/contrarian/FRESH = +1 each; CONFLICTING/crowd-aligned/EXTENDED = -1 each; score >=2 HIGH CONF, >=0 MED CONF, <0 LOW CONF
+- Verdict strip rendered between main row and bias row on every Armed and Watchlist card
+- Fleet summary added to Armed Instruments section header: up-arrow N L / down-arrow N S directional count at a glance
+- Removed `armed-panel_v1.2.0.js` - versioned filenames are for standalone deliverables not live source files; git provides version control
+
 ## [Alert Server v2.7.0 / UTCC Universal v3.0.0] - 2026-04-02
 ### UTCC Universal indicator + BLOCKED push notification
 
