@@ -1899,3 +1899,10 @@ on unqualified setups. Removed entirely. Flow is now: ARMED → FOMO gate → an
 - Removed two `alertcondition()` CANDIDATE blocks
 - Removed two `alert()` CANDIDATE dispatch blocks (Long/Short)
 - Updated comments: header, tooltip, section label, footer threshold table
+
+## [Hotfix] - 2026-04-03
+### Fix: trading-state container crash on startup
+
+- `forex-alert-server/index.js`: Removed orphaned `setInterval(cleanupExpiredCandidates, ...)` call
+- `cleanupExpiredCandidates` function was deleted in v5.6.0 but the interval registration was missed
+- Container was exiting immediately with `ReferenceError: cleanupExpiredCandidates is not defined`
