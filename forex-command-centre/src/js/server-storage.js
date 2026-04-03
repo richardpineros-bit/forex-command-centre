@@ -307,8 +307,45 @@
                     if (localRaw !== remoteRaw) {
                         console.log('[ServerStorage] Remote change detected: ' + serverKey);
 
+                        // For ftcc_trades: smart merge - never let a remote snapshot
+                        // revert a trade to a lower-status state than local has.
+                        var writeData = result.data;
+                        if (serverKey === 'trades' && Array.isArray(result.data)) {
+                            try {
+                                var localTrades = JSON.parse(localRaw || '[]');
+                                var STATUS_RANK = {
+                                    'open': 0,
+                                    'closed_pending_review': 1,
+                                    'complete': 2,
+                                    'closed': 2
+                                };
+                                var localMap = {};
+                                localTrades.forEach(function(t) {
+                                    if (t.id) localMap[t.id] = t;
+                                });
+                                // For each remote trade, keep whichever version
+                                // has the more advanced status.
+                                var merged = result.data.map(function(remote) {
+                                    var local = localMap[remote.id];
+                                    if (!local) return remote;
+                                    var rRank = STATUS_RANK[remote.status] || 0;
+                                    var lRank = STATUS_RANK[local.status] || 0;
+                                    return lRank > rRank ? local : remote;
+                                });
+                                // Add any local-only trades not in remote
+                                var remoteIds = new Set(result.data.map(function(t) { return t.id; }));
+                                localTrades.forEach(function(t) {
+                                    if (t.id && !remoteIds.has(t.id)) merged.push(t);
+                                });
+                                writeData = merged;
+                                console.log('[ServerStorage] Smart merge: ' + merged.length + ' trades');
+                            } catch (mergeErr) {
+                                console.warn('[ServerStorage] Merge failed, using remote:', mergeErr);
+                            }
+                        }
+
                         isLoadingFromServer = true;
-                        localStorage.setItem(localKey, remoteRaw);
+                        localStorage.setItem(localKey, JSON.stringify(writeData));
                         isLoadingFromServer = false;
 
                         serverTimestamps[serverKey] = remoteModified;
@@ -316,11 +353,11 @@
 
                         // Fire per-key event
                         window.dispatchEvent(new CustomEvent('storage:updated:' + serverKey, {
-                            detail: { key: serverKey, data: result.data }
+                            detail: { key: serverKey, data: writeData }
                         }));
 
                         // Call registered refresh callbacks
-                        notifyRefreshCallbacks(serverKey, result.data);
+                        notifyRefreshCallbacks(serverKey, writeData);
                     } else {
                         // Content same, just update timestamp
                         serverTimestamps[serverKey] = remoteModified;

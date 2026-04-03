@@ -1,3 +1,9 @@
+## [v5.7.2] - 2026-04-03
+### Fixed: Trade duplication + reappearance after server sync
+- `broker-dashboard.js`: `processClosedTrade` now claims `_processedIds` entry BEFORE any `await` - prevents two concurrent calls both passing the dedup gate and creating duplicate journal entries
+- `broker-dashboard.js`: `_findLinkedEntry` fuzzy match now also matches `closed_pending_review` status (not just `open`) - prevents duplicate creation when server sync reverts a trade status temporarily
+- `server-storage.js`: `pollForChanges` now does a smart merge for `ftcc_trades` instead of blind overwrite - keeps the highest-status version of each trade by ID (open < closed_pending_review < complete), preventing closed/reviewed trades from reverting to open after a sync
+
 ## [v5.7.0] - 2026-04-03
 ### Added: Review Mode + Expandable Journal Rows
 - `review-mode.css`: Side-panel overlay styles, expand-row table styles, grade button colours, dirty-dot indicator

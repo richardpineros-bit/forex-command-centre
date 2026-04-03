@@ -754,16 +754,16 @@
             processClosedTrade: async function(trade) {
                 if (!trade || !trade.id) return;
 
-                // Deduplicate within session
+                // Deduplicate within session - claim ID immediately before any await
                 if (this._processedIds.has(trade.id)) {
                     console.log('[AutoJournal] Trade ' + trade.id + ' already processed this session');
                     return;
                 }
+                this._processedIds.add(trade.id); // claim now - prevents async race duplicates
 
-                // Check if already in journal
+                // Check if already in journal (any status)
                 if (this._findExistingEntry(trade.id)) {
                     console.log('[AutoJournal] Trade ' + trade.id + ' already in journal');
-                    this._processedIds.add(trade.id);
                     return;
                 }
 
@@ -1181,8 +1181,10 @@
                     if (match) return match;
 
                     // Fuzzy match: same pair + direction + still open
+                    // Also match closed_pending_review in case server-storage
+                    // reverted status before the broker poll ran again.
                     match = trades.find(t =>
-                        t.status === 'open' &&
+                        (t.status === 'open' || t.status === 'closed_pending_review') &&
                         (t.pair || '').replace(/_/g, '').toUpperCase() === pair &&
                         t.direction === direction
                     );
