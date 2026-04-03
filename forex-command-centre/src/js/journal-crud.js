@@ -353,32 +353,48 @@ function updateTradeHistory(trades) {
         const rVal = trade.rMultiple || trade.rValue || 0;
         const rClass = rVal > 0 ? 'text-pass' : rVal < 0 ? 'text-fail' : '';
         const isAuto = trade.autoCapture === true || trade.autoJournalled === true || trade.alertType === 'AUTO_CAPTURE';
-        const sourceBadge = isAuto 
-            ? '<span class="badge badge-info" title="Auto-captured from broker">AUTO</span>'
-            : '<span class="badge" title="Manually entered">MAN</span>';
+        const sourceBadge = isAuto
+            ? '<span class=\"badge badge-info\" title=\"Auto-captured from broker\">AUTO</span>'
+            : '<span class=\"badge\" title=\"Manually entered\">MAN</span>';
+        const expandId = 'expand-' + trade.id;
+        const expandHTML = (typeof ReviewMode !== 'undefined')
+            ? ReviewMode.buildExpandHTML(trade)
+            : '';
         return `
-            <tr>
+            <tr class="trade-row">
+                <td class="trade-expand-toggle" onclick="toggleTradeExpand('${trade.id}')" title="Expand details">&#x25B6;</td>
                 <td>${formatDate(trade.date)}</td>
                 <td><strong>${trade.pair}</strong></td>
-                <td><span class="badge ${trade.direction === 'long' ? 'badge-pass' : 'badge-fail'}">${trade.direction?.toUpperCase()?.charAt(0)}</span></td>
+                <td><span class=\"badge ${trade.direction === 'long' ? 'badge-pass' : 'badge-fail'}\">${trade.direction?.toUpperCase()?.charAt(0)}</span></td>
                 <td>${sourceBadge}</td>
                 <td>${getAlertBadge(trade.alertType)}</td>
-                <td><span class="inline-editable" onclick="inlineEditGrade('${trade.id}', this)" title="Click to edit grade">${getGradeBadge(trade.grade, trade.dismissReason)}</span></td>
+                <td><span class=\"inline-editable\" onclick=\"inlineEditGrade('${trade.id}', this)\" title=\"Click to edit grade\">${getGradeBadge(trade.grade, trade.dismissReason)}</span></td>
                 <td>${trade.entry || '-'}</td>
                 <td>${trade.exit || trade.exitPrice || '-'}</td>
-                <td class="${rClass}"><strong>${formatNumber(rVal, 2)}R</strong></td>
-                <td><span class="inline-editable" onclick="inlineEditScore('${trade.id}', this, ${trade.trendScore || 0})" title="Click to edit score">${trade.trendScore || '-'}</span></td>
-                <td><span class="inline-editable" onclick="inlineEditZone('${trade.id}', this, '${trade.entryZone || ''}')" title="Click to edit zone">${getZoneBadge(trade.entryZone)}</span></td>
-                <td style="white-space:nowrap;">
-                    ${!trade.grade ? `<button class="btn btn-sm" style="background:#6b7280;color:#fff;font-size:0.65rem;padding:2px 6px;" onclick="dismissTrade('${trade.id}')" title="Dismiss as test/legacy">DIS</button>` : ''}
-                    <button class="btn btn-secondary btn-sm" onclick="editTrade('${trade.id}')" title="Edit full trade">&#x270E;</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteTrade('${trade.id}')" title="Delete trade">&#x1F5D1;</button>
+                <td class=\"${rClass}\"><strong>${formatNumber(rVal, 2)}R</strong></td>
+                <td><span class=\"inline-editable\" onclick=\"inlineEditScore('${trade.id}', this, ${trade.trendScore || 0})\" title=\"Click to edit score\">${trade.trendScore || '-'}</span></td>
+                <td><span class=\"inline-editable\" onclick=\"inlineEditZone('${trade.id}', this, '${trade.entryZone || ''}')\" title=\"Click to edit zone\">${getZoneBadge(trade.entryZone)}</span></td>
+                <td style=\"white-space:nowrap;\">
+                    ${!trade.grade ? `<button class=\"btn btn-sm\" style=\"background:#6b7280;color:#fff;font-size:0.65rem;padding:2px 6px;\" onclick=\"dismissTrade('${trade.id}')\" title=\"Dismiss as test/legacy\">DIS</button>` : ''}
+                    <button class=\"btn btn-secondary btn-sm\" onclick=\"editTrade('${trade.id}')\" title=\"Edit full trade\">&#x270E;</button>
+                    <button class=\"btn btn-danger btn-sm\" onclick=\"deleteTrade('${trade.id}')\" title=\"Delete trade\">&#x1F5D1;</button>
                 </td>
+            </tr>
+            <tr class="trade-expand-row" id="${expandId}">
+                <td colspan="13">${expandHTML}</td>
             </tr>
         `;
     }).join('');
     
     updatePaginationButtons(tradeHistoryPage, totalPages);
+}
+
+function toggleTradeExpand(tradeId) {
+    const row    = document.getElementById('expand-' + tradeId);
+    const toggle = document.querySelector(`tr.trade-row td.trade-expand-toggle[onclick*="${tradeId}"]`);
+    if (!row) return;
+    const isOpen = row.classList.toggle('open');
+    if (toggle) toggle.innerHTML = isOpen ? '&#x25BC;' : '&#x25B6;';
 }
 
 function filterTradesForHistory(trades) {

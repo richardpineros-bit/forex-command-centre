@@ -1,3 +1,10 @@
+## [v5.7.0] - 2026-04-03
+### Added: Review Mode + Expandable Journal Rows
+- `review-mode.css`: Side-panel overlay styles, expand-row table styles, grade button colours, dirty-dot indicator
+- `review-mode.js`: `ReviewMode` IIFE module - nav (prev/next), filter chips (All/Ungraded/Wins/Losses), inline grade selector, notes/lessons textareas, save to localStorage + ServerStorage, `openFromTrade(id)`, `buildExpandHTML(trade)`
+- `journal-crud.js`: Expandable rows - each trade row now has a toggle chevron; second `<tr class='trade-expand-row'>` shows context, levels, structured/ext, notes preview, Reviewed stamp, and 'Review Mode' + 'Full Edit' action buttons; `toggleTradeExpand()` function added
+- `index.html`: `review-mode.css` imported after `modals.css`; `review-mode.js` imported after `journal-crud.js`
+
 ## [v5.5.5] - 2026-04-03
 ### Fix: Lessons field still blank in Edit for pre-fix reviews
 
