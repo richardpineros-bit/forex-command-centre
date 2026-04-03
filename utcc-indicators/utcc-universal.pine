@@ -2212,8 +2212,8 @@ if useAlertPerBar or useAlertBarClose
         string armSJson = f_buildJson(resolvedAlertType, syminfo.ticker, detectedClass, primaryReason, contributingStr, finalPermission, alertExecMaxRisk, alertExecMaxTrades, alertExecAdds, alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(armSHeader + "\n" + armSJson, alertFreq)
     
-    // BLOCKED (was DISARMED)
-    if enableContextDisarmed and contextJustDisarmed and barstate.isconfirmed
+    // BLOCKED (was DISARMED) — guard against false fire on session transition
+    if enableContextDisarmed and contextJustDisarmed and not sessionJustChanged and barstate.isconfirmed
         string blkHeader = f_alertHeader(ALERT_BLOCKED, syminfo.ticker, primaryReason, riskCode, "U-SCORE-" + str.tostring(math.round(overallScore)))
         string blkJson = f_buildJson(ALERT_BLOCKED, syminfo.ticker, detectedClass, primaryReason, contributingStr, "STAND_DOWN", "NONE", 0, "DISABLED", alertDirStr, math.round(overallScore), criteriaMet, alertEntryClean, atrState, atrState, math.round(atrPercentile), mtfAlignCount, alertRsiCount, currentSession, playbookShort, alertRegimeClean, alertRiskClean)
         alert(blkHeader + "\n" + blkJson, alertFreq)
