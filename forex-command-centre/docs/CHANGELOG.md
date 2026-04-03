@@ -1,3 +1,33 @@
+## [v5.8.0] - 2026-04-03
+### Feature: Armed Validation Gate (FOMO Phase 2)
+
+New module `armed-validation-gate.js` -- per-alert mandatory validation checkpoint that fires after the 1-hour FOMO gate expires. Addresses confirmation bias under time pressure: brain is primed to see setups that do not exist once the hour is up. Gate forces honest chart verification before Pre-Trade access.
+
+**Gate logic:**
+- Per-instrument, per-alert -- each alert is independent
+- Both entry points intercepted: Armed Panel `READY` badge + Quick Access Bar `READY` click
+- Modal is blocking -- clicking outside shows error, no dismissal
+
+**Three outcomes:**
+- **CONFIRM** (all 3 checks + SL/TP filled) -- `VALID` badge, Pre-Trade unlocks, levels logged
+- **NO VALID SETUP** -- `PASSED` badge, no penalty, pair stays tradeable, logged for audit
+- **Close (X)** -- failure count increments, warning toast issued
+
+**Failure / cooldown logic:**
+- First failure: warning toast only
+- Second failure same pair same day: automatic 24h cooldown, persisted server-side
+- Cooldowns survive browser refresh and carry across midnight if still active
+
+**Three validation checks (all required):**
+1. Price is currently AT the entry zone -- not heading towards it
+2. EMA structure confirmed live on chart right now -- not predicted
+3. Exact stop loss AND take profit stated before opening entry form
+
+**Files changed:**
+- `src/js/armed-validation-gate.js` (new)
+- `src/index.html`: script import added after `armed-panel.js`
+- `backend/api/storage-api.php`: `armed-validation` added to whitelist
+
 ## [v5.7.2] - 2026-04-03
 ### Fixed: Trade duplication + reappearance after server sync
 - `broker-dashboard.js`: `processClosedTrade` now claims `_processedIds` entry BEFORE any `await` - prevents two concurrent calls both passing the dedup gate and creating duplicate journal entries
