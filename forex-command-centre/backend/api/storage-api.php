@@ -39,7 +39,8 @@ $allowedFiles = [
     'armed-dismissed' => 'armed-dismissed.json',
     'scans' => 'scans.json',
     'goals' => 'goals.json',
-    'no-trades' => 'no-trades.json'
+    'no-trades' => 'no-trades.json',
+    'armed-validation' => 'armed-validation.json'
 ];
 
 // ============================================================
