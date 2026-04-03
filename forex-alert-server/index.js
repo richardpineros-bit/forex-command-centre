@@ -17,6 +17,7 @@ const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.j
 // ============================================================================
 const VERSION = '2.7.0';
 const CHANGES = [
+    '2.8.0 - SESSION_RESET no longer clears armed pairs — natural disarm only; pairs survive session transitions',
     '2.7.0 - pushBlocked(): PWA push notification on BLOCKED alerts — position management signal with human-readable disarm reason',
     '2.6.0 - GET /te-snapshot: serve te-snapshot.json (Trading Economics macro briefing) with 8h staleness check',
     '2.5.0 - PWA push notifications: ARMED, FOMO cleared (1hr), news gate, circuit breaker',
@@ -1013,27 +1014,12 @@ var server = http.createServer(function(req, res) {
             // ----------------------------------------------------------------
             else if (alert.type === 'INFO') {
                 if (alert.pair === 'SESSION_RESET') {
-                    // Clear all pairs for the given session, or all if no session specified
+                    // v2.8.0: Session transitions no longer clear armed pairs.
+                    // UTCC natural disarm (score drop + structural damage) is the
+                    // only system-initiated removal. Armed pairs remain valid across
+                    // sessions until the market invalidates them.
                     var sessionName = alert.primary || '';
-                    var cleared = 0;
-
-                    if (sessionName) {
-                        // Clear pairs matching this session
-                        for (var p in state.pairs) {
-                            if (state.pairs[p].session &&
-                                state.pairs[p].session.toLowerCase() === sessionName.toLowerCase()) {
-                                delete state.pairs[p];
-                                cleared++;
-                            }
-                        }
-                    } else {
-                        // No session specified — clear all
-                        cleared = Object.keys(state.pairs).length;
-                        state.pairs = {};
-                    }
-
-                    saveState(state);
-                    console.log('  -> INFO SESSION_RESET ' + sessionName + ' (cleared ' + cleared + ')');
+                    console.log('  -> INFO SESSION_RESET ' + sessionName + ' (pairs preserved — natural disarm only)');
                 } else {
                     console.log('  -> INFO ' + alert.pair + ' (acknowledged)');
                 }

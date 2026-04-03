@@ -1,4 +1,4 @@
-// armed-panel.js v1.2.0 - Directional verdict badges per card + fleet summary
+// armed-panel.js v1.3.0 - Permanent dismiss (timestamped), open-trade protection, 24/48h age warnings, no auto-expiry
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -10,8 +10,9 @@
     var _sentimentData  = null;
     var _sentimentStale = true;
 
-    // Dismissed pairs state (server-side, session-scoped per calendar date AEST)
-    var _dismissedPairs    = new Set();
+    // Dismissed pairs state (server-side, permanent until new ARMED re-arms the pair)
+    // Structure: { pair: { dismissedAt: ISO string } }
+    var _dismissedPairs    = {};   // keyed by pair name
     var _dismissedExpanded = false;
 
     async function fetchSentiment() {
@@ -40,11 +41,13 @@
             var result = await r.json();
             if (result.success && result.data) {
                 var d = result.data;
-                var today = getTodayAEST();
-                if (d.date === today && Array.isArray(d.pairs)) {
-                    _dismissedPairs = new Set(d.pairs);
+                // v1.3.0: permanent map { pair: { dismissedAt } }
+                // Migrate legacy format { date, pairs[] } transparently
+                if (d.pairs && typeof d.pairs === 'object' && !Array.isArray(d.pairs)) {
+                    _dismissedPairs = d.pairs;
                 } else {
-                    _dismissedPairs = new Set();
+                    // Legacy or empty — start clean
+                    _dismissedPairs = {};
                     saveDismissed();
                 }
             }
@@ -58,10 +61,28 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     file: 'armed-dismissed',
-                    data: { date: getTodayAEST(), pairs: Array.from(_dismissedPairs) }
+                    data: { pairs: _dismissedPairs }
                 })
             });
         } catch(e) {}
+    }
+
+    // Auto-restore: if a pair was dismissed but a newer ARMED has since arrived, clear the dismiss
+    function reconcileDismissed(armedPairs) {
+        var changed = false;
+        armedPairs.forEach(function(p) {
+            var rec = _dismissedPairs[p.pair];
+            if (rec && p.timestamp) {
+                var armedAt    = new Date(p.timestamp).getTime();
+                var dismissedAt = new Date(rec.dismissedAt).getTime();
+                if (armedAt > dismissedAt) {
+                    delete _dismissedPairs[p.pair];
+                    changed = true;
+                    console.log('[ArmedPanel] Auto-restored ' + p.pair + ' — new ARMED since dismiss');
+                }
+            }
+        });
+        if (changed) saveDismissed();
     }
 
     loadDismissed();
@@ -217,12 +238,12 @@
         var ageMs     = now - timestamp;
         var ageHours  = ageMs / (1000 * 60 * 60);
         
-        var ttlState      = 'fresh';
+        var ttlState      = 'watching';
         var fomoBlocked   = false;
         var fomoCountdown = '';
         
-        if (ageHours > 24)     ttlState = 'expired';
-        else if (ageHours > 8) ttlState = 'ageing';
+        if (ageHours > 48)     ttlState = 'stale';
+        else if (ageHours > 24) ttlState = 'extended';
         
         if (ageHours < 1) {
             fomoBlocked = true;
@@ -426,17 +447,17 @@
         var ttl = calculateTTLState(p);
         var rowClass = 'armed-pair-row ' + permCls;
         if (ttl.fomoBlocked) rowClass += ' fomo-blocked';
-        if (ttl.ttlState === 'expired') rowClass += ' ttl-expired';
+        if (ttl.ttlState === 'stale') rowClass += ' ttl-stale';
         
         var statusHtml = '';
         if (ttl.fomoBlocked) {
             statusHtml = '<span class="armed-fomo-gate" title="FOMO Gate: 1-hour forced analysis pause (' + ttl.fomoCountdown + ')">' + ttl.fomoCountdown + '</span>';
-        } else if (ttl.ttlState === 'fresh') {
-            statusHtml = '<span class="armed-ttl-status armed-ttl-fresh" title="Armed less than 8 hours ago">READY</span>';
-        } else if (ttl.ttlState === 'ageing') {
-            statusHtml = '<span class="armed-ttl-status armed-ttl-ageing" title="Armed 8 to 24 hours ago">AGEING</span>';
+        } else if (ttl.ttlState === 'watching') {
+            statusHtml = '<span class="armed-ttl-status armed-ttl-fresh" title="Armed less than 24 hours ago">READY</span>';
+        } else if (ttl.ttlState === 'extended') {
+            statusHtml = '<span class="armed-ttl-status armed-ttl-ageing" title="Armed 24\u201348 hours \u2014 confirm still valid">EXTENDED</span>';
         } else {
-            statusHtml = '<span class="armed-ttl-status armed-ttl-expired" title="TTL expired, auto-removed">EXPIRED</span>';
+            statusHtml = '<span class="armed-ttl-status armed-ttl-expired" title="Armed over 48 hours \u2014 review required">STALE</span>';
         }
 
         var atrBehav = (p.volBehaviour || '').toUpperCase();
@@ -480,11 +501,17 @@
 
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
-        // Dismiss button - only for active armed pairs (tier param truthy)
+        // Dismiss button -- only for active armed pairs (tier param truthy)
+        // Disabled if an open Oanda trade exists for this pair
         var dismissBtn = '';
         if (tier) {
-            var dOnClick = 'event.stopPropagation();dismissArmedPair(\'' + (p.pair || '') + '\');return false;';
-            dismissBtn = '<button class="armed-dismiss-btn" onclick="' + dOnClick + '" title="Dismiss this session">&#x2716;</button>';
+            var hasOpenTrade = (window._armedOpenTrades || {})[p.pair || ''];
+            if (hasOpenTrade) {
+                dismissBtn = '<button class="armed-dismiss-btn" disabled title="Cannot dismiss \u2014 open trade active" style="opacity:0.35;cursor:not-allowed">&#x2716;</button>';
+            } else {
+                var dOnClick = 'event.stopPropagation();dismissArmedPair(\'' + (p.pair || '') + '\');return false;';
+                dismissBtn = '<button class="armed-dismiss-btn" onclick="' + dOnClick + '" title="Dismiss \u2014 restores on next ARMED alert">&#x2716;</button>';
+            }
         }
 
         var wrapperCls = 'armed-pair-wrapper' + (tier ? ' ' + tier : '');
@@ -530,6 +557,7 @@
                 '<div class="armed-dismissed-row">' +
                     '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
                     '<span style="color:var(--text-muted);font-size:0.75rem">' + (p.primary || '') + '</span>' +
+                    '<span style="color:var(--text-muted);font-size:0.7rem">Dismissed ' + ((_dismissedPairs[p.pair] && _dismissedPairs[p.pair].dismissedAt) ? new Date(_dismissedPairs[p.pair].dismissedAt).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}) : '') + '</span>' +
                     '<button class="armed-restore-btn" onclick="' + rOnClick + '">Restore</button>' +
                 '</div>' +
             '</div>';
@@ -558,6 +586,17 @@
             const response = await fetch(STATE_URL, { method: 'GET', cache: 'no-cache' });
             if (!response.ok) throw new Error('HTTP ' + response.status);
             const data = await response.json();
+            // Fetch open Oanda trades to protect dismiss button
+            try {
+                var openTrades = await window.BrokerManager.getOpenTrades();
+                window._armedOpenTrades = {};
+                (openTrades || []).forEach(function(t) {
+                    var inst = (t.instrument || '').replace('_', '');
+                    window._armedOpenTrades[inst] = true;
+                });
+            } catch(e) {
+                window._armedOpenTrades = window._armedOpenTrades || {};
+            }
             renderArmedState(data);
         } catch (e) {
             renderArmedError(e.message);
@@ -572,9 +611,12 @@
         var allActivePairs  = rawPairs.filter(function(p) { return p.primary !== 'R-OFFSESSION'; });
         var offSessionPairs = rawPairs.filter(function(p) { return p.primary === 'R-OFFSESSION'; });
 
+        // Reconcile dismissed: auto-restore if new ARMED arrived since dismiss
+        reconcileDismissed(allActivePairs);
+
         // Separate dismissed from active
-        var dismissedItems = allActivePairs.filter(function(p) { return _dismissedPairs.has(p.pair); });
-        var activePairs    = allActivePairs.filter(function(p) { return !_dismissedPairs.has(p.pair); });
+        var dismissedItems = allActivePairs.filter(function(p) { return !!_dismissedPairs[p.pair]; });
+        var activePairs    = allActivePairs.filter(function(p) { return !_dismissedPairs[p.pair]; });
 
         var activeArmedCount = allActivePairs.length;
         countEl.textContent  = activeArmedCount;
@@ -688,13 +730,13 @@
     window.openTV = openTV;
 
     window.dismissArmedPair = function(pairName) {
-        _dismissedPairs.add(pairName);
+        _dismissedPairs[pairName] = { dismissedAt: new Date().toISOString() };
         saveDismissed();
         if (window._lastArmedData) renderArmedState(window._lastArmedData);
     };
 
     window.restoreArmedPair = function(pairName) {
-        _dismissedPairs.delete(pairName);
+        delete _dismissedPairs[pairName];
         saveDismissed();
         if (window._lastArmedData) renderArmedState(window._lastArmedData);
     };
@@ -705,7 +747,7 @@
         var label = document.getElementById('armed-dismissed-label');
         if (body)  body.style.display = _dismissedExpanded ? 'block' : 'none';
         if (label) {
-            var count = _dismissedPairs.size;
+            var count = Object.keys(_dismissedPairs).length;
             var arrow = _dismissedExpanded ? '\u25b2' : '\u25bc';
             label.textContent = arrow + ' ' + count + ' dismissed \u2014 ' +
                                 (_dismissedExpanded ? 'hide' : 'show');
