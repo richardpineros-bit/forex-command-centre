@@ -65,7 +65,8 @@ function saveTrade() {
                 'openTime', 'closeTime', 'exitPrice', 'realizedPL', 'financing',
                 'netPL', 'duration', 'rValue', 'outcome', 'accountId', 'broker',
                 'utccTier', 'utccCriteriaPass', 'alertId', 'reviewedAt',
-                'dismissReason', 'dismissedAt', 'createdAt'
+                'dismissReason', 'dismissedAt', 'createdAt',
+                'lessonsLearned', 'executionQuality', 'execQualityRating' // FIX v2.11.1: preserve old review queue keys
             ];
             // Only overwrite form fields that have actual values
             const merged = { ...existing };
@@ -500,7 +501,8 @@ function editTrade(tradeId) {
     document.getElementById('trade-screenshot').value = trade.screenshot || '';
     document.getElementById('trade-status').value = trade.status || 'open';
     document.getElementById('trade-notes').value = trade.notes || '';
-    document.getElementById('trade-lessons').value = trade.lessons || '';
+    // FIX v2.11.1: fallback to lessonsLearned (old review queue key, pre-v1.9.2)
+    document.getElementById('trade-lessons').value = trade.lessons || trade.lessonsLearned || '';
     
     // v2.10.0: Populate ALL missing fields (Bug Fix #1,2,3)
     // Checkboxes - Section C: Execution Quality

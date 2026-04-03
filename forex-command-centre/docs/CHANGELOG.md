@@ -1,3 +1,9 @@
+## [v5.5.5] - 2026-04-03
+### Fix: Lessons field still blank in Edit for pre-fix reviews
+
+- `journal-crud.js` v2.11.1: `editTrade()` now falls back to `lessonsLearned` if `lessons` is empty — covers all reviews entered before v1.9.2 deployment
+- `lessonsLearned`, `executionQuality`, `execQualityRating` added to `protectedFields` so they are never clobbered when saving an edit
+
 ## [v5.5.4] - 2026-04-03
 ### Feature: Trade Classification added to Claude Export
 
