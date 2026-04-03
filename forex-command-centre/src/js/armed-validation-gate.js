@@ -497,11 +497,56 @@
 
     loadState().then(function () {
         observeArmedList();
+        interceptQuickBar();
         // Process immediately - armed-panel may have already rendered before we loaded
         reprocessBadges();
         // Re-process every 60s for cooldown countdown updates
         setInterval(reprocessBadges, 60000);
     });
+
+    // Quick Access Bar interception
+    function interceptQuickBar() {
+        var bar = document.getElementById('quick-access-bar');
+        if (!bar) {
+            setTimeout(interceptQuickBar, 500);
+            return;
+        }
+        bar.addEventListener('click', function (e) {
+            // Only intercept armed-ready items (not FOMO, not open positions)
+            var item = e.target.closest('.armed-ready');
+            if (!item) return;
+
+            var pairEl = item.querySelector('.quick-item-pair');
+            if (!pairEl) return;
+            var pair = pairEl.textContent.trim();
+
+            var alertKey = '';
+            if (window._lastArmedData && window._lastArmedData.pairs) {
+                var pd = window._lastArmedData.pairs.find(function (p) { return p.pair === pair; });
+                if (pd) alertKey = getAlertKey(pair, pd.timestamp);
+            }
+
+            var status = getValidationStatus(pair, alertKey);
+
+            // Already validated - let click through normally
+            if (status === 'CONFIRMED') return;
+
+            // Block original onclick
+            e.stopImmediatePropagation();
+            e.preventDefault();
+
+            if (status === 'COOLDOWN') {
+                var rem = getCooldownRemaining(pair);
+                if (typeof showToast === 'function') {
+                    showToast(pair + ' is in 24h cooldown \u2014 two validation failures today. ' + rem, 'error');
+                }
+                return;
+            }
+
+            // PENDING or PASSED - show modal
+            openModal(pair, alertKey);
+        }, true); // useCapture fires before onclick
+    }
 
     // Expose for debugging
     window.ValidationGate = {
