@@ -497,6 +497,8 @@
 
     loadState().then(function () {
         observeArmedList();
+        // Process immediately - armed-panel may have already rendered before we loaded
+        reprocessBadges();
         // Re-process every 60s for cooldown countdown updates
         setInterval(reprocessBadges, 60000);
     });
