@@ -808,7 +808,7 @@
         }
         
         // Stats
-        updateStatValue('cb-stat-pnl', `${stats.dailyPnLPercent >= 0 ? '+' : ''}${stats.dailyPnLPercent.toFixed(2)}%`,
+        updateStatValue('cb-stat-pnl', `${(stats.dailyPnLPercent ?? 0) >= 0 ? '+' : ''}${(stats.dailyPnLPercent ?? 0).toFixed(2)}%`,
             stats.dailyPnLPercent >= 0 ? 'positive' : 'negative');
         
         updateStatValue('cb-stat-trades', stats.tradesToday.toString(),
