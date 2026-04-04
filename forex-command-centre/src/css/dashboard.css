@@ -633,13 +633,13 @@ a.armed-pair-row.armed-row-link:active {
 @media (max-width: 768px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 24px 60px 1fr 50px 40px 30px 70px 48px 80px;
+        grid-template-columns: 22px 58px 1fr 46px 38px 28px 68px 44px 84px;
         gap: 4px;
         padding: var(--spacing-xs) var(--spacing-sm);
         font-size: 0.75rem;
     }
     .armed-pair-name { font-size: 0.75rem; }
-    .armed-primary { font-size: 0.7rem; }
+    .armed-primary { font-size: 0.68rem; letter-spacing: 0; }
     .armed-score { font-size: 0.75rem; }
 }
 
@@ -888,8 +888,8 @@ a.armed-pair-row.armed-row-link:active {
     gap: 8px;
     padding: 5px 12px 5px 34px;
     font-size: 0.75rem;
-    background: rgba(0,0,0,0.10);
-    border-top: 1px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.04);
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 /* Sub-row 2: News bias */
@@ -900,20 +900,20 @@ a.armed-pair-row.armed-row-link:active {
     padding: 5px 12px 5px 34px;
     font-size: 0.72rem;
     font-weight: 600;
-    color: #d1d5db;
-    background: rgba(0,0,0,0.22);
-    border-top: 1px solid rgba(255,255,255,0.04);
+    color: #e5e7eb;
+    background: rgba(255,255,255,0.06);
+    border-top: 1px solid rgba(255,255,255,0.06);
     flex-wrap: wrap;
 }
 
 .armed-bias-row.awaiting {
-    color: var(--text-muted);
+    color: #9ca3af;
     font-style: italic;
-    font-weight: 400;
+    font-weight: 500;
 }
 
-.armed-bias-ccy { font-weight: 700; color: var(--text-primary); }
-.armed-bias-sep { color: var(--text-muted); }
+.armed-bias-ccy { font-weight: 700; color: #f3f4f6; }
+.armed-bias-sep { color: #6b7280; }
 .armed-bias-net { letter-spacing: 0.02em; font-weight: 800; }
 
 /* Sub-row 3: IG Sentiment */
@@ -923,9 +923,9 @@ a.armed-pair-row.armed-row-link:active {
     gap: 6px;
     padding: 4px 12px 5px 34px;
     font-size: 0.7rem;
-    color: #9ca3af;
-    background: rgba(0,0,0,0.28);
-    border-top: 1px solid rgba(255,255,255,0.03);
+    color: #d1d5db;
+    background: rgba(255,255,255,0.03);
+    border-top: 1px solid rgba(255,255,255,0.05);
     flex-wrap: wrap;
 }
 
