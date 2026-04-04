@@ -296,9 +296,9 @@
         return '<div class="armed-sentiment-row">' +
             '<span style="color:var(--text-muted);font-size:0.7rem">IG Sentiment:</span>' +
             '<span style="margin-left:6px;font-size:0.7rem">' +
-                '<span style="color:#4ade80">' + longPct + '% L</span>' +
+                '<span style="color:#15803d">' + longPct + '% L</span>' +
                 '<span style="color:var(--text-muted)"> / </span>' +
-                '<span style="color:#f87171">' + shortPct + '% S</span>' +
+                '<span style="color:#b91c1c">' + shortPct + '% S</span>' +
             '</span>' +
             '<span style="margin-left:6px;font-size:0.7rem;font-weight:700;color:' + sigColour + '">' + label + '</span>' +
             warningHtml + staleHtml +
@@ -400,12 +400,12 @@
         if (st === 'EXTENDED') score -= 1;
 
         var confLabel, confColour;
-        if (score >= 2)      { confLabel = 'HIGH CONF'; confColour = '#4ade80'; }
-        else if (score >= 0) { confLabel = 'MED CONF';  confColour = '#eab308'; }
-        else                 { confLabel = 'LOW CONF';  confColour = '#f87171'; }
+        if (score >= 2)      { confLabel = 'HIGH CONF'; confColour = '#15803d'; }
+        else if (score >= 0) { confLabel = 'MED CONF';  confColour = '#92400e'; }
+        else                 { confLabel = 'LOW CONF';  confColour = '#b91c1c'; }
 
         var arrow   = dir === 'LONG' ? '\u25b2' : '\u25bc';
-        var dirColour = dir === 'LONG' ? '#4ade80' : '#f87171';
+        var dirColour = dir === 'LONG' ? '#16a34a' : '#b91c1c';
 
         return '<div class="armed-verdict-row" style="border-left:3px solid ' + dirColour + '">' +
             '<span style="color:' + dirColour + ';font-weight:800;font-size:0.75rem;letter-spacing:0.03em">' +
