@@ -633,45 +633,44 @@ a.armed-pair-row.armed-row-link:active {
 @media (max-width: 768px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 22px 58px 1fr 46px 38px 28px 68px 44px 84px;
+        grid-template-columns: 22px 68px 1fr 46px 38px 28px 68px 44px 84px;
         gap: 4px;
         padding: var(--spacing-xs) var(--spacing-sm);
         font-size: 0.75rem;
     }
     .armed-pair-name { font-size: 0.75rem; }
-    .armed-primary { font-size: 0.68rem; letter-spacing: 0; }
+    .armed-primary { font-size: 0.62rem; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .armed-score { font-size: 0.75rem; }
 }
 
 @media (max-width: 600px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 22px 52px 1fr 38px 30px 26px 68px 0px 88px;
-        gap: 3px;
-        padding: var(--spacing-xs) 6px;
-        font-size: 0.7rem;
+        grid-template-columns: 20px 70px 42px 36px 28px 88px;
+        gap: 4px;
+        padding: var(--spacing-xs) 8px;
+        font-size: 0.72rem;
     }
-    .armed-pair-name { font-size: 0.7rem; }
-    .armed-primary { font-size: 0.65rem; }
-    .armed-emoji { font-size: 0.75rem; }
-    .armed-ttl-status, .armed-fomo-gate { font-size: 0.58rem; padding: 2px 5px; }
-    /* Hide struct column at mobile - give space to age/validate */
-    .armed-struct { display: none; }
+    /* Hide regime, ATR, struct on mobile - keep emoji pair perm risk score validate */
+    .armed-primary, .armed-atr, .armed-struct { display: none; }
+    .armed-pair-name { font-size: 0.78rem; font-weight: 800; }
+    .armed-score { font-size: 0.78rem; }
+    .armed-ttl-status, .armed-fomo-gate { font-size: 0.6rem; padding: 2px 6px; }
+    .armed-col-headers span:nth-child(3),
+    .armed-col-headers span:nth-child(7),
     .armed-col-headers span:nth-child(8) { display: none; }
 }
 
 @media (max-width: 450px) {
     .armed-col-headers,
     .armed-pair-row {
-        grid-template-columns: 50px 1fr 36px 28px 24px 0px 0px 0px 84px;
-        gap: 3px;
+        grid-template-columns: 72px 40px 34px 26px 88px;
+        gap: 4px;
+        padding: var(--spacing-xs) 6px;
     }
     .armed-emoji { display: none; }
-    .armed-primary, .armed-atr, .armed-struct { display: none; }
-    .armed-col-headers span:nth-child(1),
-    .armed-col-headers span:nth-child(3),
-    .armed-col-headers span:nth-child(7),
-    .armed-col-headers span:nth-child(8) { display: none; }
+    .armed-pair-name { font-size: 0.8rem; }
+    .armed-col-headers span:nth-child(1) { display: none; }
 }
 
 /* === QUICK ACCESS BAR === */
@@ -907,7 +906,7 @@ a.armed-pair-row.armed-row-link:active {
 }
 
 .armed-bias-row.awaiting {
-    color: #9ca3af;
+    color: #c4b5fd;
     font-style: italic;
     font-weight: 500;
 }
