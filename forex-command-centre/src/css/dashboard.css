@@ -875,14 +875,27 @@ a.armed-pair-row.armed-row-link:active {
 }
 
 /* == Sub-rows (bias + sentiment) - clearly separated =================== */
+/* Sub-row 1: Directional verdict */
+.armed-verdict-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 34px;
+    font-size: 0.75rem;
+    background: rgba(0,0,0,0.10);
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Sub-row 2: News bias */
 .armed-bias-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 12px 5px 38px;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    background: rgba(0,0,0,0.18);
+    padding: 5px 12px 5px 34px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: rgba(0,0,0,0.22);
     border-top: 1px solid rgba(255,255,255,0.04);
     flex-wrap: wrap;
 }
@@ -890,11 +903,25 @@ a.armed-pair-row.armed-row-link:active {
 .armed-bias-row.awaiting {
     color: var(--text-muted);
     font-style: italic;
+    font-weight: 400;
 }
 
-.armed-bias-ccy { font-weight: 700; }
+.armed-bias-ccy { font-weight: 700; color: var(--text-primary); }
 .armed-bias-sep { color: var(--text-muted); }
-.armed-bias-net { letter-spacing: 0.02em; }
+.armed-bias-net { letter-spacing: 0.02em; font-weight: 800; }
+
+/* Sub-row 3: IG Sentiment */
+.armed-sentiment-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 5px 34px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    background: rgba(0,0,0,0.32);
+    border-top: 1px solid rgba(255,255,255,0.03);
+    flex-wrap: wrap;
+}
 
 /* == VALIDATE button - toned down in armed panel ======================= */
 #armed-list .btn-primary {

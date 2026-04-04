@@ -293,7 +293,7 @@
         var staleHtml = _sentimentStale ?
             '<span style="color:var(--text-muted);font-size:0.6rem;margin-left:4px">(stale)</span>' : '';
 
-        return '<div class="armed-bias-row" style="color:var(--text-secondary)">' +
+        return '<div class="armed-sentiment-row">' +
             '<span style="color:var(--text-muted);font-size:0.7rem">IG Sentiment:</span>' +
             '<span style="margin-left:6px;font-size:0.7rem">' +
                 '<span style="color:#4ade80">' + longPct + '% L</span>' +
@@ -408,9 +408,7 @@
         var arrow   = dir === 'LONG' ? '\u25b2' : '\u25bc';
         var dirColour = dir === 'LONG' ? '#4ade80' : '#f87171';
 
-        return '<div class="armed-verdict-row" style="' +
-            'display:flex;align-items:center;gap:6px;padding:3px 10px 4px 32px;' +
-            'border-left:2px solid ' + dirColour + ';margin:0 0 0 0;background:rgba(0,0,0,0.15)">' +
+        return '<div class="armed-verdict-row" style="border-left:3px solid ' + dirColour + '">' +
             '<span style="color:' + dirColour + ';font-weight:800;font-size:0.75rem;letter-spacing:0.03em">' +
                 arrow + ' ' + dir +
             '</span>' +
