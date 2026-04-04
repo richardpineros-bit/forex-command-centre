@@ -885,10 +885,12 @@ a.armed-pair-row.armed-row-link:active {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 12px 5px 34px;
-    font-size: 0.75rem;
-    background: var(--bg-tertiary);
+    padding: 6px 12px 6px 34px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    background: var(--bg-hover);
     border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
 }
 
 /* Sub-row 2: News bias */
@@ -920,10 +922,11 @@ a.armed-pair-row.armed-row-link:active {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 12px 5px 34px;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    background: var(--bg-tertiary);
+    padding: 5px 12px 5px 34px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-hover);
     border-top: 1px solid var(--border-color);
     flex-wrap: wrap;
 }
