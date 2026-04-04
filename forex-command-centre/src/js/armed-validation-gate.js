@@ -261,7 +261,6 @@
             var btn = document.createElement('button');
             btn.className = 'vgate-btn';
             btn.dataset.vgateStatus = 'PENDING';
-            btn.style.cssText = 'background:#f97316;color:#000;font-size:0.62rem;font-weight:700;padding:3px 7px;border-radius:3px;border:none;cursor:pointer;white-space:nowrap;';
             btn.title = 'FOMO gate expired \u2014 validate your setup before Pre-Trade';
             btn.textContent = 'VALIDATE \u2192';
             btn.addEventListener('click', function (e) {

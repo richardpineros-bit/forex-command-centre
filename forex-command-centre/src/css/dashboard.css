@@ -923,21 +923,33 @@ a.armed-pair-row.armed-row-link:active {
     flex-wrap: wrap;
 }
 
-/* == VALIDATE button - toned down in armed panel ======================= */
-#armed-list .btn-primary {
-    background: rgba(100, 116, 139, 0.25);
+/* == VALIDATE button (vgate-btn) ======================================= */
+.vgate-btn {
+    background: rgba(100, 116, 139, 0.2);
     color: var(--text-secondary);
     border: 1px solid var(--border-secondary);
-    font-size: 0.68rem;
-    padding: 3px 10px;
+    font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
 }
 
-#armed-list .btn-primary:hover {
-    background: var(--accent-primary);
+.vgate-btn:hover {
+    background: #f97316;
     color: #000;
-    border-color: var(--accent-primary);
+    border-color: #f97316;
+}
+
+@media (max-width: 600px) {
+    .vgate-btn {
+        font-size: 0.55rem;
+        padding: 2px 5px;
+    }
 }
 
 /* == Dismiss button ===================================================== */
