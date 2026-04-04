@@ -888,7 +888,7 @@ a.armed-pair-row.armed-row-link:active {
     padding: 6px 12px 6px 34px;
     font-size: 0.78rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: #0f172a;
     background: linear-gradient(rgba(255,255,255,0.07), rgba(255,255,255,0.07)), var(--bg-hover);
     border-top: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
@@ -926,7 +926,7 @@ a.armed-pair-row.armed-row-link:active {
     padding: 5px 12px 5px 34px;
     font-size: 0.72rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: #0f172a;
     background: linear-gradient(rgba(255,255,255,0.07), rgba(255,255,255,0.07)), var(--bg-hover);
     border-top: 1px solid var(--border-color);
     flex-wrap: wrap;
