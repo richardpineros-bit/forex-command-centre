@@ -887,8 +887,8 @@ a.armed-pair-row.armed-row-link:active {
     gap: 8px;
     padding: 5px 12px 5px 34px;
     font-size: 0.75rem;
-    background: rgba(255,255,255,0.04);
-    border-top: 1px solid rgba(255,255,255,0.06);
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-color);
 }
 
 /* Sub-row 2: News bias */
@@ -899,20 +899,20 @@ a.armed-pair-row.armed-row-link:active {
     padding: 5px 12px 5px 34px;
     font-size: 0.72rem;
     font-weight: 600;
-    color: #e5e7eb;
-    background: rgba(255,255,255,0.06);
-    border-top: 1px solid rgba(255,255,255,0.06);
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
     flex-wrap: wrap;
 }
 
 .armed-bias-row.awaiting {
-    color: #c4b5fd;
+    color: var(--text-secondary);
     font-style: italic;
     font-weight: 500;
 }
 
-.armed-bias-ccy { font-weight: 700; color: #f3f4f6; }
-.armed-bias-sep { color: #6b7280; }
+.armed-bias-ccy { font-weight: 700; color: var(--text-primary); }
+.armed-bias-sep { color: var(--text-muted); margin: 0 2px; }
 .armed-bias-net { letter-spacing: 0.02em; font-weight: 800; }
 
 /* Sub-row 3: IG Sentiment */
@@ -922,9 +922,9 @@ a.armed-pair-row.armed-row-link:active {
     gap: 6px;
     padding: 4px 12px 5px 34px;
     font-size: 0.7rem;
-    color: #d1d5db;
-    background: rgba(255,255,255,0.03);
-    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-color);
     flex-wrap: wrap;
 }
 

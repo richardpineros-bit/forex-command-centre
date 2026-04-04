@@ -351,8 +351,7 @@
             '<span class="armed-bias-ccy">' + baseCcy + ' ' + baseArrow + ' ' + baseBias + '</span>' +
             '<span class="armed-bias-sep">|</span>' +
             '<span class="armed-bias-ccy">' + quoteCcy + ' ' + quoteArrow + ' ' + quoteBias + '</span>' +
-            '<span class="armed-bias-sep">|</span>' +
-            '<span class="armed-bias-net" style="color:' + confColour + ';font-weight:700">' +
+            '<span class="armed-bias-net" style="color:' + confColour + ';font-weight:700;margin-left:6px">' +
                 'Net: ' + netStr + ' ' + confLabel +
             '</span>' +
         '</div>';
