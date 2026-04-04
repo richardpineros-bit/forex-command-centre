@@ -894,8 +894,9 @@ a.armed-pair-row.armed-row-link:active {
     border-bottom: 1px solid var(--border-color);
 }
 
-.armed-verdict-row span {
-    text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.4);
+.armed-verdict-row span, .armed-sentiment-row span {
+    -webkit-text-stroke: 0.8px rgba(0,0,0,0.75);
+    paint-order: stroke fill;
 }
 
 /* Sub-row 2: News bias */
@@ -934,10 +935,6 @@ a.armed-pair-row.armed-row-link:active {
     background: linear-gradient(rgba(255,255,255,0.07), rgba(255,255,255,0.07)), var(--bg-hover);
     border-top: 1px solid var(--border-color);
     flex-wrap: wrap;
-}
-
-.armed-sentiment-row span {
-    text-shadow: 0 1px 3px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.4);
 }
 
 /* == VALIDATE button (vgate-btn) ======================================= */
