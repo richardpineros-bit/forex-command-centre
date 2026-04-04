@@ -54,10 +54,13 @@
     gap: var(--spacing-sm);
     padding: 2px var(--spacing-md);
     font-size: 0.65rem;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-weight: 700;
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .armed-pair-row {
@@ -780,59 +783,137 @@ a.armed-pair-row.armed-row-link:active {
 .armed-bias-sep { color: var(--text-muted); }
 .armed-bias-net { letter-spacing: 0.02em; }
 
-/* ── Quality Tier Headers ────────────────────────────────────────────────── */
+/* �/* == Quality Tier Headers ============================================= */
 .armed-tier-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    margin-top: 4px;
+    margin-top: 6px;
+    border-radius: 0;
 }
 
 .armed-tier-header.tier-prime {
-    color: #f59e0b;
-    background: rgba(245, 158, 11, 0.07);
-    border-left: 2px solid #f59e0b;
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.18);
+    border-left: 4px solid #f59e0b;
+    border-top: 1px solid rgba(245, 158, 11, 0.3);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .armed-tier-header.tier-standard {
-    color: var(--text-muted);
-    background: transparent;
-    border-left: 2px solid var(--border-color);
+    color: var(--text-secondary);
+    background: rgba(100, 116, 139, 0.1);
+    border-left: 4px solid var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .armed-tier-header.tier-degraded {
-    color: var(--color-fail);
-    background: rgba(239, 68, 68, 0.05);
-    border-left: 2px solid var(--color-fail);
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.12);
+    border-left: 4px solid var(--color-fail);
+    border-top: 1px solid rgba(239, 68, 68, 0.25);
+    border-bottom: 1px solid rgba(239, 68, 68, 0.25);
 }
 
 .armed-tier-header .tier-count {
-    background: var(--bg-tertiary);
+    background: rgba(0,0,0,0.25);
     border-radius: 10px;
-    padding: 0 6px;
-    font-size: 0.58rem;
+    padding: 1px 7px;
+    font-size: 0.65rem;
     font-weight: 700;
 }
 
-/* ── Pair wrapper tier overrides ─────────────────────────────────────────── */
+/* == Pair wrapper tier tints =========================================== */
 .armed-pair-wrapper {
     position: relative;
 }
 
 .armed-pair-wrapper.prime {
-    background: rgba(245, 158, 11, 0.03);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.armed-pair-wrapper.prime .armed-pair-row.permission-full {
+    background: rgba(34, 197, 94, 0.16);
+}
+
+.armed-pair-wrapper.standard {
+    background: transparent;
 }
 
 .armed-pair-wrapper.degraded {
-    opacity: 0.72;
+    opacity: 0.75;
+    background: rgba(239, 68, 68, 0.04);
 }
 
-/* ── Dismiss button ──────────────────────────────────────────────────────── */
+/* == Permission rows - stronger borders ================================ */
+.armed-pair-row.permission-full {
+    background: rgba(34, 197, 94, 0.14);
+    border-left: 4px solid var(--color-pass);
+}
+
+.armed-pair-row.permission-conditional {
+    background: rgba(234, 179, 8, 0.14);
+    border-left: 4px solid var(--color-warning);
+}
+
+.armed-pair-row.permission-legacy {
+    background: var(--bg-tertiary);
+    border-left: 4px solid var(--text-muted);
+}
+
+/* == Pair name - stronger ============================================== */
+.armed-pair-name {
+    font-weight: 800;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+}
+
+/* == Sub-rows (bias + sentiment) - clearly separated =================== */
+.armed-bias-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 5px 38px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    background: rgba(0,0,0,0.18);
+    border-top: 1px solid rgba(255,255,255,0.04);
+    flex-wrap: wrap;
+}
+
+.armed-bias-row.awaiting {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.armed-bias-ccy { font-weight: 700; }
+.armed-bias-sep { color: var(--text-muted); }
+.armed-bias-net { letter-spacing: 0.02em; }
+
+/* == VALIDATE button - toned down in armed panel ======================= */
+#armed-list .btn-primary {
+    background: rgba(100, 116, 139, 0.25);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-secondary);
+    font-size: 0.68rem;
+    padding: 3px 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+#armed-list .btn-primary:hover {
+    background: var(--accent-primary);
+    color: #000;
+    border-color: var(--accent-primary);
+}
+
+/* == Dismiss button ===================================================== */
 .armed-dismiss-btn {
     position: absolute;
     right: 6px;
@@ -856,10 +937,10 @@ a.armed-pair-row.armed-row-link:active {
 
 .armed-dismiss-btn:hover {
     color: var(--color-fail);
-    background: rgba(239, 68, 68, 0.12);
+    background: rgba(239, 68, 68, 0.15);
 }
 
-/* ── Dismissed section ───────────────────────────────────────────────────── */
+/* == Dismissed section ================================================== */
 .armed-dismissed-toggle {
     padding: 7px 12px;
     font-size: 0.7rem;
@@ -880,7 +961,7 @@ a.armed-pair-row.armed-row-link:active {
 }
 
 .armed-pair-wrapper.dismissed {
-    opacity: 0.45;
+    opacity: 0.4;
 }
 
 .armed-dismissed-row {
