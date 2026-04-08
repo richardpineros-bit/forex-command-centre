@@ -709,21 +709,22 @@ if barstate.islast
     seenH    = array.new_float(0)
     seenL    = array.new_float(0)
 
-    addZone(lvl, src, srcType) =>
-        if not na(lvl)
-            t  = lvl + hw
-            b  = lvl - hw
-            tc = countTouches(t, b)
-            array.push(zones, Zone.new(lvl, t, b, src, srcType, tc, toStrength(tc), false, ""))
-
     if showPDH and not na(pdHigh)
-        addZone(pdHigh,  "PDH",    "prevday")
+        _t1 = pdHigh + hw
+        _b1 = pdHigh - hw
+        array.push(zones, Zone.new(pdHigh, _t1, _b1, "PDH", "prevday", countTouches(_t1,_b1), toStrength(countTouches(_t1,_b1)), false, ""))
     if showPDL and not na(pdLow)
-        addZone(pdLow,   "PDL",    "prevday")
+        _t2 = pdLow + hw
+        _b2 = pdLow - hw
+        array.push(zones, Zone.new(pdLow, _t2, _b2, "PDL", "prevday", countTouches(_t2,_b2), toStrength(countTouches(_t2,_b2)), false, ""))
     if showPWH and not na(pwHigh)
-        addZone(pwHigh,  "PWH",    "prevweek")
+        _t3 = pwHigh + hw
+        _b3 = pwHigh - hw
+        array.push(zones, Zone.new(pwHigh, _t3, _b3, "PWH", "prevweek", countTouches(_t3,_b3), toStrength(countTouches(_t3,_b3)), false, ""))
     if showPWL and not na(pwLow)
-        addZone(pwLow,   "PWL",    "prevweek")
+        _t4 = pwLow + hw
+        _b4 = pwLow - hw
+        array.push(zones, Zone.new(pwLow, _t4, _b4, "PWL", "prevweek", countTouches(_t4,_b4), toStrength(countTouches(_t4,_b4)), false, ""))
 
     if showEMA200 and not na(ema200d)
         emaBufAbs = atr14 * emaBufMul
@@ -754,13 +755,17 @@ if barstate.islast
                 lvl = dPH[i]
                 if not levelExists(seenH, lvl, hw)
                     array.push(seenH, lvl)
-                    addZone(lvl, "D.SwingH", "daily")
+                    _ts = lvl + hw
+                    _bs = lvl - hw
+                    array.push(zones, Zone.new(lvl, _ts, _bs, "D.SwingH", "daily", countTouches(_ts,_bs), toStrength(countTouches(_ts,_bs)), false, ""))
                     dHC += 1
             if not na(dPL[i]) and dLC < dMaxZones
                 lvl = dPL[i]
                 if not levelExists(seenL, lvl, hw)
                     array.push(seenL, lvl)
-                    addZone(lvl, "D.SwingL", "daily")
+                    _ts = lvl + hw
+                    _bs = lvl - hw
+                    array.push(zones, Zone.new(lvl, _ts, _bs, "D.SwingL", "daily", countTouches(_ts,_bs), toStrength(countTouches(_ts,_bs)), false, ""))
                     dLC += 1
 
     if showWSwings
@@ -771,13 +776,17 @@ if barstate.islast
                 lvl = wPH[i]
                 if not levelExists(seenH, lvl, hw)
                     array.push(seenH, lvl)
-                    addZone(lvl, "W.SwingH", "weekly")
+                    _ts = lvl + hw
+                    _bs = lvl - hw
+                    array.push(zones, Zone.new(lvl, _ts, _bs, "W.SwingH", "weekly", countTouches(_ts,_bs), toStrength(countTouches(_ts,_bs)), false, ""))
                     wHC += 1
             if not na(wPL[i]) and wLC < wMaxZones
                 lvl = wPL[i]
                 if not levelExists(seenL, lvl, hw)
                     array.push(seenL, lvl)
-                    addZone(lvl, "W.SwingL", "weekly")
+                    _ts = lvl + hw
+                    _bs = lvl - hw
+                    array.push(zones, Zone.new(lvl, _ts, _bs, "W.SwingL", "weekly", countTouches(_ts,_bs), toStrength(countTouches(_ts,_bs)), false, ""))
                     wLC += 1
 
     // Confluence detection
