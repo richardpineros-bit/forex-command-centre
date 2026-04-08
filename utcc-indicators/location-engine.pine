@@ -251,18 +251,20 @@ nearResLvl   = float(na)
 nearResName  = "NONE"
 
 // Nearest support = highest level below price
-for k = 0 to array.size(suppLevels) - 1
-    lvl = array.get(suppLevels, k)
-    if na(nearSuppLvl) or lvl > nearSuppLvl
-        nearSuppLvl  := lvl
-        nearSuppName := array.get(suppNames, k)
+if array.size(suppLevels) > 0
+    for k = 0 to array.size(suppLevels) - 1
+        lvl = array.get(suppLevels, k)
+        if na(nearSuppLvl) or lvl > nearSuppLvl
+            nearSuppLvl  := lvl
+            nearSuppName := array.get(suppNames, k)
 
 // Nearest resistance = lowest level above price
-for k = 0 to array.size(resLevels) - 1
-    lvl = array.get(resLevels, k)
-    if na(nearResLvl) or lvl < nearResLvl
-        nearResLvl  := lvl
-        nearResName := array.get(resNames, k)
+if array.size(resLevels) > 0
+    for k = 0 to array.size(resLevels) - 1
+        lvl = array.get(resLevels, k)
+        if na(nearResLvl) or lvl < nearResLvl
+            nearResLvl  := lvl
+            nearResName := array.get(resNames, k)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROXIMITY CHECKS

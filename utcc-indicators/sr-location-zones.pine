@@ -231,10 +231,11 @@ autoIncrement() =>
 levelExists(arr, lvl, tol) =>
     found = false
     sz = array.size(arr)
-    for k = 0 to sz - 1
-        if math.abs(array.get(arr, k) - lvl) < tol
-            found := true
-            break
+    if sz > 0
+        for k = 0 to sz - 1
+            if math.abs(array.get(arr, k) - lvl) < tol
+                found := true
+                break
     found
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -365,8 +366,9 @@ if barstate.islast
     // Any two zones whose boxes overlap are marked as confluence.
     // The zone with fewer sources inherits the other's name.
     n = array.size(zones)
-    for i = 0 to n - 2
-        zi = array.get(zones, i)
+    if n >= 2
+        for i = 0 to n - 2
+            zi = array.get(zones, i)
         for j = i + 1 to n - 1
             zj = array.get(zones, j)
             overlaps = zi.bot <= zj.top and zi.top >= zj.bot
@@ -382,56 +384,57 @@ if barstate.islast
                 else
                     zj.conflSrc := zj.conflSrc + "+" + zi.src
 
-    // ─── Draw All Zones ────────────────────────────────────────────────────
-    for i = 0 to array.size(zones) - 1
-        z = array.get(zones, i)
+    // --- Draw All Zones ---
+    if array.size(zones) > 0
+        for i = 0 to array.size(zones) - 1
+            z = array.get(zones, i)
 
-        // Select base colour by source type
-        baseCol = switch z.srcType
-            "weekly"   => cWeekly
-            "daily"    => cDaily
-            "prevday"  => cPrevDay
-            "prevweek" => cPrevWeek
-            "round"    => cRound
-            "ema200"   => cEMA
-            => color.gray
+            // Select base colour by source type
+            baseCol = switch z.srcType
+                "weekly"   => cWeekly
+                "daily"    => cDaily
+                "prevday"  => cPrevDay
+                "prevweek" => cPrevWeek
+                "round"    => cRound
+                "ema200"   => cEMA
+                => color.gray
 
-        // Override colour for special states
-        drawCol = z.strength == "EXHAUSTED" ? cExhausted :
-                  z.confluence             ? cConfluence : baseCol
+            // Override colour for special states
+            drawCol = z.strength == "EXHAUSTED" ? cExhausted :
+                      z.confluence             ? cConfluence : baseCol
 
-        bgCol     = color.new(drawCol, 78)
-        borderCol = color.new(drawCol, 15)
-        borderWid = z.strength == "STRONG" or z.strength == "EXHAUSTED" or z.confluence ? 2 : 1
+            bgCol     = color.new(drawCol, 78)
+            borderCol = color.new(drawCol, 15)
+            borderWid = z.strength == "STRONG" or z.strength == "EXHAUSTED" or z.confluence ? 2 : 1
 
-        // Draw zone box
-        box.new(
-            bar_index - tchLookback,
-            z.top,
-            bar_index + extRight,
-            z.bot,
-            border_color = borderCol,
-            bgcolor       = bgCol,
-            border_width  = borderWid)
+            // Draw zone box
+            box.new(
+                bar_index - tchLookback,
+                z.top,
+                bar_index + extRight,
+                z.bot,
+                border_color = borderCol,
+                bgcolor       = bgCol,
+                border_width  = borderWid)
 
-        // Draw label on right edge
-        if showLbls
-            strTag = z.strength == "EXHAUSTED" ? " [EXHAUSTED]" :
-                     z.strength == "STRONG"     ? " [STRONG]"    :
-                     z.strength == "MODERATE"   ? " [MOD]"       : " [WEAK]"
+            // Draw label on right edge
+            if showLbls
+                strTag = z.strength == "EXHAUSTED" ? " [EXHAUSTED]" :
+                         z.strength == "STRONG"     ? " [STRONG]"    :
+                         z.strength == "MODERATE"   ? " [MOD]"       : " [WEAK]"
 
-            conflTag = z.confluence ? " [CONFL+" + z.conflSrc + "]" : ""
-            tTxt     = " T:" + str.tostring(z.touches)
-            lblTxt   = z.src + tTxt + strTag + conflTag
+                conflTag = z.confluence ? " [CONFL+" + z.conflSrc + "]" : ""
+                tTxt     = " T:" + str.tostring(z.touches)
+                lblTxt   = z.src + tTxt + strTag + conflTag
 
-            label.new(
-                bar_index + extRight + 1,
-                z.level,
-                lblTxt,
-                style     = label.style_label_left,
-                color     = color.new(drawCol, 55),
-                textcolor = color.white,
-                size      = toLblSize(lblSize))
+                label.new(
+                    bar_index + extRight + 1,
+                    z.level,
+                    lblTxt,
+                    style     = label.style_label_left,
+                    color     = color.new(drawCol, 55),
+                    textcolor = color.white,
+                    size      = toLblSize(lblSize))
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ALERTS — must run on every bar (not inside barstate.islast)
