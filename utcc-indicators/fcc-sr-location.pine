@@ -508,11 +508,16 @@ addLevel(lvl, name) =>
             array.push(suppLvls, lvl)
             array.push(suppNames, name)
 
-if showPDH and not na(pdHigh) then addLevel(pdHigh, "PDH")
-if showPDL and not na(pdLow)  then addLevel(pdLow,  "PDL")
-if showPWH and not na(pwHigh) then addLevel(pwHigh, "PWH")
-if showPWL and not na(pwLow)  then addLevel(pwLow,  "PWL")
-if showEMA200 and not na(ema200d) then addLevel(ema200d, "D.200EMA")
+if showPDH and not na(pdHigh)
+    addLevel(pdHigh, "PDH")
+if showPDL and not na(pdLow)
+    addLevel(pdLow,  "PDL")
+if showPWH and not na(pwHigh)
+    addLevel(pwHigh, "PWH")
+if showPWL and not na(pwLow)
+    addLevel(pwLow,  "PWL")
+if showEMA200 and not na(ema200d)
+    addLevel(ema200d, "D.200EMA")
 
 if showRound
     effectiveIncr = roundIncr > 0 ? roundIncr : (close > 5000.0 ? 100.0 : close > 500.0 ? 10.0 : close > 50.0 ? 1.0 : close > 5.0 ? 0.5 : close > 1.0 ? 0.01 : 0.001)
@@ -524,13 +529,17 @@ if showRound
 
 if showDSwings
     for i = 0 to dLookback - 1
-        if not na(dPH[i]) then addLevel(dPH[i], "D.SwingH")
-        if not na(dPL[i]) then addLevel(dPL[i], "D.SwingL")
+        if not na(dPH[i])
+            addLevel(dPH[i], "D.SwingH")
+        if not na(dPL[i])
+            addLevel(dPL[i], "D.SwingL")
 
 if showWSwings
     for i = 0 to wLookback - 1
-        if not na(wPH[i]) then addLevel(wPH[i], "W.SwingH")
-        if not na(wPL[i]) then addLevel(wPL[i], "W.SwingL")
+        if not na(wPH[i])
+            addLevel(wPH[i], "W.SwingH")
+        if not na(wPL[i])
+            addLevel(wPL[i], "W.SwingL")
 
 // Find nearest support and resistance
 nearSuppLvl  := float(na)
@@ -645,10 +654,14 @@ if barstate.islast
             tc = countTouches(t, b)
             array.push(zones, Zone.new(lvl, t, b, src, srcType, tc, toStrength(tc), false, ""))
 
-    if showPDH and not na(pdHigh)  then addZone(pdHigh,  "PDH",    "prevday")
-    if showPDL and not na(pdLow)   then addZone(pdLow,   "PDL",    "prevday")
-    if showPWH and not na(pwHigh)  then addZone(pwHigh,  "PWH",    "prevweek")
-    if showPWL and not na(pwLow)   then addZone(pwLow,   "PWL",    "prevweek")
+    if showPDH and not na(pdHigh)
+        addZone(pdHigh,  "PDH",    "prevday")
+    if showPDL and not na(pdLow)
+        addZone(pdLow,   "PDL",    "prevday")
+    if showPWH and not na(pwHigh)
+        addZone(pwHigh,  "PWH",    "prevweek")
+    if showPWL and not na(pwLow)
+        addZone(pwLow,   "PWL",    "prevweek")
 
     if showEMA200 and not na(ema200d)
         emaBufAbs = atr14 * emaBufMul
