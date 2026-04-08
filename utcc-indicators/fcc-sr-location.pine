@@ -89,170 +89,44 @@ else if _isIndices
 // ══════════════════════════════════════════════════════════════════════════════
 
 grpGen = "General"
-manualClass = input.string("AUTO", "Asset Class Override", group=grpGen,
-               options=["AUTO","FX","METALS","ENERGY","INDICES","CRYPTO","BONDS"],
-               tooltip="AUTO uses detected class. Override if detection is wrong for an unusual instrument.")
+manualClass  = input.string("AUTO", "Asset Class Override", group=grpGen,
+                options=["AUTO","FX","METALS","ENERGY","INDICES","CRYPTO","BONDS"],
+                tooltip="AUTO = auto-detected. Override if detection is wrong for an unusual instrument.")
 showDetected = input.bool(true, "Show Detected Class on Chart", group=grpGen,
-                tooltip="Displays [FX], [METALS] etc in the grade label so you can confirm detection is correct.")
+                tooltip="Shows [FX], [METALS] etc in the grade label to confirm detection is correct.")
+showLbls     = input.bool(true,  "Show Zone Labels",            group=grpGen)
+lblSize      = input.string("small", "Label Size",              group=grpGen, options=["tiny","small","normal","large"])
+extRight     = input.int(20,  "Extend Boxes Right (bars)",      group=grpGen, minval=0, maxval=200)
+showCloud    = input.bool(true, "Show EMA Cloud",               group=grpGen)
+alertEveryBar = input.bool(true, "Webhook Every Bar Close",     group=grpGen,
+                tooltip="ON = fires every bar close. OFF = only on grade change.")
+showGradeLbl  = input.bool(true, "Show Grade Label on Chart",   group=grpGen)
 
 assetClass = manualClass == "AUTO" ? detectedClass : manualClass
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CALIBRATION PROFILES — per asset class
-// All values can be manually overridden in the Override section below.
-// ══════════════════════════════════════════════════════════════════════════════
-
-// ── Per-class profile values — all if-else (Pine v6: no multi-line ternary) ──
-
-p_zoneHW = 0.3
-if assetClass == "METALS"
-    p_zoneHW := 0.5
-else if assetClass == "ENERGY"
-    p_zoneHW := 0.6
-else if assetClass == "INDICES"
-    p_zoneHW := 0.4
-else if assetClass == "CRYPTO"
-    p_zoneHW := 0.8
-else if assetClass == "BONDS"
-    p_zoneHW := 0.4
-
-p_dPivLen = 5
-if assetClass == "METALS" or assetClass == "ENERGY"
-    p_dPivLen := 7
-else if assetClass == "CRYPTO"
-    p_dPivLen := 8
-else if assetClass == "BONDS"
-    p_dPivLen := 6
-
-p_wPivLen = 3
-if assetClass == "METALS" or assetClass == "ENERGY"
-    p_wPivLen := 4
-else if assetClass == "CRYPTO"
-    p_wPivLen := 5
-else if assetClass == "BONDS"
-    p_wPivLen := 4
-
-p_tchCooldown = 3
-if assetClass == "METALS"
-    p_tchCooldown := 5
-else if assetClass == "ENERGY"
-    p_tchCooldown := 6
-else if assetClass == "CRYPTO" or assetClass == "INDICES"
-    p_tchCooldown := 4
-
-p_exhausted = 4
-if assetClass == "METALS" or assetClass == "ENERGY"
-    p_exhausted := 5
-else if assetClass == "CRYPTO"
-    p_exhausted := 3
-
-p_zoneProx = 0.4
-if assetClass == "METALS"
-    p_zoneProx := 0.6
-else if assetClass == "ENERGY"
-    p_zoneProx := 0.7
-else if assetClass == "INDICES"
-    p_zoneProx := 0.5
-else if assetClass == "CRYPTO"
-    p_zoneProx := 0.8
-
-p_cloudProx = 0.5
-if assetClass == "METALS"
-    p_cloudProx := 0.7
-else if assetClass == "ENERGY"
-    p_cloudProx := 0.8
-else if assetClass == "INDICES"
-    p_cloudProx := 0.6
-else if assetClass == "CRYPTO"
-    p_cloudProx := 1.0
-
-p_cloudFast = 9
-
-p_cloudSlow = 21
-if assetClass == "METALS" or assetClass == "ENERGY"
-    p_cloudSlow := 34
-
-p_roundIncr = 0.0
-if assetClass == "CRYPTO"
-    if close > 10000.0
-        p_roundIncr := 1000.0
-    else if close > 1000.0
-        p_roundIncr := 100.0
-    else
-        p_roundIncr := 10.0
-else if assetClass == "METALS"
-    if str.contains(_t, "XAG")
-        p_roundIncr := 0.5
-    else
-        p_roundIncr := 10.0
-else if assetClass == "ENERGY"
-    p_roundIncr := 1.0
-else if assetClass == "INDICES"
-    if close > 10000.0
-        p_roundIncr := 100.0
-    else if close > 1000.0
-        p_roundIncr := 50.0
-    else
-        p_roundIncr := 10.0
-else if assetClass == "BONDS"
-    p_roundIncr := 0.5
-
-p_retestWin = 2
-if assetClass == "METALS" or assetClass == "ENERGY" or assetClass == "CRYPTO"
-    p_retestWin := 3
-
-p_emaBuf = 0.5
-if assetClass == "METALS"
-    p_emaBuf := 0.8
-else if assetClass == "ENERGY"
-    p_emaBuf := 0.9
-else if assetClass == "CRYPTO"
-    p_emaBuf := 1.2
-else if assetClass == "INDICES"
-    p_emaBuf := 0.6
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INPUTS — ZONE SOURCES
 // ══════════════════════════════════════════════════════════════════════════════
 
-grpSrc = "Zone Sources"
-showDSwings = input.bool(true, "Daily Swings",          group=grpSrc)
-showWSwings = input.bool(true, "Weekly Swings",         group=grpSrc)
-showPDH     = input.bool(true, "Prev Day High (PDH)",   group=grpSrc)
-showPDL     = input.bool(true, "Prev Day Low (PDL)",    group=grpSrc)
-showPWH     = input.bool(true, "Prev Week High (PWH)",  group=grpSrc)
-showPWL     = input.bool(true, "Prev Week Low (PWL)",   group=grpSrc)
-showRound   = input.bool(true, "Round Numbers",         group=grpSrc)
-showEMA200  = input.bool(true, "Daily 200 EMA Zone",    group=grpSrc)
-
-grpSW = "Swing Settings (Override)"
-dPivLen   = input.int(0,   "Daily Pivot Strength (0=auto)", group=grpSW, minval=0, maxval=15,
-             tooltip="0 = use asset class profile. Manual 2-15 overrides for this chart only.")
-wPivLen   = input.int(0,   "Weekly Pivot Strength (0=auto)", group=grpSW, minval=0, maxval=10)
-dLookback = input.int(500, "Daily Search Depth (bars)",      group=grpSW, minval=50, maxval=1500)
-wLookback = input.int(500, "Weekly Search Depth (bars)",     group=grpSW, minval=50, maxval=1500)
-dMaxZones = input.int(6,   "Max Daily Swing Zones (each direction)", group=grpSW, minval=1, maxval=15)
-wMaxZones = input.int(4,   "Max Weekly Swing Zones (each direction)", group=grpSW, minval=1, maxval=10)
-
-grpRN = "Round Number Settings (Override)"
-customIncr  = input.float(0.0, "Increment (0=auto)", group=grpRN, minval=0, step=0.0001,
-               tooltip="0 = use asset class profile. Manual e.g. 0.01 for FX majors, 10.0 for Gold, 100.0 for indices.")
-maxRounds   = input.int(4, "Levels Above & Below", group=grpRN, minval=1, maxval=10)
-minRoundTch = input.int(1, "Min Touches to Display", group=grpRN, minval=0, maxval=5,
-               tooltip="0 = show all round numbers. 1 = only show if price has actually visited. Recommended: 1.")
+grpSrc      = "Zone Sources"
+showDSwings = input.bool(true, "Daily Swings",         group=grpSrc)
+showWSwings = input.bool(true, "Weekly Swings",        group=grpSrc)
+showPDH     = input.bool(true, "Prev Day High (PDH)",  group=grpSrc)
+showPDL     = input.bool(true, "Prev Day Low (PDL)",   group=grpSrc)
+showPWH     = input.bool(true, "Prev Week High (PWH)", group=grpSrc)
+showPWL     = input.bool(true, "Prev Week Low (PWL)",  group=grpSrc)
+showRound   = input.bool(true, "Round Numbers",        group=grpSrc)
+showEMA200  = input.bool(true, "Daily 200 EMA Zone",   group=grpSrc)
+dLookback   = input.int(500, "Daily Search Depth (bars)",  group=grpSrc, minval=50, maxval=1500)
+wLookback   = input.int(500, "Weekly Search Depth (bars)", group=grpSrc, minval=50, maxval=1500)
+maxRounds   = input.int(4,   "Round Number Levels Above & Below", group=grpSrc, minval=1, maxval=10)
+tchLookback = input.int(300, "Touch Count Lookback (bars)", group=grpSrc, minval=50, maxval=1000)
 
 // ══════════════════════════════════════════════════════════════════════════════
-// INPUTS — ZONE APPEARANCE
+// INPUTS — COLOURS
 // ══════════════════════════════════════════════════════════════════════════════
 
-grpApp = "Zone Appearance (Override)"
-zoneHWOvr   = input.float(0.0, "Zone Half-Width ATR x (0=auto)", group=grpApp, minval=0, maxval=2.0, step=0.05,
-               tooltip="0 = use asset class profile.")
-showLbls    = input.bool(true,  "Show Zone Labels", group=grpApp)
-lblSize     = input.string("small", "Label Size",   group=grpApp, options=["tiny","small","normal","large"])
-extRight    = input.int(20, "Extend Boxes Right (bars)", group=grpApp, minval=0, maxval=200)
-
-grpC = "Colours"
+grpC        = "Colours"
 cWeekly     = input.color(color.new(#FF3366, 20), "Weekly Swing",            group=grpC)
 cDaily      = input.color(color.new(#FF8C00, 25), "Daily Swing",             group=grpC)
 cPrevDay    = input.color(color.new(#00BFFF, 25), "Prev Day H/L",            group=grpC)
@@ -261,79 +135,265 @@ cRound      = input.color(color.new(#20C997, 35), "Round Numbers",           gro
 cEMA        = input.color(color.new(#FFD700, 35), "Daily 200 EMA",           group=grpC)
 cConfluence = input.color(color.new(#FF4444, 10), "Confluence (2+ sources)", group=grpC)
 cExhausted  = input.color(color.new(#888888, 45), "Exhausted Zone",          group=grpC)
+cCloudBull  = input.color(color.new(#00C853, 82), "Cloud Bull",              group=grpC)
+cCloudBear  = input.color(color.new(#FF1744, 82), "Cloud Bear",              group=grpC)
+cCloudNeut  = input.color(color.new(#888888, 88), "Cloud Neutral",           group=grpC)
 
 // ══════════════════════════════════════════════════════════════════════════════
-// INPUTS — TOUCH COUNTING
+// INPUTS — DIRECTION EMAs
 // ══════════════════════════════════════════════════════════════════════════════
 
-grpT = "Touch Count (Override)"
-tchLookback   = input.int(300, "Touch Count Lookback (bars)", group=grpT, minval=50, maxval=1000)
-tchCooldownOvr = input.int(0,  "Touch Cooldown (0=auto)",     group=grpT, minval=0, maxval=30,
-                 tooltip="0 = use asset class profile.")
-exhaustedOvr  = input.int(0,   "Exhausted At (touches, 0=auto)", group=grpT, minval=0, maxval=10)
-
-// ══════════════════════════════════════════════════════════════════════════════
-// INPUTS — DIRECTION + EMA CLOUD
-// ══════════════════════════════════════════════════════════════════════════════
-
-grpDir = "Direction & EMA Cloud"
-dirMode     = input.string("AUTO", "Direction Mode", group=grpDir,
-               options=["AUTO","LONG","SHORT"],
-               tooltip="AUTO uses 9/21/50 EMA stack. Override if needed.")
-ema9Len     = input.int(9,  "Direction EMA Fast", group=grpDir, minval=1, maxval=50)
-ema21Len    = input.int(21, "Direction EMA Mid",  group=grpDir, minval=1, maxval=100)
-ema50Len    = input.int(50, "Direction EMA Slow", group=grpDir, minval=1, maxval=200)
-cloudFastOvr = input.int(0, "Cloud Fast EMA (0=auto)", group=grpDir, minval=0, maxval=50,
-               tooltip="0 = use asset class profile (FX=9, Metals/Energy=9).")
-cloudSlowOvr = input.int(0, "Cloud Slow EMA (0=auto)", group=grpDir, minval=0, maxval=200,
-               tooltip="0 = use asset class profile (FX=21, Metals/Energy=34).")
-cloudProxOvr = input.float(0.0, "Cloud Proximity ATR x (0=auto)", group=grpDir, minval=0, maxval=3.0, step=0.1)
-emaBufOvr   = input.float(0.0, "200 EMA Zone Width ATR x (0=auto)", group=grpDir, minval=0, maxval=3.0, step=0.1)
-showCloud   = input.bool(true, "Show EMA Cloud on Chart", group=grpDir)
-cCloudBull  = input.color(color.new(#00C853, 82), "Cloud Bull", group=grpDir)
-cCloudBear  = input.color(color.new(#FF1744, 82), "Cloud Bear", group=grpDir)
-cCloudNeut  = input.color(color.new(#888888, 88), "Cloud Neutral", group=grpDir)
+grpDir   = "Direction EMAs"
+dirMode  = input.string("AUTO", "Direction Mode", group=grpDir,
+            options=["AUTO","LONG","SHORT"],
+            tooltip="AUTO uses 9/21/50 EMA stack direction. Override if needed.")
+ema9Len  = input.int(9,  "Direction Fast EMA",  group=grpDir, minval=1, maxval=50)
+ema21Len = input.int(21, "Direction Mid EMA",   group=grpDir, minval=1, maxval=100)
+ema50Len = input.int(50, "Direction Slow EMA",  group=grpDir, minval=1, maxval=200)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INPUTS — BREAKOUT DETECTION
 // ══════════════════════════════════════════════════════════════════════════════
 
-grpBrk = "Breakout Detection"
-useBreakout    = input.bool(true,  "Enable Breakout Detection", group=grpBrk)
-retestWinOvr   = input.int(0,     "Retest Window bars (0=auto)", group=grpBrk, minval=0, maxval=8,
-                  tooltip="0 = use asset class profile. On 4H: 2=8hrs, 3=12hrs.")
-retestProxMul  = input.float(0.3, "Retest Tolerance ATR x",     group=grpBrk, minval=0.1, maxval=1.0, step=0.1)
-falseBreakMul  = input.float(0.2, "False Break Threshold ATR x", group=grpBrk, minval=0.05, maxval=0.5, step=0.05)
+grpBrk        = "Breakout Detection"
+useBreakout   = input.bool(true,  "Enable Breakout Detection", group=grpBrk)
+retestProxMul = input.float(0.3,  "Retest Tolerance ATR x",    group=grpBrk, minval=0.1, maxval=1.0, step=0.1)
+falseBreakMul = input.float(0.2,  "False Break Threshold ATR x",group=grpBrk, minval=0.05, maxval=0.5, step=0.05)
 
 // ══════════════════════════════════════════════════════════════════════════════
-// INPUTS — ALERT
+// PROFILE — FX
 // ══════════════════════════════════════════════════════════════════════════════
 
-grpAlt = "Alerts"
-alertEveryBar = input.bool(true,  "Fire Webhook Every Bar Close", group=grpAlt,
-                tooltip="ON = webhook fires every 4H bar close. OFF = only on grade change. ON recommended to keep FCC panel fresh.")
-showGradeLbl  = input.bool(true,  "Show Grade Label on Chart",    group=grpAlt,
-                tooltip="Displays current grade, zone, cloud pos. Useful for calibration.")
+grpFX           = "Profile: FX"
+fx_zoneHW       = input.float(0.15, "Zone Half-Width ATR x",           group=grpFX, minval=0.05, maxval=2.0, step=0.05)
+fx_zoneProx     = input.float(0.4,  "Zone Proximity ATR x",            group=grpFX, minval=0.1,  maxval=3.0, step=0.05)
+fx_dPivLen      = input.int(7,      "Daily Pivot Strength",             group=grpFX, minval=2, maxval=15)
+fx_wPivLen      = input.int(4,      "Weekly Pivot Strength",            group=grpFX, minval=1, maxval=10)
+fx_dMaxZones    = input.int(3,      "Max Daily Zones (each direction)", group=grpFX, minval=1, maxval=15)
+fx_wMaxZones    = input.int(2,      "Max Weekly Zones (each direction)",group=grpFX, minval=1, maxval=10)
+fx_cloudFast    = input.int(9,      "Cloud Fast EMA",                   group=grpFX, minval=1, maxval=50)
+fx_cloudSlow    = input.int(21,     "Cloud Slow EMA",                   group=grpFX, minval=1, maxval=200)
+fx_cloudProx    = input.float(0.5,  "Cloud Proximity ATR x",            group=grpFX, minval=0.1, maxval=3.0, step=0.1)
+fx_emaBuf       = input.float(0.5,  "200 EMA Zone Width ATR x",         group=grpFX, minval=0.1, maxval=3.0, step=0.1)
+fx_tchCooldown  = input.int(3,      "Touch Cooldown (bars)",             group=grpFX, minval=1, maxval=30)
+fx_exhausted    = input.int(4,      "Exhausted At (touches)",            group=grpFX, minval=2, maxval=10)
+fx_minRoundTch  = input.int(2,      "Min Round Number Touches",          group=grpFX, minval=0, maxval=5)
+fx_roundIncr    = input.float(0.0,  "Round Number Increment (0=auto)",   group=grpFX, minval=0, step=0.0001)
+fx_retestWin    = input.int(2,      "Breakout Retest Window (bars)",     group=grpFX, minval=1, maxval=8)
 
 // ══════════════════════════════════════════════════════════════════════════════
-// RESOLVE PROFILE VALUES (override if non-zero, else use profile)
+// PROFILE — METALS
 // ══════════════════════════════════════════════════════════════════════════════
 
-zoneHW      = zoneHWOvr    > 0   ? zoneHWOvr    : p_zoneHW
-dPiv        = dPivLen      > 0   ? dPivLen      : p_dPivLen
-wPiv        = wPivLen      > 0   ? wPivLen      : p_wPivLen
-tchCooldown = tchCooldownOvr > 0 ? tchCooldownOvr : p_tchCooldown
-exhaustedAt = exhaustedOvr > 0   ? exhaustedOvr : p_exhausted
-zoneProxMul = p_zoneProx
-cloudProx   = cloudProxOvr > 0   ? cloudProxOvr : p_cloudProx
-cloudFastL  = cloudFastOvr > 0   ? cloudFastOvr : p_cloudFast
-cloudSlowL  = cloudSlowOvr > 0   ? cloudSlowOvr : p_cloudSlow
-emaBufMul   = emaBufOvr    > 0   ? emaBufOvr    : p_emaBuf
-retestWin   = retestWinOvr > 0   ? retestWinOvr : p_retestWin
-roundIncr   = customIncr   > 0   ? customIncr   : p_roundIncr
+grpMET          = "Profile: Metals"
+met_zoneHW      = input.float(0.4,  "Zone Half-Width ATR x",           group=grpMET, minval=0.05, maxval=2.0, step=0.05)
+met_zoneProx    = input.float(0.6,  "Zone Proximity ATR x",            group=grpMET, minval=0.1,  maxval=3.0, step=0.05)
+met_dPivLen     = input.int(7,      "Daily Pivot Strength",             group=grpMET, minval=2, maxval=15)
+met_wPivLen     = input.int(4,      "Weekly Pivot Strength",            group=grpMET, minval=1, maxval=10)
+met_dMaxZones   = input.int(3,      "Max Daily Zones (each direction)", group=grpMET, minval=1, maxval=15)
+met_wMaxZones   = input.int(2,      "Max Weekly Zones (each direction)",group=grpMET, minval=1, maxval=10)
+met_cloudFast   = input.int(9,      "Cloud Fast EMA",                   group=grpMET, minval=1, maxval=50)
+met_cloudSlow   = input.int(34,     "Cloud Slow EMA",                   group=grpMET, minval=1, maxval=200)
+met_cloudProx   = input.float(0.7,  "Cloud Proximity ATR x",            group=grpMET, minval=0.1, maxval=3.0, step=0.1)
+met_emaBuf      = input.float(0.8,  "200 EMA Zone Width ATR x",         group=grpMET, minval=0.1, maxval=3.0, step=0.1)
+met_tchCooldown = input.int(5,      "Touch Cooldown (bars)",             group=grpMET, minval=1, maxval=30)
+met_exhausted   = input.int(5,      "Exhausted At (touches)",            group=grpMET, minval=2, maxval=10)
+met_minRoundTch = input.int(2,      "Min Round Number Touches",          group=grpMET, minval=0, maxval=5)
+met_roundIncr   = input.float(10.0, "Round Number Increment",            group=grpMET, minval=0, step=0.5,
+                   tooltip="Gold=10, Silver=0.5")
+met_retestWin   = input.int(3,      "Breakout Retest Window (bars)",     group=grpMET, minval=1, maxval=8)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROFILE — ENERGY
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpENE          = "Profile: Energy"
+ene_zoneHW      = input.float(0.5,  "Zone Half-Width ATR x",           group=grpENE, minval=0.05, maxval=2.0, step=0.05)
+ene_zoneProx    = input.float(0.7,  "Zone Proximity ATR x",            group=grpENE, minval=0.1,  maxval=3.0, step=0.05)
+ene_dPivLen     = input.int(7,      "Daily Pivot Strength",             group=grpENE, minval=2, maxval=15)
+ene_wPivLen     = input.int(4,      "Weekly Pivot Strength",            group=grpENE, minval=1, maxval=10)
+ene_dMaxZones   = input.int(3,      "Max Daily Zones (each direction)", group=grpENE, minval=1, maxval=15)
+ene_wMaxZones   = input.int(2,      "Max Weekly Zones (each direction)",group=grpENE, minval=1, maxval=10)
+ene_cloudFast   = input.int(9,      "Cloud Fast EMA",                   group=grpENE, minval=1, maxval=50)
+ene_cloudSlow   = input.int(34,     "Cloud Slow EMA",                   group=grpENE, minval=1, maxval=200)
+ene_cloudProx   = input.float(0.8,  "Cloud Proximity ATR x",            group=grpENE, minval=0.1, maxval=3.0, step=0.1)
+ene_emaBuf      = input.float(0.9,  "200 EMA Zone Width ATR x",         group=grpENE, minval=0.1, maxval=3.0, step=0.1)
+ene_tchCooldown = input.int(6,      "Touch Cooldown (bars)",             group=grpENE, minval=1, maxval=30)
+ene_exhausted   = input.int(5,      "Exhausted At (touches)",            group=grpENE, minval=2, maxval=10)
+ene_minRoundTch = input.int(2,      "Min Round Number Touches",          group=grpENE, minval=0, maxval=5)
+ene_roundIncr   = input.float(1.0,  "Round Number Increment",            group=grpENE, minval=0, step=0.5)
+ene_retestWin   = input.int(3,      "Breakout Retest Window (bars)",     group=grpENE, minval=1, maxval=8)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROFILE — INDICES
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpIDX          = "Profile: Indices"
+idx_zoneHW      = input.float(0.3,  "Zone Half-Width ATR x",           group=grpIDX, minval=0.05, maxval=2.0, step=0.05)
+idx_zoneProx    = input.float(0.5,  "Zone Proximity ATR x",            group=grpIDX, minval=0.1,  maxval=3.0, step=0.05)
+idx_dPivLen     = input.int(5,      "Daily Pivot Strength",             group=grpIDX, minval=2, maxval=15)
+idx_wPivLen     = input.int(3,      "Weekly Pivot Strength",            group=grpIDX, minval=1, maxval=10)
+idx_dMaxZones   = input.int(3,      "Max Daily Zones (each direction)", group=grpIDX, minval=1, maxval=15)
+idx_wMaxZones   = input.int(2,      "Max Weekly Zones (each direction)",group=grpIDX, minval=1, maxval=10)
+idx_cloudFast   = input.int(9,      "Cloud Fast EMA",                   group=grpIDX, minval=1, maxval=50)
+idx_cloudSlow   = input.int(21,     "Cloud Slow EMA",                   group=grpIDX, minval=1, maxval=200)
+idx_cloudProx   = input.float(0.6,  "Cloud Proximity ATR x",            group=grpIDX, minval=0.1, maxval=3.0, step=0.1)
+idx_emaBuf      = input.float(0.6,  "200 EMA Zone Width ATR x",         group=grpIDX, minval=0.1, maxval=3.0, step=0.1)
+idx_tchCooldown = input.int(4,      "Touch Cooldown (bars)",             group=grpIDX, minval=1, maxval=30)
+idx_exhausted   = input.int(4,      "Exhausted At (touches)",            group=grpIDX, minval=2, maxval=10)
+idx_minRoundTch = input.int(2,      "Min Round Number Touches",          group=grpIDX, minval=0, maxval=5)
+idx_roundIncr   = input.float(50.0, "Round Number Increment",            group=grpIDX, minval=0, step=10.0,
+                   tooltip="e.g. S&P500=50, Nasdaq=100, DAX=100, AU200=50")
+idx_retestWin   = input.int(2,      "Breakout Retest Window (bars)",     group=grpIDX, minval=1, maxval=8)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROFILE — CRYPTO
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpCRY          = "Profile: Crypto"
+cry_zoneHW      = input.float(0.6,   "Zone Half-Width ATR x",           group=grpCRY, minval=0.05, maxval=2.0, step=0.05)
+cry_zoneProx    = input.float(0.8,   "Zone Proximity ATR x",            group=grpCRY, minval=0.1,  maxval=3.0, step=0.05)
+cry_dPivLen     = input.int(8,       "Daily Pivot Strength",             group=grpCRY, minval=2, maxval=15)
+cry_wPivLen     = input.int(5,       "Weekly Pivot Strength",            group=grpCRY, minval=1, maxval=10)
+cry_dMaxZones   = input.int(3,       "Max Daily Zones (each direction)", group=grpCRY, minval=1, maxval=15)
+cry_wMaxZones   = input.int(2,       "Max Weekly Zones (each direction)",group=grpCRY, minval=1, maxval=10)
+cry_cloudFast   = input.int(9,       "Cloud Fast EMA",                   group=grpCRY, minval=1, maxval=50)
+cry_cloudSlow   = input.int(21,      "Cloud Slow EMA",                   group=grpCRY, minval=1, maxval=200)
+cry_cloudProx   = input.float(1.0,   "Cloud Proximity ATR x",            group=grpCRY, minval=0.1, maxval=3.0, step=0.1)
+cry_emaBuf      = input.float(1.2,   "200 EMA Zone Width ATR x",         group=grpCRY, minval=0.1, maxval=3.0, step=0.1)
+cry_tchCooldown = input.int(4,       "Touch Cooldown (bars)",             group=grpCRY, minval=1, maxval=30)
+cry_exhausted   = input.int(3,       "Exhausted At (touches)",            group=grpCRY, minval=2, maxval=10)
+cry_minRoundTch = input.int(1,       "Min Round Number Touches",          group=grpCRY, minval=0, maxval=5)
+cry_roundIncr   = input.float(1000.0,"Round Number Increment",            group=grpCRY, minval=0, step=100.0,
+                   tooltip="BTC=1000, ETH=100, smaller alts=10")
+cry_retestWin   = input.int(3,       "Breakout Retest Window (bars)",     group=grpCRY, minval=1, maxval=8)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROFILE — BONDS
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpBND          = "Profile: Bonds"
+bnd_zoneHW      = input.float(0.3,  "Zone Half-Width ATR x",           group=grpBND, minval=0.05, maxval=2.0, step=0.05)
+bnd_zoneProx    = input.float(0.4,  "Zone Proximity ATR x",            group=grpBND, minval=0.1,  maxval=3.0, step=0.05)
+bnd_dPivLen     = input.int(6,      "Daily Pivot Strength",             group=grpBND, minval=2, maxval=15)
+bnd_wPivLen     = input.int(4,      "Weekly Pivot Strength",            group=grpBND, minval=1, maxval=10)
+bnd_dMaxZones   = input.int(3,      "Max Daily Zones (each direction)", group=grpBND, minval=1, maxval=15)
+bnd_wMaxZones   = input.int(2,      "Max Weekly Zones (each direction)",group=grpBND, minval=1, maxval=10)
+bnd_cloudFast   = input.int(9,      "Cloud Fast EMA",                   group=grpBND, minval=1, maxval=50)
+bnd_cloudSlow   = input.int(21,     "Cloud Slow EMA",                   group=grpBND, minval=1, maxval=200)
+bnd_cloudProx   = input.float(0.5,  "Cloud Proximity ATR x",            group=grpBND, minval=0.1, maxval=3.0, step=0.1)
+bnd_emaBuf      = input.float(0.5,  "200 EMA Zone Width ATR x",         group=grpBND, minval=0.1, maxval=3.0, step=0.1)
+bnd_tchCooldown = input.int(3,      "Touch Cooldown (bars)",             group=grpBND, minval=1, maxval=30)
+bnd_exhausted   = input.int(4,      "Exhausted At (touches)",            group=grpBND, minval=2, maxval=10)
+bnd_minRoundTch = input.int(2,      "Min Round Number Touches",          group=grpBND, minval=0, maxval=5)
+bnd_roundIncr   = input.float(0.5,  "Round Number Increment",            group=grpBND, minval=0, step=0.25)
+bnd_retestWin   = input.int(2,      "Breakout Retest Window (bars)",     group=grpBND, minval=1, maxval=8)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RESOLVE ACTIVE PROFILE
+// ══════════════════════════════════════════════════════════════════════════════
+
+zoneHW      = fx_zoneHW
+zoneProxMul = fx_zoneProx
+dPiv        = fx_dPivLen
+wPiv        = fx_wPivLen
+dMaxZones   = fx_dMaxZones
+wMaxZones   = fx_wMaxZones
+cloudFastL  = fx_cloudFast
+cloudSlowL  = fx_cloudSlow
+cloudProx   = fx_cloudProx
+emaBufMul   = fx_emaBuf
+tchCooldown = fx_tchCooldown
+exhaustedAt = fx_exhausted
+minRoundTch = fx_minRoundTch
+roundIncr   = fx_roundIncr
+retestWin   = fx_retestWin
+
+if assetClass == "METALS"
+    zoneHW      := met_zoneHW
+    zoneProxMul := met_zoneProx
+    dPiv        := met_dPivLen
+    wPiv        := met_wPivLen
+    dMaxZones   := met_dMaxZones
+    wMaxZones   := met_wMaxZones
+    cloudFastL  := met_cloudFast
+    cloudSlowL  := met_cloudSlow
+    cloudProx   := met_cloudProx
+    emaBufMul   := met_emaBuf
+    tchCooldown := met_tchCooldown
+    exhaustedAt := met_exhausted
+    minRoundTch := met_minRoundTch
+    roundIncr   := met_roundIncr
+    retestWin   := met_retestWin
+else if assetClass == "ENERGY"
+    zoneHW      := ene_zoneHW
+    zoneProxMul := ene_zoneProx
+    dPiv        := ene_dPivLen
+    wPiv        := ene_wPivLen
+    dMaxZones   := ene_dMaxZones
+    wMaxZones   := ene_wMaxZones
+    cloudFastL  := ene_cloudFast
+    cloudSlowL  := ene_cloudSlow
+    cloudProx   := ene_cloudProx
+    emaBufMul   := ene_emaBuf
+    tchCooldown := ene_tchCooldown
+    exhaustedAt := ene_exhausted
+    minRoundTch := ene_minRoundTch
+    roundIncr   := ene_roundIncr
+    retestWin   := ene_retestWin
+else if assetClass == "INDICES"
+    zoneHW      := idx_zoneHW
+    zoneProxMul := idx_zoneProx
+    dPiv        := idx_dPivLen
+    wPiv        := idx_wPivLen
+    dMaxZones   := idx_dMaxZones
+    wMaxZones   := idx_wMaxZones
+    cloudFastL  := idx_cloudFast
+    cloudSlowL  := idx_cloudSlow
+    cloudProx   := idx_cloudProx
+    emaBufMul   := idx_emaBuf
+    tchCooldown := idx_tchCooldown
+    exhaustedAt := idx_exhausted
+    minRoundTch := idx_minRoundTch
+    roundIncr   := idx_roundIncr
+    retestWin   := idx_retestWin
+else if assetClass == "CRYPTO"
+    zoneHW      := cry_zoneHW
+    zoneProxMul := cry_zoneProx
+    dPiv        := cry_dPivLen
+    wPiv        := cry_wPivLen
+    dMaxZones   := cry_dMaxZones
+    wMaxZones   := cry_wMaxZones
+    cloudFastL  := cry_cloudFast
+    cloudSlowL  := cry_cloudSlow
+    cloudProx   := cry_cloudProx
+    emaBufMul   := cry_emaBuf
+    tchCooldown := cry_tchCooldown
+    exhaustedAt := cry_exhausted
+    minRoundTch := cry_minRoundTch
+    roundIncr   := cry_roundIncr
+    retestWin   := cry_retestWin
+else if assetClass == "BONDS"
+    zoneHW      := bnd_zoneHW
+    zoneProxMul := bnd_zoneProx
+    dPiv        := bnd_dPivLen
+    wPiv        := bnd_wPivLen
+    dMaxZones   := bnd_dMaxZones
+    wMaxZones   := bnd_wMaxZones
+    cloudFastL  := bnd_cloudFast
+    cloudSlowL  := bnd_cloudSlow
+    cloudProx   := bnd_cloudProx
+    emaBufMul   := bnd_emaBuf
+    tchCooldown := bnd_tchCooldown
+    exhaustedAt := bnd_exhausted
+    minRoundTch := bnd_minRoundTch
+    roundIncr   := bnd_roundIncr
+    retestWin   := bnd_retestWin
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ATR + DERIVED SIZES
+// ══════════════════════════════════════════════════════════════════════════════
+
 // ══════════════════════════════════════════════════════════════════════════════
 
 atr14       = ta.atr(14)
