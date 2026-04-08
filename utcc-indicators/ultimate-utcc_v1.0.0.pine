@@ -66,8 +66,11 @@ is_crypto = syminfo.type == "crypto"
 
 is_metal  = str.contains(syminfo.ticker, "XAU")
           or str.contains(syminfo.ticker, "XAG")
+          or str.contains(syminfo.ticker, "XPT")
+          or str.contains(syminfo.ticker, "XPD")
           or str.contains(syminfo.ticker, "GOLD")
           or str.contains(syminfo.ticker, "SILVER")
+          or str.contains(syminfo.ticker, "PLATINUM")
 
 is_energy = str.contains(syminfo.ticker, "OIL")
           or str.contains(syminfo.ticker, "WTI")
@@ -91,6 +94,10 @@ is_bond   = str.contains(syminfo.ticker, "BOND")
           or str.contains(syminfo.ticker, "TNX")
           or str.contains(syminfo.ticker, "ZN")
           or str.contains(syminfo.ticker, "ZB")
+          or str.contains(syminfo.ticker, "USB")
+          or str.contains(syminfo.ticker, "TLT")
+          or str.contains(syminfo.ticker, "IEF")
+          or str.contains(syminfo.ticker, "TREASURY")
 
 is_fx     = syminfo.type == "forex"
 
