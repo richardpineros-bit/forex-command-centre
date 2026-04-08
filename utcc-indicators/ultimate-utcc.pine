@@ -1,11 +1,13 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.0.0
+// ULTIMATE UTCC v2.2.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
 // Ported core engine from UTCC Universal v3.0.0
+// Display: Compact (default) | Full (settings toggle)
+// v2.2.0: Trend slope | Spread monitor | ATR guidance | Playbook | Execution | Score breakdown | Compact/Full modes
 // Pine Script v6
 // =============================================================================
 
