@@ -8,7 +8,7 @@
 // =============================================================================
 
 //@version=6
-indicator("Ultimate UTCC", overlay=false, max_bars_back=500)
+indicator("Ultimate UTCC", overlay=true, max_bars_back=500)
 
 // =============================================================================
 // SETTINGS
