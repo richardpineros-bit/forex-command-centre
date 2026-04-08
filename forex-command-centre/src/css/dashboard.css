@@ -773,6 +773,51 @@ a.armed-pair-row.armed-row-link:active {
 .armed-pair-wrapper:last-child { border-bottom: none; }
 .armed-pair-wrapper .armed-row-link { border-bottom: none; margin-bottom: 0; }
 
+.armed-location-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px 4px 36px;
+    font-size: 0.68rem;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+.armed-location-row.awaiting {
+    color: var(--text-muted);
+    font-style: italic;
+}
+/* Location grade badges */
+.loc-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.loc-prime    { background: rgba(255,215,0,0.22);  color: #FFD700; border: 1px solid rgba(255,215,0,0.4); }
+.loc-at-zone  { background: rgba(0,200,83,0.18);   color: #00C853; border: 1px solid rgba(0,200,83,0.35); }
+.loc-at-cloud { background: rgba(0,191,255,0.18);  color: #00BFFF; border: 1px solid rgba(0,191,255,0.35); }
+.loc-in-cloud { background: rgba(0,191,255,0.10);  color: #7ec8e3; border: 1px solid rgba(0,191,255,0.2); }
+.loc-wait     { background: rgba(128,128,128,0.15); color: #888;   border: 1px solid rgba(128,128,128,0.3); }
+.loc-opposed  { background: rgba(255,23,68,0.18);  color: #FF1744; border: 1px solid rgba(255,23,68,0.4); }
+.loc-brk-good { background: rgba(0,200,83,0.22);   color: #69f0ae; border: 1px solid rgba(0,200,83,0.4); }
+.loc-brk-ext  { background: rgba(255,140,0,0.18);  color: #FF8C00; border: 1px solid rgba(255,140,0,0.35); }
+/* Description and proximity text */
+.loc-desc {
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    flex: 1;
+}
+.loc-prox {
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    font-style: italic;
+    white-space: nowrap;
+}
+
 .armed-bias-row {
     display: flex;
     align-items: center;

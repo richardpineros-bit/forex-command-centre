@@ -11,6 +11,7 @@ const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json
 const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.json';
 const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
 const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.json';
+const LOCATION_FILE     = process.env.LOCATION_FILE     || '/data/location.json';
 
 // ============================================================================
 // VERSION INFO
@@ -18,6 +19,7 @@ const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.j
 const VERSION = '2.9.0';
 const CHANGES = [
     '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
+    '2.9.0 - Location Engine: POST /webhook/location + GET /location endpoints; per-pair location grade fed from FCC-LOC Pine indicator',
     '2.8.0 - SESSION_RESET no longer clears armed pairs — natural disarm only; pairs survive session transitions',
     '2.7.0 - pushBlocked(): PWA push notification on BLOCKED alerts — position management signal with human-readable disarm reason',
     '2.6.0 - GET /te-snapshot: serve te-snapshot.json (Trading Economics macro briefing) with 8h staleness check',
@@ -39,7 +41,8 @@ const CONFIG = {
     UTCC_ALERT_TTL_HOURS: 4,        // Alerts expire after 4 hours
     UTCC_MAX_ALERTS_PER_PAIR: 10,   // Keep last 10 alerts per pair
     UTCC_CLEANUP_INTERVAL_MS: 300000, // Cleanup every 5 minutes
-    STRUCTURE_TTL_HOURS: 4          // Structure alerts expire after 4 hours
+    STRUCTURE_TTL_HOURS: 4,         // Structure alerts expire after 4 hours
+    LOCATION_TTL_HOURS:  6          // Location grades expire after 6 hours
 };
 
 // ============================================================================
@@ -467,6 +470,46 @@ function cleanupExpiredStructure() {
     if (cleaned > 0) {
         saveStructure(data);
         console.log('[Cleanup] Removed ' + cleaned + ' expired structure entries');
+    }
+}
+
+// ============================================================================
+// LOCATION STATE MANAGEMENT
+// ============================================================================
+function loadLocation() {
+    try {
+        if (fs.existsSync(LOCATION_FILE)) {
+            return JSON.parse(fs.readFileSync(LOCATION_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('[Location] Load error:', e.message);
+    }
+    return { pairs: {}, lastUpdate: null };
+}
+
+function saveLocation(data) {
+    data.lastUpdate = new Date().toISOString();
+    try {
+        fs.writeFileSync(LOCATION_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error('[Location] Save error:', e.message);
+    }
+}
+
+function cleanupExpiredLocation() {
+    var data  = loadLocation();
+    var now   = Date.now();
+    var ttlMs = CONFIG.LOCATION_TTL_HOURS * 60 * 60 * 1000;
+    var cleaned = 0;
+    for (var pair of Object.keys(data.pairs)) {
+        if (now - new Date(data.pairs[pair].timestamp).getTime() > ttlMs) {
+            delete data.pairs[pair];
+            cleaned++;
+        }
+    }
+    if (cleaned > 0) {
+        saveLocation(data);
+        console.log('[Location] Cleaned ' + cleaned + ' expired entries');
     }
 }
 
@@ -1377,6 +1420,89 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
+
+    // POST /webhook/location - Receive location grade from FCC-LOC Pine indicator
+    // Fired every 4H bar close per pair. Stores grade, zone, cloud position, breakout.
+    if (req.method === 'POST' && req.url === '/webhook/location') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var payload = JSON.parse(body);
+                if (!payload.pair || !payload.grade) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required fields: pair, grade' }));
+                    return;
+                }
+                var data = loadLocation();
+                var now  = new Date();
+                data.pairs[payload.pair] = {
+                    pair:           payload.pair,
+                    direction:      payload.direction      || 'NEUTRAL',
+                    grade:          payload.grade,
+                    zone:           payload.zone           || 'NONE',
+                    zone_dist_atr:  payload.zone_dist_atr  || 'na',
+                    cloud_pos:      payload.cloud_pos      || 'CLEAR',
+                    cloud_dist_atr: payload.cloud_dist_atr || 'na',
+                    breakout:       payload.breakout       || 'NONE',
+                    supp_name:      payload.supp_name      || 'NONE',
+                    supp_dist_atr:  payload.supp_dist_atr  || 'na',
+                    res_name:       payload.res_name       || 'NONE',
+                    res_dist_atr:   payload.res_dist_atr   || 'na',
+                    timestamp:      now.toISOString()
+                };
+                saveLocation(data);
+                console.log('[Location] ' + payload.pair + ' | ' + (payload.direction||'?') + ' | ' + payload.grade + ' | zone=' + (payload.zone||'NONE') + ' | cloud=' + (payload.cloud_pos||'?') + ' | brk=' + (payload.breakout||'NONE'));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, pair: payload.pair, grade: payload.grade }));
+            } catch (e) {
+                console.error('[Location] Parse error:', e.message);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON: ' + e.message }));
+            }
+        });
+        return;
+    }
+
+    // GET /location - Return location state. Usage: /location?pair=EURUSD or /location (all)
+    if (req.method === 'GET' && req.url.startsWith('/location')) {
+        var urlParts = req.url.split('?');
+        var params   = {};
+        (urlParts[1] || '').split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+        var data  = loadLocation();
+        var now   = Date.now();
+        var ttlMs = CONFIG.LOCATION_TTL_HOURS * 60 * 60 * 1000;
+        if (params.pair) {
+            var entry = data.pairs[params.pair];
+            if (!entry) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ found: false, pair: params.pair, grade: 'NO_DATA' }));
+                return;
+            }
+            var age = now - new Date(entry.timestamp).getTime();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(Object.assign({}, entry, {
+                found:      age <= ttlMs,
+                grade:      age > ttlMs ? 'STALE' : entry.grade,
+                ageMinutes: Math.floor(age / 60000),
+                expired:    age > ttlMs
+            })));
+        } else {
+            var active = [];
+            for (var p in data.pairs) {
+                var e   = data.pairs[p];
+                var age = now - new Date(e.timestamp).getTime();
+                if (age <= ttlMs) active.push(Object.assign({}, e, { ageMinutes: Math.floor(age / 60000) }));
+            }
+            active.sort(function(a, b) { return a.pair.localeCompare(b.pair); });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ count: active.length, pairs: active, lastUpdate: data.lastUpdate }));
+        }
+        return;
+    }
 
     // ========================================================================
     // GET /bias-history - Return news bias history (scraper output)

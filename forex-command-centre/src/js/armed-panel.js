@@ -3,12 +3,14 @@
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
     const SENTIMENT_URL  = 'https://api.pineros.club/ig-sentiment/latest';
+    const LOCATION_URL   = 'https://api.pineros.club/location';
     const REFRESH_INTERVAL = 30000; // 30 seconds
     const API_URL        = '/api/storage-api.php';
 
     // Sentiment cache
     var _sentimentData  = null;
     var _sentimentStale = true;
+    var _locationData   = {};   // keyed by pair name
 
     // Dismissed pairs state (server-side, permanent until new ARMED re-arms the pair)
     // Structure: { pair: { dismissedAt: ISO string } }
@@ -27,6 +29,21 @@
         } catch(e) {}
     }
     fetchSentiment();
+
+    async function fetchLocation() {
+        try {
+            var r = await fetch(LOCATION_URL, { cache: 'no-cache' });
+            if (!r.ok) return;
+            var d = await r.json();
+            if (d && d.pairs) {
+                _locationData = {};
+                d.pairs.forEach(function(entry) {
+                    if (entry.pair) _locationData[entry.pair] = entry;
+                });
+            }
+        } catch(e) {}
+    }
+    fetchLocation();
 
     // Dismiss storage helpers
     function getTodayAEST() {
@@ -440,6 +457,58 @@
         '</div>';
     }
 
+    function buildLocationRow(p) {
+        var loc = _locationData[p.pair || ''];
+
+        if (!loc || loc.grade === 'NO_DATA' || loc.grade === 'STALE') {
+            return '<div class="armed-location-row awaiting">&#x23F3; Location: awaiting data</div>';
+        }
+
+        var grade     = loc.grade          || 'WAIT';
+        var zone      = loc.zone           || 'NONE';
+        var cloudPos  = loc.cloud_pos      || 'CLEAR';
+        var suppName  = loc.supp_name      || 'NONE';
+        var resName   = loc.res_name       || 'NONE';
+        var suppDist  = loc.supp_dist_atr  || 'na';
+        var resDist   = loc.res_dist_atr   || 'na';
+        var cloudDist = loc.cloud_dist_atr || 'na';
+
+        var gradeMap = {
+            'PRIME':           ['&#x2605; PRIME',         'loc-prime',    'At S/R zone + cloud edge — optimal entry'],
+            'AT_ZONE':         ['AT ZONE',                'loc-at-zone',  'At S/R zone, direction correct'],
+            'AT_CLOUD':        ['AT CLOUD',               'loc-at-cloud', 'At EMA cloud edge, no S/R nearby'],
+            'IN_CLOUD':        ['IN CLOUD',               'loc-in-cloud', 'Inside EMA cloud — wait for edge'],
+            'WAIT':            ['WAIT',                   'loc-wait',     'Mid-range — no nearby level'],
+            'OPPOSED':         ['\u2716 OPPOSED',        'loc-opposed',  'At wrong-side S/R — do not enter'],
+            'NO_DIRECTION':    ['NO DIR',                 'loc-wait',     'EMA stack mixed — no clear direction'],
+            'BREAKOUT_RETEST': ['\u21A9 BRK RETEST',    'loc-brk-good', 'Retesting broken level from correct side'],
+            'BREAKOUT_EXT':    ['\u26A0 BRK EXT',       'loc-brk-ext',  'Break confirmed — retest window expired'],
+            'FALSE_BREAK':     ['\u2716 FALSE BREAK',   'loc-opposed',  'Reversed back inside zone — stand down']
+        };
+
+        var cfg      = gradeMap[grade] || ['?', 'loc-wait', grade];
+        var badgeLbl = cfg[0];
+        var badgeCls = cfg[1];
+        var desc     = cfg[2];
+
+        var zoneInfo = zone !== 'NONE' ? ' \u2192 ' + zone : '';
+
+        var proxParts = [];
+        if (suppName !== 'NONE' && suppDist !== 'na') proxParts.push('Supp: ' + suppName + ' ' + suppDist + 'atr');
+        if (resName  !== 'NONE' && resDist  !== 'na') proxParts.push('Res: '  + resName  + ' ' + resDist  + 'atr');
+        if (cloudDist !== 'na'  && cloudPos !== 'CLEAR') proxParts.push('Cloud: ' + cloudDist + 'atr');
+
+        var proxHtml = proxParts.length > 0
+            ? '<span class="loc-prox">' + proxParts.join(' \u00b7 ') + '</span>'
+            : '';
+
+        return '<div class="armed-location-row">' +
+            '<span class="loc-badge ' + badgeCls + '">' + badgeLbl + '</span>' +
+            '<span class="loc-desc">' + desc + zoneInfo + '</span>' +
+            proxHtml +
+        '</div>';
+    }
+
     function buildTierHeader(tier, count) {
         var label, cls;
         if (tier === 'PRIME') {
@@ -539,6 +608,7 @@
         var biasRowHtml      = buildBiasRow(p);
         var sentimentRowHtml = buildSentimentRow(p);
         var verdictRowHtml   = buildDirectionalVerdict(p);
+        var locationRowHtml  = buildLocationRow(p);
 
         return '<div class="' + wrapperCls + '">' +
             dismissBtn +
@@ -554,6 +624,7 @@
                 '<span class="armed-age">' + statusHtml + '</span>' +
             '</a>' +
             verdictRowHtml +
+            locationRowHtml +
             biasRowHtml +
             sentimentRowHtml +
         '</div>';
@@ -743,6 +814,7 @@
     
     fetchArmedState();
     setInterval(fetchArmedState, REFRESH_INTERVAL);
+    setInterval(fetchLocation, 5 * 60 * 1000); // refresh location every 5 minutes
     
     // Global API
     window.refreshArmedPanel = fetchArmedState;

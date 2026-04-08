@@ -1,3 +1,44 @@
+## [v5.10.0] - 2026-04-08
+### Feature: Location Engine - Live Entry Location Grade in Armed Panel
+
+Per-pair location grading fed from TradingView into the FCC armed pair cards.
+Solves the core problem: knowing if entry location is right without opening a chart.
+
+**New indicator: `location-engine.pine` (FCC-LOC)**
+- Fires webhook every 4H bar close per pair
+- Checks EMA cloud proximity (at lower edge for longs, upper for shorts)
+- Checks S/R zone proximity: PDH/PDL, PWH/PWL, Daily/Weekly swings, round numbers, D.200EMA
+- Grades combined location: PRIME / AT_ZONE / AT_CLOUD / IN_CLOUD / WAIT / OPPOSED
+- Detects breakouts and retests: BREAKOUT_RETEST / BREAKOUT_EXT / FALSE_BREAK
+- Fully customisable: all proximity thresholds, sources, lookbacks, cloud EMAs, retest window
+- Shows grade label on chart for calibration
+
+**Alert server (index.js v2.10.0):**
+- `POST /webhook/location` -- receives location payload from FCC-LOC indicator
+- `GET /location` -- returns location state for one pair or all pairs
+- `location.json` stored in /data/ with 6-hour TTL per pair
+- `loadLocation()` / `saveLocation()` / `cleanupExpiredLocation()` functions added
+
+**Armed Panel (armed-panel.js):**
+- `fetchLocation()` -- polls /location every 5 minutes
+- `buildLocationRow(p)` -- renders location badge row on each armed pair card
+- Location row sits between directional verdict and news bias rows
+- Grade badges: PRIME (gold), AT ZONE (green), AT CLOUD (blue), WAIT (grey), OPPOSED (red), BRK RETEST (green pulse), BRK EXT (amber), FALSE BREAK (red)
+- Shows zone name, cloud distance, nearest supp/res ATR distance
+
+**dashboard.css:**
+- `.armed-location-row` -- new row styles
+- `.loc-badge`, `.loc-prime`, `.loc-at-zone`, `.loc-at-cloud`, `.loc-in-cloud`
+- `.loc-wait`, `.loc-opposed`, `.loc-brk-good`, `.loc-brk-ext`
+- `.loc-desc`, `.loc-prox` -- description and proximity text styles
+
+**storage-api.php:**
+- `location` key whitelisted
+
+**Also added this session:**
+- `sr-location-zones.pine` -- HTF S/R Location Zones standalone indicator (6 sources, touch counting, confluence detection)
+- `SR-LOCATION-ZONES-USER-GUIDE_v1.0.0.md` -- comprehensive user guide
+
 ## [v5.9.0] - 2026-04-08
 ### Feature: Ultimate UTCC Integration - TF_ARMED / TR_ARMED
 

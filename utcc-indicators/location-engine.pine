@@ -1,0 +1,479 @@
+//@version=6
+// ══════════════════════════════════════════════════════════════════════════════
+// FCC Location Engine — v1.0.0
+// Part of the Forex Command Centre indicator suite
+//
+// Purpose: Fires a webhook every bar close with a location grade for the pair.
+// The FCC armed panel reads this grade and displays it on each armed pair card.
+//
+// What it computes:
+//   - EMA cloud proximity (is price at the cloud edge for a pullback entry?)
+//   - S/R zone proximity (is price at support/resistance?)
+//   - Combined location grade (PRIME / AT_ZONE / AT_CLOUD / WAIT / OPPOSED etc.)
+//   - Breakout state (BREAKOUT_RETEST / BREAKOUT_EXT / FALSE_BREAK)
+//
+// Webhook payload (JSON) sent on every 4H bar close:
+//   {"pair":"EURUSD","direction":"LONG","grade":"PRIME","zone":"D.SwingL",
+//    "zone_dist_atr":"0.12","cloud_pos":"AT_LOWER_EDGE","cloud_dist_atr":"0.08",
+//    "breakout":"NONE"}
+//
+// Setup:
+//   1. Add to each pair you trade (4H chart recommended)
+//   2. Create one TradingView alert per pair → Any Alert() → Webhook URL:
+//      https://api.pineros.club/webhook/location
+//   3. Leave the alert message field blank (indicator sets it dynamically)
+// ══════════════════════════════════════════════════════════════════════════════
+
+indicator("FCC Location Engine", shorttitle="FCC-LOC", overlay=true, max_labels_count=5)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Direction Detection ──────────────────────────────────────────────────────
+grpDir = "Direction Detection"
+
+dirMode  = input.string("AUTO", "Direction Mode", group=grpDir,
+            options=["AUTO", "LONG", "SHORT"],
+            tooltip="AUTO detects direction from EMA stack (9>21>50 = LONG). Override for pairs where EMA stack lags the price action.")
+ema9Len  = input.int(9,  "Fast EMA (direction)",  group=grpDir, minval=1, maxval=50)
+ema21Len = input.int(21, "Mid EMA (direction)",   group=grpDir, minval=1, maxval=100)
+ema50Len = input.int(50, "Trend EMA (direction)", group=grpDir, minval=1, maxval=200,
+            tooltip="All three must be stacked in order for AUTO direction to confirm. Mixed = NEUTRAL = no grade.")
+
+// ─── EMA Cloud ────────────────────────────────────────────────────────────────
+grpCloud = "EMA Cloud"
+
+cloudFastLen  = input.int(9,  "Cloud Fast EMA",  group=grpCloud, minval=1, maxval=50)
+cloudSlowLen  = input.int(21, "Cloud Slow EMA",  group=grpCloud, minval=1, maxval=200,
+                 tooltip="Cloud = zone between these two EMAs. For longs, the lower edge is the pullback target. For shorts, the upper edge.")
+cloudProxMul  = input.float(0.5, "Cloud Proximity (ATR x)", group=grpCloud,
+                 minval=0.1, maxval=3.0, step=0.1,
+                 tooltip="How close price must be to the cloud edge to count as AT_CLOUD.")
+showCloud     = input.bool(true, "Show Cloud on Chart", group=grpCloud)
+cloudBullCol  = input.color(color.new(#00C853, 80), "Cloud Bull Colour", group=grpCloud)
+cloudBearCol  = input.color(color.new(#FF1744, 80), "Cloud Bear Colour", group=grpCloud)
+cloudNeutCol  = input.color(color.new(#888888, 85), "Cloud Neutral Colour", group=grpCloud)
+
+// ─── S/R Zone Sources ─────────────────────────────────────────────────────────
+grpSR = "S/R Zone Sources"
+
+zoneProxMul  = input.float(0.4, "Zone Proximity (ATR x)", group=grpSR,
+                minval=0.1, maxval=3.0, step=0.1,
+                tooltip="How close price must be to any S/R level to trigger AT_ZONE grade.")
+usePDHL      = input.bool(true,  "Prev Day High/Low",     group=grpSR)
+usePWHL      = input.bool(true,  "Prev Week High/Low",    group=grpSR)
+useEMA200    = input.bool(true,  "Daily 200 EMA",         group=grpSR)
+useRound     = input.bool(true,  "Round Numbers",         group=grpSR)
+useDSwing    = input.bool(true,  "Daily Swings",          group=grpSR)
+useWSwing    = input.bool(true,  "Weekly Swings",         group=grpSR)
+dPivLen      = input.int(5,      "Daily Pivot Strength",  group=grpSR, minval=2, maxval=15,
+                tooltip="Bars each side of a pivot high/low on the daily chart required to confirm as a swing.")
+wPivLen      = input.int(3,      "Weekly Pivot Strength", group=grpSR, minval=1, maxval=8)
+dLookback    = input.int(250,    "Daily Search Depth (bars current TF)", group=grpSR, minval=50, maxval=800,
+                tooltip="On 4H: 250 bars = ~42 days. Scans this many current-TF bars for confirmed daily pivots.")
+wLookback    = input.int(250,    "Weekly Search Depth (bars current TF)", group=grpSR, minval=50, maxval=800)
+customIncr   = input.float(0.0,  "Round Number Increment (0 = auto)", group=grpSR,
+                minval=0, step=0.0001,
+                tooltip="0 = auto-detect from price magnitude. Manual: 0.01 = 100-pip, 0.001 = 10-pip, 10.0 = Gold, 100.0 = Indices.")
+
+// ─── Breakout Detection ───────────────────────────────────────────────────────
+grpBrk = "Breakout Detection"
+
+useBreakout   = input.bool(true, "Enable Breakout Detection", group=grpBrk,
+                 tooltip="Detects when price breaks PDH/PDL/PWH/PWL and grades a retest as a valid entry.")
+retestWinBars = input.int(2, "Retest Window (bars after break)", group=grpBrk,
+                 minval=1, maxval=8,
+                 tooltip="How many bars after a break to watch for a retest. On 4H: 2 bars = 8 hours. After this window the break is graded BREAKOUT_EXT.")
+retestProxMul = input.float(0.3, "Retest Tolerance (ATR x)", group=grpBrk,
+                 minval=0.1, maxval=1.0, step=0.1,
+                 tooltip="How close price must return to the broken level to count as a valid retest.")
+falseBreakMul = input.float(0.2, "False Break Threshold (ATR x)", group=grpBrk,
+                 minval=0.05, maxval=0.5, step=0.05,
+                 tooltip="Price returning this far back inside the zone (after a break) triggers FALSE_BREAK grade.")
+
+// ─── Display & Alert ──────────────────────────────────────────────────────────
+grpDisp = "Display & Alert"
+
+showLabel     = input.bool(true, "Show Grade Label on Chart", group=grpDisp,
+                 tooltip="Shows current grade, zone name, and distances as a chart label. Useful for calibration.")
+alertEveryBar = input.bool(true, "Alert Every Bar Close (recommended)", group=grpDisp,
+                 tooltip="ON = fires webhook on every bar close. OFF = only when grade changes. ON keeps FCC panel data fresh.")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ATR
+// ══════════════════════════════════════════════════════════════════════════════
+
+atr14 = ta.atr(14)
+zoneProxAbs   = atr14 * zoneProxMul
+cloudProxAbs  = atr14 * cloudProxMul
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EMA CLOUD
+// ══════════════════════════════════════════════════════════════════════════════
+
+cloudFast  = ta.ema(close, cloudFastLen)
+cloudSlow  = ta.ema(close, cloudSlowLen)
+cloudLower = math.min(cloudFast, cloudSlow)
+cloudUpper = math.max(cloudFast, cloudSlow)
+
+ema9  = ta.ema(close, ema9Len)
+ema21 = ta.ema(close, ema21Len)
+ema50 = ta.ema(close, ema50Len)
+
+bullStack = ema9 > ema21 and ema21 > ema50 and close > ema50
+bearStack = ema9 < ema21 and ema21 < ema50 and close < ema50
+
+// ── Cloud plots (must be at top level, not inside if block) ──────────────────
+cloudColour = bullStack ? cloudBullCol : bearStack ? cloudBearCol : cloudNeutCol
+p1 = plot(cloudFast, "Cloud Fast", color=na, editable=false)
+p2 = plot(cloudSlow, "Cloud Slow", color=na, editable=false)
+fill(p1, p2, color=showCloud ? cloudColour : na, title="EMA Cloud")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HTF SECURITY CALLS — all at top level (Pine v6 requirement)
+// ══════════════════════════════════════════════════════════════════════════════
+
+dPH     = request.security(syminfo.tickerid, "D", ta.pivothigh(high, dPivLen, dPivLen))
+dPL     = request.security(syminfo.tickerid, "D", ta.pivotlow(low,  dPivLen, dPivLen))
+wPH     = request.security(syminfo.tickerid, "W", ta.pivothigh(high, wPivLen, wPivLen))
+wPL     = request.security(syminfo.tickerid, "W", ta.pivotlow(low,  wPivLen, wPivLen))
+
+pdHigh  = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
+pdLow   = request.security(syminfo.tickerid, "D", low[1],  lookahead=barmerge.lookahead_on)
+pwHigh  = request.security(syminfo.tickerid, "W", high[1], lookahead=barmerge.lookahead_on)
+pwLow   = request.security(syminfo.tickerid, "W", low[1],  lookahead=barmerge.lookahead_on)
+ema200d = request.security(syminfo.tickerid, "D", ta.ema(close, 200))
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTO ROUND NUMBER INCREMENT
+// ══════════════════════════════════════════════════════════════════════════════
+
+autoInc() =>
+    p = close
+    if p > 5000.0
+        100.0
+    else if p > 500.0
+        10.0
+    else if p > 50.0
+        1.0
+    else if p > 5.0
+        0.5
+    else if p > 1.0
+        0.01
+    else
+        0.001
+
+roundIncr = customIncr > 0 ? customIncr : autoInc()
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DIRECTION
+// ══════════════════════════════════════════════════════════════════════════════
+
+direction = ""
+if dirMode == "LONG"
+    direction := "LONG"
+else if dirMode == "SHORT"
+    direction := "SHORT"
+else if bullStack
+    direction := "LONG"
+else if bearStack
+    direction := "SHORT"
+else
+    direction := "NEUTRAL"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ZONE LEVEL COLLECTION
+// Build support and resistance arrays every bar.
+// Support = levels below price. Resistance = levels above price.
+// ══════════════════════════════════════════════════════════════════════════════
+
+suppLevels = array.new_float(0)
+suppNames  = array.new_string(0)
+resLevels  = array.new_float(0)
+resNames   = array.new_string(0)
+
+// Helper: add level to appropriate array based on position relative to price
+addLevel(lvl, name) =>
+    if not na(lvl)
+        if lvl >= close
+            array.push(resLevels, lvl)
+            array.push(resNames, name)
+        else
+            array.push(suppLevels, lvl)
+            array.push(suppNames, name)
+
+// Previous Day H/L
+if usePDHL
+    addLevel(pdHigh, "PDH")
+    addLevel(pdLow,  "PDL")
+
+// Previous Week H/L
+if usePWHL
+    addLevel(pwHigh, "PWH")
+    addLevel(pwLow,  "PWL")
+
+// Daily 200 EMA
+if useEMA200 and not na(ema200d)
+    addLevel(ema200d, "D.200EMA")
+
+// Round numbers (nearest above and below)
+if useRound
+    base = math.floor(close / roundIncr) * roundIncr
+    for i = -3 to 3
+        lvl = base + i * roundIncr
+        if math.abs(lvl - close) < atr14 * 10
+            addLevel(lvl, "ROUND")
+
+// Daily swing highs/lows (scan recent history)
+if useDSwing
+    for i = 0 to dLookback - 1
+        if not na(dPH[i])
+            addLevel(dPH[i], "D.SwingH")
+        if not na(dPL[i])
+            addLevel(dPL[i], "D.SwingL")
+
+// Weekly swing highs/lows
+if useWSwing
+    for i = 0 to wLookback - 1
+        if not na(wPH[i])
+            addLevel(wPH[i], "W.SwingH")
+        if not na(wPL[i])
+            addLevel(wPL[i], "W.SwingL")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FIND NEAREST SUPPORT AND RESISTANCE
+// ══════════════════════════════════════════════════════════════════════════════
+
+nearSuppLvl  = float(na)
+nearSuppName = "NONE"
+nearResLvl   = float(na)
+nearResName  = "NONE"
+
+// Nearest support = highest level below price
+for k = 0 to array.size(suppLevels) - 1
+    lvl = array.get(suppLevels, k)
+    if na(nearSuppLvl) or lvl > nearSuppLvl
+        nearSuppLvl  := lvl
+        nearSuppName := array.get(suppNames, k)
+
+// Nearest resistance = lowest level above price
+for k = 0 to array.size(resLevels) - 1
+    lvl = array.get(resLevels, k)
+    if na(nearResLvl) or lvl < nearResLvl
+        nearResLvl  := lvl
+        nearResName := array.get(resNames, k)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PROXIMITY CHECKS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Distance from nearest levels (in ATR units, rounded to 2dp)
+suppDist    = na(nearSuppLvl) ? float(na) : close - nearSuppLvl
+resDist     = na(nearResLvl)  ? float(na) : nearResLvl - close
+suppDistAtr = na(suppDist)    ? float(na) : math.round(suppDist / atr14, 2)
+resDistAtr  = na(resDist)     ? float(na) : math.round(resDist  / atr14, 2)
+
+// At zone: within proximity threshold
+atSupp = not na(suppDist) and suppDist <= zoneProxAbs
+atRes  = not na(resDist)  and resDist  <= zoneProxAbs
+
+// Cloud proximity
+cloudLowerDist = close - cloudLower
+cloudUpperDist = cloudUpper - close
+inCloud        = close >= cloudLower and close <= cloudUpper
+atCloudLower   = cloudLowerDist >= -(cloudProxAbs * 0.5) and cloudLowerDist <= cloudProxAbs * 2.0
+atCloudUpper   = cloudUpperDist >= -(cloudProxAbs * 0.5) and cloudUpperDist <= cloudProxAbs * 2.0
+
+cloudEdgeDist  = float(na)
+cloudPos       = "CLEAR"
+
+if direction == "LONG"
+    cloudEdgeDist := cloudLowerDist
+    if inCloud
+        cloudPos := "INSIDE_CLOUD"
+    else if atCloudLower
+        cloudPos := "AT_LOWER_EDGE"
+    else if cloudLowerDist < 0
+        cloudPos := "BELOW_CLOUD"
+    else
+        cloudPos := "CLEAR"
+else if direction == "SHORT"
+    cloudEdgeDist := cloudUpperDist
+    if inCloud
+        cloudPos := "INSIDE_CLOUD"
+    else if atCloudUpper
+        cloudPos := "AT_UPPER_EDGE"
+    else if cloudUpperDist < 0
+        cloudPos := "ABOVE_CLOUD"
+    else
+        cloudPos := "CLEAR"
+
+cloudEdgeAtr = na(cloudEdgeDist) ? "na" : str.tostring(math.round(math.abs(cloudEdgeDist) / atr14, 2))
+atCloudEdge  = direction == "LONG"  ? (atCloudLower or inCloud) :
+               direction == "SHORT" ? (atCloudUpper or inCloud) : false
+
+// Direction-aligned zone checks
+atCorrectZone = direction == "LONG"  ? atSupp :
+                direction == "SHORT" ? atRes   : false
+atWrongZone   = direction == "LONG"  ? atRes :
+                direction == "SHORT" ? atSupp  : false
+
+nearZoneName  = direction == "LONG"  ? (atSupp ? nearSuppName : atRes  ? nearResName  : "NONE") :
+                direction == "SHORT" ? (atRes  ? nearResName  : atSupp ? nearSuppName : "NONE") : "NONE"
+nearZoneDistAtr = direction == "LONG"  ? (atSupp ? str.tostring(suppDistAtr) : "na") :
+                  direction == "SHORT" ? (atRes  ? str.tostring(resDistAtr)  : "na") : "na"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BREAKOUT DETECTION (tracks PDH/PDL/PWH/PWL breaks)
+// ══════════════════════════════════════════════════════════════════════════════
+
+var float  lastBrokenLvl  = na
+var int    lastBreakBar   = 0
+var string lastBreakType  = "NONE"
+var string lastBreakDir   = "NONE"  // "ABOVE" or "BELOW"
+
+breakState = "NONE"
+
+if useBreakout
+    // Detect fresh break above PDH or PWH (long breakout)
+    if not na(pdHigh) and close > pdHigh and close[1] <= pdHigh
+        lastBrokenLvl := pdHigh
+        lastBreakBar  := bar_index
+        lastBreakType := "PDH"
+        lastBreakDir  := "ABOVE"
+
+    if not na(pwHigh) and close > pwHigh and close[1] <= pwHigh
+        lastBrokenLvl := pwHigh
+        lastBreakBar  := bar_index
+        lastBreakType := "PWH"
+        lastBreakDir  := "ABOVE"
+
+    // Detect fresh break below PDL or PWL (short breakout)
+    if not na(pdLow) and close < pdLow and close[1] >= pdLow
+        lastBrokenLvl := pdLow
+        lastBreakBar  := bar_index
+        lastBreakType := "PDL"
+        lastBreakDir  := "BELOW"
+
+    if not na(pwLow) and close < pwLow and close[1] >= pwLow
+        lastBrokenLvl := pwLow
+        lastBreakBar  := bar_index
+        lastBreakType := "PWL"
+        lastBreakDir  := "BELOW"
+
+    // Evaluate active breakout state
+    if not na(lastBrokenLvl)
+        barsFromBrk = bar_index - lastBreakBar
+        proxAbs     = atr14 * retestProxMul
+        falseThresh = atr14 * falseBreakMul
+
+        if barsFromBrk > 0 and barsFromBrk <= retestWinBars
+            if lastBreakDir == "ABOVE"
+                // Price broke above — is it retesting from above?
+                retesting   = low <= lastBrokenLvl + proxAbs and close >= lastBrokenLvl - proxAbs
+                falseBreak  = close < lastBrokenLvl - falseThresh
+                if falseBreak
+                    breakState    := "FALSE_BREAK"
+                    lastBrokenLvl := float(na)
+                else if retesting
+                    breakState := "BREAKOUT_RETEST"
+                else
+                    breakState := "BREAKOUT_EXT"
+
+            else if lastBreakDir == "BELOW"
+                // Price broke below — is it retesting from below?
+                retesting   = high >= lastBrokenLvl - proxAbs and close <= lastBrokenLvl + proxAbs
+                falseBreak  = close > lastBrokenLvl + falseThresh
+                if falseBreak
+                    breakState    := "FALSE_BREAK"
+                    lastBrokenLvl := float(na)
+                else if retesting
+                    breakState := "BREAKOUT_RETEST"
+                else
+                    breakState := "BREAKOUT_EXT"
+
+        else if barsFromBrk > retestWinBars
+            // Retest window expired
+            breakState    := "NONE"
+            lastBrokenLvl := float(na)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GRADE LOGIC
+// ══════════════════════════════════════════════════════════════════════════════
+
+grade = "WAIT"
+
+if direction == "NEUTRAL"
+    grade := "NO_DIRECTION"
+else if breakState == "BREAKOUT_RETEST"
+    grade := "BREAKOUT_RETEST"
+else if breakState == "FALSE_BREAK"
+    grade := "FALSE_BREAK"
+else if breakState == "BREAKOUT_EXT"
+    grade := "BREAKOUT_EXT"
+else if atWrongZone
+    grade := "OPPOSED"
+else if atCorrectZone and atCloudEdge
+    grade := "PRIME"
+else if atCorrectZone
+    grade := "AT_ZONE"
+else if atCloudEdge and not inCloud
+    grade := "AT_CLOUD"
+else if inCloud
+    grade := "IN_CLOUD"
+else
+    grade := "WAIT"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CHART LABEL
+// ══════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast and showLabel
+    labelCol = grade == "PRIME" or grade == "BREAKOUT_RETEST" ? color.new(#FFD700, 10) :
+               grade == "AT_ZONE" or grade == "AT_CLOUD"      ? color.new(#00C853, 20) :
+               grade == "OPPOSED" or grade == "FALSE_BREAK"   ? color.new(#FF1744, 20) :
+               grade == "BREAKOUT_EXT"                        ? color.new(#FF8C00, 20) :
+               color.new(#444444, 30)
+
+    zoneInfo = nearZoneName != "NONE" ? " | Zone: " + nearZoneName + " (" + nearZoneDistAtr + " ATR)" : ""
+    cloudInfo = " | Cloud: " + cloudPos + " (" + cloudEdgeAtr + " ATR)"
+    brkInfo   = breakState != "NONE" ? " | Break: " + breakState : ""
+    labelTxt  = "[FCC-LOC] " + direction + " | " + grade + zoneInfo + cloudInfo + brkInfo
+
+    label.new(bar_index, high + atr14 * 0.5, labelTxt,
+        style=label.style_label_down,
+        color=labelCol,
+        textcolor=color.white,
+        size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WEBHOOK ALERT — fires every bar close (or only on grade change if configured)
+// ══════════════════════════════════════════════════════════════════════════════
+
+var string lastGrade = ""
+
+gradeChanged = grade != lastGrade
+lastGrade   := grade
+
+shouldAlert = alertEveryBar ? barstate.isconfirmed : (barstate.isconfirmed and gradeChanged)
+
+if shouldAlert
+    suppDistStr = na(suppDistAtr) ? "na" : str.tostring(suppDistAtr)
+    resDistStr  = na(resDistAtr)  ? "na" : str.tostring(resDistAtr)
+
+    jsonMsg = '{"pair":"'          + syminfo.ticker     + '"' +
+              ',"direction":"'     + direction           + '"' +
+              ',"grade":"'         + grade               + '"' +
+              ',"zone":"'          + nearZoneName        + '"' +
+              ',"zone_dist_atr":"' + nearZoneDistAtr     + '"' +
+              ',"cloud_pos":"'     + cloudPos            + '"' +
+              ',"cloud_dist_atr":"'+ cloudEdgeAtr        + '"' +
+              ',"breakout":"'      + breakState          + '"' +
+              ',"supp_name":"'     + nearSuppName        + '"' +
+              ',"supp_dist_atr":"' + suppDistStr         + '"' +
+              ',"res_name":"'      + nearResName         + '"' +
+              ',"res_dist_atr":"'  + resDistStr          + '"' +
+              '}'
+
+    alert(jsonMsg, alert.freq_once_per_bar_close)
