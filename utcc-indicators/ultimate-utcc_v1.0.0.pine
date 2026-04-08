@@ -1,0 +1,501 @@
+// This Pine Script® code is subject to the Mozilla Public License 2.0
+// © forex-command-centre
+// =============================================================================
+// ULTIMATE UTCC v1.0.0
+// Dual-mode indicator: Trend Following (TF) + Trend Reversal (TR)
+// Multi-instrument: FX, Crypto, Metals, Energy, Indices, Bonds
+// Pine Script v6
+// =============================================================================
+
+//@version=6
+indicator("Ultimate UTCC", overlay=false, max_bars_back=500)
+
+// =============================================================================
+// SETTINGS
+// =============================================================================
+
+var string GRP_MODE    = "Mode"
+var string GRP_EMA     = "EMA Settings"
+var string GRP_ADX     = "ADX Settings"
+var string GRP_ATR     = "ATR Settings"
+var string GRP_RSI     = "RSI / Divergence"
+var string GRP_TF      = "TF Thresholds"
+var string GRP_TR      = "TR Thresholds"
+var string GRP_TABLE   = "Table"
+
+mode         = input.string("Both",         "Signal Mode",           options=["TF Only", "TR Only", "Both"], group=GRP_MODE)
+
+ema_fast_len = input.int(8,   "Fast EMA",   group=GRP_EMA)
+ema_mid_len  = input.int(21,  "Mid EMA",    group=GRP_EMA)
+ema_slow_len = input.int(50,  "Slow EMA",   group=GRP_EMA)
+ribbon_avg_len = input.int(50, "Ribbon Avg Period", group=GRP_EMA)
+ribbon_wide_mult  = input.float(1.5, "Wide Threshold (x avg)",   step=0.1, group=GRP_EMA)
+ribbon_narrow_mult = input.float(0.75, "Narrow Threshold (x avg)", step=0.05, group=GRP_EMA)
+
+adx_len      = input.int(14,  "ADX Length", group=GRP_ADX)
+adx_smooth   = input.int(14,  "ADX Smooth", group=GRP_ADX)
+
+atr_len      = input.int(14,  "ATR Length",      group=GRP_ATR)
+atr_avg_len  = input.int(50,  "ATR Avg Period",  group=GRP_ATR)
+atr_tf_max   = input.float(1.5, "TF: Max ATR Ratio", step=0.1, group=GRP_ATR)
+atr_spike_mult = input.float(1.3, "TR: Spike Threshold (x avg)", step=0.1, group=GRP_ATR)
+
+rsi_len      = input.int(14,  "RSI Length",         group=GRP_RSI)
+div_lookback = input.int(14,  "Divergence Lookback (bars)", group=GRP_RSI)
+
+tf_min_score  = input.int(75, "Min Score",       group=GRP_TF)
+tf_pref_score = input.int(80, "Preferred Score", group=GRP_TF)
+adx_tf_max    = input.int(30, "Max ADX (early trend)", group=GRP_TF)
+
+tr_min_score  = input.int(85, "Min Score",       group=GRP_TR)
+adx_tr_min    = input.int(35, "Min ADX (exhaustion)", group=GRP_TR)
+struct_pct    = input.float(0.15, "Structure Zone % of Range", step=0.01, group=GRP_TR)
+
+tbl_pos = input.string("Bottom Right", "Table Position",
+         options=["Bottom Right", "Bottom Left", "Top Right", "Top Left"], group=GRP_TABLE)
+
+// =============================================================================
+// ASSET CLASS DETECTION
+// =============================================================================
+
+is_crypto = syminfo.type == "crypto"
+          or str.contains(syminfo.ticker, "BTC")
+          or str.contains(syminfo.ticker, "ETH")
+          or str.contains(syminfo.ticker, "SOL")
+          or str.contains(syminfo.ticker, "BNB")
+
+is_metal  = str.contains(syminfo.ticker, "XAU")
+          or str.contains(syminfo.ticker, "XAG")
+          or str.contains(syminfo.ticker, "GOLD")
+          or str.contains(syminfo.ticker, "SILVER")
+
+is_energy = str.contains(syminfo.ticker, "OIL")
+          or str.contains(syminfo.ticker, "WTI")
+          or str.contains(syminfo.ticker, "BRENT")
+          or str.contains(syminfo.ticker, "NATGAS")
+          or str.contains(syminfo.ticker, "USOIL")
+          or str.contains(syminfo.ticker, "UKOIL")
+
+is_index  = syminfo.type == "index"
+          or str.contains(syminfo.ticker, "SPX")
+          or str.contains(syminfo.ticker, "SPY")
+          or str.contains(syminfo.ticker, "NAS")
+          or str.contains(syminfo.ticker, "NDX")
+          or str.contains(syminfo.ticker, "DOW")
+          or str.contains(syminfo.ticker, "DAX")
+          or str.contains(syminfo.ticker, "FTSE")
+          or str.contains(syminfo.ticker, "US30")
+          or str.contains(syminfo.ticker, "US500")
+
+is_bond   = str.contains(syminfo.ticker, "BOND")
+          or str.contains(syminfo.ticker, "TNX")
+          or str.contains(syminfo.ticker, "ZN")
+          or str.contains(syminfo.ticker, "ZB")
+
+is_fx     = syminfo.type == "forex"
+
+asset_class = is_crypto ? "CRYPTO"
+            : is_metal  ? "METAL"
+            : is_energy ? "ENERGY"
+            : is_index  ? "INDEX"
+            : is_bond   ? "BOND"
+            : is_fx     ? "FX"
+            : "OTHER"
+
+// =============================================================================
+// CORE CALCULATIONS — CURRENT TIMEFRAME
+// =============================================================================
+
+// --- EMA Ribbon ---
+e_fast = ta.ema(close, ema_fast_len)
+e_mid  = ta.ema(close, ema_mid_len)
+e_slow = ta.ema(close, ema_slow_len)
+
+ema_bull = e_fast > e_mid and e_mid > e_slow and close > e_slow
+ema_bear = e_fast < e_mid and e_mid < e_slow and close < e_slow
+
+// Ribbon width normalised as % of price
+ribbon_width = math.abs(e_fast - e_slow) / close * 100
+ribbon_avg   = ta.sma(ribbon_width, ribbon_avg_len)
+ribbon_wide  = ribbon_width > ribbon_avg * ribbon_wide_mult
+ribbon_narrow = ribbon_width < ribbon_avg * ribbon_narrow_mult
+
+// --- ADX ---
+[di_plus, di_minus, adx_raw] = ta.dmi(adx_len, adx_smooth)
+adx_val    = adx_raw
+adx_rising = adx_val > adx_val[3]
+adx_flat   = math.abs(adx_val - adx_val[3]) < 1.0
+adx_peaked = adx_val >= adx_tr_min and not adx_rising   // High AND turning down = exhaustion
+
+// --- ATR ---
+atr_val          = ta.atr(atr_len)
+atr_avg          = ta.sma(atr_val, atr_avg_len)
+atr_ratio        = atr_val / atr_avg
+atr_expanding    = atr_val > atr_val[3]
+atr_contracting  = atr_val < atr_val[3]
+// Blow-off signature: was spiked, now contracting
+atr_spike_then_contract = atr_val[3] > atr_avg * atr_spike_mult and atr_contracting
+
+// --- RSI & Divergence ---
+rsi_val = ta.rsi(close, rsi_len)
+
+// Simple but reliable: compare current extreme to N bars ago
+// Bearish divergence: price higher, RSI lower (at or above midline)
+bear_div = high > high[div_lookback] and rsi_val < rsi_val[div_lookback] and rsi_val > 45
+// Bullish divergence: price lower, RSI higher (at or below midline)
+bull_div = low < low[div_lookback]  and rsi_val > rsi_val[div_lookback] and rsi_val < 55
+
+// =============================================================================
+// MULTI-TIMEFRAME ALIGNMENT (4H / Daily / Weekly)
+// =============================================================================
+
+// 4H
+[ef_4h, em_4h, es_4h] = request.security(syminfo.tickerid, "240",
+     [ta.ema(close, ema_fast_len), ta.ema(close, ema_mid_len), ta.ema(close, ema_slow_len)],
+     lookahead=barmerge.lookahead_off)
+mtf_bull_4h = ef_4h > em_4h and em_4h > es_4h
+mtf_bear_4h = ef_4h < em_4h and em_4h < es_4h
+
+// Daily
+[ef_d, em_d, es_d] = request.security(syminfo.tickerid, "D",
+     [ta.ema(close, ema_fast_len), ta.ema(close, ema_mid_len), ta.ema(close, ema_slow_len)],
+     lookahead=barmerge.lookahead_off)
+mtf_bull_d = ef_d > em_d and em_d > es_d
+mtf_bear_d = ef_d < em_d and em_d < es_d
+
+// Weekly
+[ef_w, em_w, es_w] = request.security(syminfo.tickerid, "W",
+     [ta.ema(close, ema_fast_len), ta.ema(close, ema_mid_len), ta.ema(close, ema_slow_len)],
+     lookahead=barmerge.lookahead_off)
+mtf_bull_w = ef_w > em_w and em_w > es_w
+mtf_bear_w = ef_w < em_w and em_w < es_w
+
+// Alignment counts
+mtf_bull_count = (mtf_bull_4h ? 1 : 0) + (mtf_bull_d ? 1 : 0) + (mtf_bull_w ? 1 : 0)
+mtf_bear_count = (mtf_bear_4h ? 1 : 0) + (mtf_bear_d ? 1 : 0) + (mtf_bear_w ? 1 : 0)
+
+// =============================================================================
+// HTF STRUCTURE (TR only — price must be at opposing level)
+// =============================================================================
+
+d_high = request.security(syminfo.tickerid, "D", ta.highest(high, 20), lookahead=barmerge.lookahead_off)
+d_low  = request.security(syminfo.tickerid, "D", ta.lowest(low,  20), lookahead=barmerge.lookahead_off)
+d_range = d_high - d_low
+
+at_resistance = close >= d_high - d_range * struct_pct   // Top of daily range
+at_support    = close <= d_low  + d_range * struct_pct   // Bottom of daily range
+
+// =============================================================================
+// TF SCORING — Trend Following (catch early trends)
+// =============================================================================
+// Max 100 pts. All components scored independently.
+
+// MTF: TF requires 2/3 minimum (30 pts)
+tf_mtf_bull = mtf_bull_count >= 2
+tf_mtf_bear = mtf_bear_count >= 2
+tf_mtf_pts  = mtf_bull_count == 3 ? 30
+            : mtf_bull_count == 2 ? 22
+            : mtf_bear_count == 3 ? 30
+            : mtf_bear_count == 2 ? 22
+            : 0
+
+// EMA stacking (20 pts)
+tf_ema_pts = (ema_bull or ema_bear) ? 20 : 0
+
+// Ribbon narrow = early trend (20 pts); normal = partial credit
+tf_ribbon_pts = ribbon_narrow ? 20 : not ribbon_wide ? 10 : 0
+
+// ADX rising and below threshold = momentum building (15 pts)
+tf_adx_pts = adx_val < adx_tf_max and adx_rising ? 15
+           : adx_val < adx_tf_max              ? 8
+           : 0
+
+// ATR expanding but not blown out (15 pts)
+tf_atr_pts = atr_expanding and atr_ratio < atr_tf_max ? 15
+           : atr_ratio < atr_tf_max                    ? 8
+           : 0
+
+tf_score = tf_mtf_pts + tf_ema_pts + tf_ribbon_pts + tf_adx_pts + tf_atr_pts
+
+// TF direction and signal gates
+tf_long_ready  = tf_mtf_bull and ema_bull and not ribbon_wide
+tf_short_ready = tf_mtf_bear and ema_bear and not ribbon_wide
+tf_signal_long  = tf_long_ready  and tf_score >= tf_min_score
+tf_signal_short = tf_short_ready and tf_score >= tf_min_score
+
+// =============================================================================
+// TR SCORING — Trend Reversal (catch exhaustion at structure)
+// =============================================================================
+// Max 100 pts. Divergence is mandatory (hard gate, not just points).
+
+// MTF 3/3 full alignment = mature trend = reversal candidate (25 pts)
+tr_prevailing_bull = mtf_bull_count == 3   // Look to SHORT
+tr_prevailing_bear = mtf_bear_count == 3   // Look to LONG
+tr_mtf_pts = (tr_prevailing_bull or tr_prevailing_bear) ? 25 : 0
+
+// Ribbon wide = overextended trend (25 pts)
+tr_ribbon_pts = ribbon_wide ? 25 : 0
+
+// ADX peaked and turning = exhaustion confirmation (20 pts)
+tr_adx_pts = adx_peaked         ? 20
+           : adx_val > adx_tr_min ? 10
+           : 0
+
+// ATR blow-off signature (15 pts)
+tr_atr_pts = atr_spike_then_contract                          ? 15
+           : atr_contracting and atr_ratio > 1.0              ? 8
+           : 0
+
+// RSI Divergence (15 pts) — hard gate: no divergence = no signal regardless of score
+tr_div_long_pts  = bull_div ? 15 : 0   // Reversal from downtrend to long
+tr_div_short_pts = bear_div ? 15 : 0   // Reversal from uptrend to short
+
+// Scores by direction
+tr_score_long  = tr_mtf_pts + tr_ribbon_pts + tr_adx_pts + tr_atr_pts + tr_div_long_pts
+tr_score_short = tr_mtf_pts + tr_ribbon_pts + tr_adx_pts + tr_atr_pts + tr_div_short_pts
+
+// TR signal gates — ALL conditions required
+tr_signal_long  = tr_prevailing_bear  // Prevailing downtrend = long reversal
+               and ribbon_wide
+               and adx_peaked
+               and bull_div            // Hard gate — mandatory
+               and at_support          // Must be at structure
+               and tr_score_long >= tr_min_score
+
+tr_signal_short = tr_prevailing_bull  // Prevailing uptrend = short reversal
+               and ribbon_wide
+               and adx_peaked
+               and bear_div            // Hard gate — mandatory
+               and at_resistance       // Must be at structure
+               and tr_score_short >= tr_min_score
+
+// Display score: use the relevant direction score
+tr_score_display = tr_signal_long  ? tr_score_long
+                 : tr_signal_short ? tr_score_short
+                 : math.max(tr_score_long, tr_score_short)
+
+// =============================================================================
+// TABLE
+// =============================================================================
+
+tbl_position = tbl_pos == "Bottom Right" ? position.bottom_right
+             : tbl_pos == "Bottom Left"  ? position.bottom_left
+             : tbl_pos == "Top Right"    ? position.top_right
+             : position.top_left
+
+var table tbl = table.new(tbl_position, 3, 16,
+     bgcolor      = color.rgb(10, 14, 20),
+     border_color = color.rgb(35, 45, 58),
+     border_width = 1,
+     frame_color  = color.rgb(35, 45, 58),
+     frame_width  = 1)
+
+// Colour helpers
+c_pass   = color.rgb(0, 200, 110)
+c_warn   = color.rgb(255, 200, 0)
+c_fail   = color.rgb(200, 55, 55)
+c_dim    = color.rgb(60, 75, 90)
+c_label  = color.rgb(160, 175, 200)
+c_white  = color.white
+c_hdr_bg = color.rgb(18, 26, 36)
+c_sep    = color.rgb(30, 40, 52)
+c_tf_hdr = color.rgb(80, 160, 255)
+c_tr_hdr = color.rgb(255, 150, 60)
+
+pass_col(cond)        => cond ? c_pass : c_fail
+score_col(s, min_s)   => s >= min_s ? c_pass : s >= min_s * 0.85 ? c_warn : c_fail
+
+// Signal colours
+tf_sig_col = tf_signal_long  ? c_pass
+           : tf_signal_short ? c_fail
+           : color.rgb(120, 130, 145)
+
+tr_sig_col = tr_signal_long  ? c_pass
+           : tr_signal_short ? c_fail
+           : color.rgb(120, 130, 145)
+
+// Mode visibility
+show_tf = mode == "TF Only" or mode == "Both"
+show_tr = mode == "TR Only" or mode == "Both"
+
+if barstate.islast
+
+    // --- ROW 0: Title ---
+    table.cell(tbl, 0, 0, "ULTIMATE UTCC",
+         text_color=c_white, text_size=size.small,
+         bgcolor=color.rgb(20, 32, 48), text_halign=text.align_center)
+    table.cell(tbl, 1, 0, asset_class,
+         text_color=color.yellow, text_size=size.small,
+         bgcolor=color.rgb(20, 32, 48), text_halign=text.align_center)
+    table.cell(tbl, 2, 0, syminfo.ticker,
+         text_color=c_label, text_size=size.small,
+         bgcolor=color.rgb(20, 32, 48), text_halign=text.align_center)
+
+    // --- ROW 1: Column headers ---
+    table.cell(tbl, 0, 1, "COMPONENT", text_color=c_label,  text_size=size.tiny, bgcolor=c_hdr_bg)
+    table.cell(tbl, 1, 1, "TF",        text_color=c_tf_hdr, text_size=size.tiny, bgcolor=c_hdr_bg)
+    table.cell(tbl, 2, 1, "TR",        text_color=c_tr_hdr, text_size=size.tiny, bgcolor=c_hdr_bg)
+
+    // --- ROW 2: MTF Alignment ---
+    mtf_dominant  = mtf_bull_count >= mtf_bear_count
+    mtf_count_str = mtf_dominant ? str.tostring(mtf_bull_count) + "/3 BULL"
+                                 : str.tostring(mtf_bear_count) + "/3 BEAR"
+    table.cell(tbl, 0, 2, "MTF Align", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 2, mtf_count_str,
+         text_color=pass_col(tf_mtf_bull or tf_mtf_bear), text_size=size.tiny)
+    table.cell(tbl, 2, 2, mtf_count_str,
+         text_color=pass_col(tr_prevailing_bull or tr_prevailing_bear), text_size=size.tiny)
+
+    // --- ROW 3: EMA Stack ---
+    ema_str = ema_bull ? "BULL" : ema_bear ? "BEAR" : "MIXED"
+    table.cell(tbl, 0, 3, "EMA Stack", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 3, ema_str, text_color=pass_col(ema_bull or ema_bear), text_size=size.tiny)
+    table.cell(tbl, 2, 3, ema_str, text_color=c_label, text_size=size.tiny)
+
+    // --- ROW 4: Ribbon Width ---
+    ribbon_str = ribbon_wide ? "WIDE" : ribbon_narrow ? "NARROW" : "NORMAL"
+    table.cell(tbl, 0, 4, "Ribbon", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 4, ribbon_str, text_color=pass_col(ribbon_narrow),  text_size=size.tiny) // TF: narrow good
+    table.cell(tbl, 2, 4, ribbon_str, text_color=pass_col(ribbon_wide),    text_size=size.tiny) // TR: wide good
+
+    // --- ROW 5: ADX ---
+    adx_dir_str = adx_rising ? " UP" : adx_peaked ? " PEAK" : adx_flat ? " FLAT" : " DOWN"
+    adx_str = str.tostring(math.round(adx_val, 1)) + adx_dir_str
+    table.cell(tbl, 0, 5, "ADX", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 5, adx_str, text_color=pass_col(adx_val < adx_tf_max and adx_rising), text_size=size.tiny)
+    table.cell(tbl, 2, 5, adx_str, text_color=pass_col(adx_peaked), text_size=size.tiny)
+
+    // --- ROW 6: ATR ---
+    atr_dir_str = atr_expanding ? " EXP" : " CONT"
+    atr_str = str.tostring(math.round(atr_ratio, 2)) + "x" + atr_dir_str
+    table.cell(tbl, 0, 6, "ATR Ratio", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 6, atr_str, text_color=pass_col(atr_expanding and atr_ratio < atr_tf_max), text_size=size.tiny)
+    table.cell(tbl, 2, 6, atr_str, text_color=pass_col(atr_spike_then_contract), text_size=size.tiny)
+
+    // --- ROW 7: RSI ---
+    rsi_str = str.tostring(math.round(rsi_val, 1))
+    table.cell(tbl, 0, 7, "RSI", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 7, rsi_str, text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 2, 7, rsi_str, text_color=c_label, text_size=size.tiny)
+
+    // --- ROW 8: Divergence (TR) ---
+    div_str = bear_div ? "BEAR DIV" : bull_div ? "BULL DIV" : "NO DIV"
+    table.cell(tbl, 0, 8, "Divergence", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 8, "N/A", text_color=c_dim, text_size=size.tiny)
+    table.cell(tbl, 2, 8, div_str, text_color=pass_col(bear_div or bull_div), text_size=size.tiny)
+
+    // --- ROW 9: Structure (TR) ---
+    struct_str = at_resistance ? "RESIST" : at_support ? "SUPPORT" : "MID"
+    table.cell(tbl, 0, 9, "Structure", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 9, "N/A", text_color=c_dim, text_size=size.tiny)
+    table.cell(tbl, 2, 9, struct_str, text_color=pass_col(at_resistance or at_support), text_size=size.tiny)
+
+    // --- ROW 10: Separator ---
+    table.cell(tbl, 0, 10, "", bgcolor=c_sep)
+    table.cell(tbl, 1, 10, "", bgcolor=c_sep)
+    table.cell(tbl, 2, 10, "", bgcolor=c_sep)
+
+    // --- ROW 11: Scores ---
+    table.cell(tbl, 0, 11, "SCORE", text_color=c_label, text_size=size.small)
+    table.cell(tbl, 1, 11, show_tf ? str.tostring(tf_score) + " / 100" : "--",
+         text_color=show_tf ? score_col(tf_score, tf_min_score) : c_dim,
+         text_size=size.small)
+    table.cell(tbl, 2, 11, show_tr ? str.tostring(tr_score_display) + " / 100" : "--",
+         text_color=show_tr ? score_col(tr_score_display, tr_min_score) : c_dim,
+         text_size=size.small)
+
+    // --- ROW 12: Separator ---
+    table.cell(tbl, 0, 12, "", bgcolor=c_sep)
+    table.cell(tbl, 1, 12, "", bgcolor=c_sep)
+    table.cell(tbl, 2, 12, "", bgcolor=c_sep)
+
+    // --- ROW 13: Signal ---
+    tf_sig_text = tf_signal_long  ? "LONG"
+                : tf_signal_short ? "SHORT"
+                : tf_score >= tf_min_score ? "WAIT"
+                : "NO SETUP"
+    tr_sig_text = tr_signal_long  ? "LONG"
+                : tr_signal_short ? "SHORT"
+                : tr_score_display >= tr_min_score ? "WAIT"
+                : "NO SETUP"
+
+    table.cell(tbl, 0, 13, "SIGNAL", text_color=c_label, text_size=size.small)
+    table.cell(tbl, 1, 13, show_tf ? tf_sig_text : "--",
+         text_color=show_tf ? tf_sig_col : c_dim, text_size=size.small)
+    table.cell(tbl, 2, 13, show_tr ? tr_sig_text : "--",
+         text_color=show_tr ? tr_sig_col : c_dim, text_size=size.small)
+
+    // --- ROW 14: Preferred badge for TF ---
+    tf_tier = tf_score >= 90 ? "EXCELLENT"
+            : tf_score >= 85 ? "PERFECT"
+            : tf_score >= tf_pref_score ? "STRONG"
+            : tf_score >= tf_min_score  ? "TRADE READY"
+            : "BELOW MIN"
+    tr_tier = tr_score_display >= 95 ? "EXCELLENT"
+            : tr_score_display >= 90 ? "PERFECT"
+            : tr_score_display >= tr_min_score ? "STRONG"
+            : "BELOW MIN"
+
+    tf_tier_col = tf_score >= 90 ? c_pass
+                : tf_score >= tf_pref_score ? c_warn
+                : tf_score >= tf_min_score  ? color.rgb(150, 200, 255)
+                : c_fail
+    tr_tier_col = tr_score_display >= 90 ? c_pass
+                : tr_score_display >= tr_min_score ? c_warn
+                : c_fail
+
+    table.cell(tbl, 0, 14, "TIER", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 14, show_tf ? tf_tier : "--", text_color=show_tf ? tf_tier_col : c_dim, text_size=size.tiny)
+    table.cell(tbl, 2, 14, show_tr ? tr_tier : "--", text_color=show_tr ? tr_tier_col : c_dim, text_size=size.tiny)
+
+    // --- ROW 15: Mode tag ---
+    table.cell(tbl, 0, 15, "MODE", text_color=c_dim, text_size=size.tiny)
+    table.cell(tbl, 1, 15, mode, text_color=c_dim, text_size=size.tiny, text_halign=text.align_center)
+    table.cell(tbl, 2, 15, timeframe.period, text_color=c_dim, text_size=size.tiny, text_halign=text.align_center)
+
+// =============================================================================
+// ALERT PAYLOADS
+// =============================================================================
+// Same webhook JSON structure as existing UTCC alerts
+// 4 separate conditions: TF LONG / TF SHORT / TR LONG / TR SHORT
+
+if barstate.isconfirmed
+    if show_tf and tf_signal_long
+        alert('{"type":"TF_ARMED","ticker":"' + syminfo.ticker
+             + '","direction":"LONG","score":' + str.tostring(tf_score)
+             + ',"timeframe":"' + timeframe.period
+             + '","asset":"' + asset_class + '"}',
+             alert.freq_once_per_bar)
+
+    if show_tf and tf_signal_short
+        alert('{"type":"TF_ARMED","ticker":"' + syminfo.ticker
+             + '","direction":"SHORT","score":' + str.tostring(tf_score)
+             + ',"timeframe":"' + timeframe.period
+             + '","asset":"' + asset_class + '"}',
+             alert.freq_once_per_bar)
+
+    if show_tr and tr_signal_long
+        alert('{"type":"TR_ARMED","ticker":"' + syminfo.ticker
+             + '","direction":"LONG","score":' + str.tostring(tr_score_long)
+             + ',"timeframe":"' + timeframe.period
+             + '","asset":"' + asset_class + '"}',
+             alert.freq_once_per_bar)
+
+    if show_tr and tr_signal_short
+        alert('{"type":"TR_ARMED","ticker":"' + syminfo.ticker
+             + '","direction":"SHORT","score":' + str.tostring(tr_score_short)
+             + ',"timeframe":"' + timeframe.period
+             + '","asset":"' + asset_class + '"}',
+             alert.freq_once_per_bar)
+
+// Named alertconditions (for manual alert setup in TV dialog)
+alertcondition(tf_signal_long,  "TF LONG",  "TF Armed: LONG")
+alertcondition(tf_signal_short, "TF SHORT", "TF Armed: SHORT")
+alertcondition(tr_signal_long,  "TR LONG",  "TR Armed: LONG")
+alertcondition(tr_signal_short, "TR SHORT", "TR Armed: SHORT")
+
+// Hidden plots for reference
+plot(tf_score,          "TF Score", display=display.none)
+plot(tr_score_display,  "TR Score", display=display.none)
+plot(adx_val,           "ADX",      display=display.none)
+plot(atr_ratio,         "ATR Ratio",display=display.none)
