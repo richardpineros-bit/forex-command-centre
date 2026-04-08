@@ -102,76 +102,114 @@ assetClass = manualClass == "AUTO" ? detectedClass : manualClass
 // All values can be manually overridden in the Override section below.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Zone half-width (ATR multiplier — total zone = 2x this)
-p_zoneHW = assetClass == "METALS"  ? 0.5 :
-           assetClass == "ENERGY"  ? 0.6 :
-           assetClass == "INDICES" ? 0.4 :
-           assetClass == "CRYPTO"  ? 0.8 :
-           assetClass == "BONDS"   ? 0.4 : 0.3
+// ── Per-class profile values — all if-else (Pine v6: no multi-line ternary) ──
 
-// Daily pivot strength (bars each side on daily chart)
-p_dPivLen = assetClass == "METALS"  ? 7 :
-            assetClass == "ENERGY"  ? 7 :
-            assetClass == "CRYPTO"  ? 8 :
-            assetClass == "BONDS"   ? 6 : 5
+p_zoneHW = 0.3
+if assetClass == "METALS"
+    p_zoneHW := 0.5
+else if assetClass == "ENERGY"
+    p_zoneHW := 0.6
+else if assetClass == "INDICES"
+    p_zoneHW := 0.4
+else if assetClass == "CRYPTO"
+    p_zoneHW := 0.8
+else if assetClass == "BONDS"
+    p_zoneHW := 0.4
 
-// Weekly pivot strength
-p_wPivLen = assetClass == "METALS"  ? 4 :
-            assetClass == "ENERGY"  ? 4 :
-            assetClass == "CRYPTO"  ? 5 :
-            assetClass == "BONDS"   ? 4 : 3
+p_dPivLen = 5
+if assetClass == "METALS" or assetClass == "ENERGY"
+    p_dPivLen := 7
+else if assetClass == "CRYPTO"
+    p_dPivLen := 8
+else if assetClass == "BONDS"
+    p_dPivLen := 6
 
-// Touch cooldown (bars between counted touches)
-p_tchCooldown = assetClass == "METALS"  ? 5 :
-                assetClass == "ENERGY"  ? 6 :
-                assetClass == "CRYPTO"  ? 4 :
-                assetClass == "INDICES" ? 4 : 3
+p_wPivLen = 3
+if assetClass == "METALS" or assetClass == "ENERGY"
+    p_wPivLen := 4
+else if assetClass == "CRYPTO"
+    p_wPivLen := 5
+else if assetClass == "BONDS"
+    p_wPivLen := 4
 
-// Exhausted threshold (touch count)
-p_exhausted = assetClass == "METALS"  ? 5 :
-              assetClass == "ENERGY"  ? 5 :
-              assetClass == "CRYPTO"  ? 3 : 4
+p_tchCooldown = 3
+if assetClass == "METALS"
+    p_tchCooldown := 5
+else if assetClass == "ENERGY"
+    p_tchCooldown := 6
+else if assetClass == "CRYPTO" or assetClass == "INDICES"
+    p_tchCooldown := 4
 
-// Zone proximity (how close price must be to grade AT_ZONE)
-p_zoneProx = assetClass == "METALS"  ? 0.6 :
-             assetClass == "ENERGY"  ? 0.7 :
-             assetClass == "INDICES" ? 0.5 :
-             assetClass == "CRYPTO"  ? 0.8 :
-             assetClass == "BONDS"   ? 0.4 : 0.4
+p_exhausted = 4
+if assetClass == "METALS" or assetClass == "ENERGY"
+    p_exhausted := 5
+else if assetClass == "CRYPTO"
+    p_exhausted := 3
 
-// Cloud proximity (ATR multiplier)
-p_cloudProx = assetClass == "METALS"  ? 0.7 :
-              assetClass == "ENERGY"  ? 0.8 :
-              assetClass == "INDICES" ? 0.6 :
-              assetClass == "CRYPTO"  ? 1.0 :
-              assetClass == "BONDS"   ? 0.5 : 0.5
+p_zoneProx = 0.4
+if assetClass == "METALS"
+    p_zoneProx := 0.6
+else if assetClass == "ENERGY"
+    p_zoneProx := 0.7
+else if assetClass == "INDICES"
+    p_zoneProx := 0.5
+else if assetClass == "CRYPTO"
+    p_zoneProx := 0.8
 
-// Cloud fast EMA
-p_cloudFast = assetClass == "INDICES" ? 9 :
-              assetClass == "CRYPTO"  ? 9 : 9
+p_cloudProx = 0.5
+if assetClass == "METALS"
+    p_cloudProx := 0.7
+else if assetClass == "ENERGY"
+    p_cloudProx := 0.8
+else if assetClass == "INDICES"
+    p_cloudProx := 0.6
+else if assetClass == "CRYPTO"
+    p_cloudProx := 1.0
 
-// Cloud slow EMA
-p_cloudSlow = assetClass == "METALS"  ? 34 :
-              assetClass == "ENERGY"  ? 34 :
-              assetClass == "CRYPTO"  ? 21 : 21
+p_cloudFast = 9
 
-// Round number increment
-p_roundIncr = assetClass == "CRYPTO"  ? (close > 10000.0 ? 1000.0 : close > 1000.0 ? 100.0 : 10.0) :
-              assetClass == "METALS"  ? (str.contains(_t, "XAG") ? 0.5 : 10.0) :
-              assetClass == "ENERGY"  ? 1.0 :
-              assetClass == "INDICES" ? (close > 10000.0 ? 100.0 : close > 1000.0 ? 50.0 : 10.0) :
-              assetClass == "BONDS"   ? 0.5 : 0.0
+p_cloudSlow = 21
+if assetClass == "METALS" or assetClass == "ENERGY"
+    p_cloudSlow := 34
 
-// Retest window (bars after break)
-p_retestWin = assetClass == "METALS"  ? 3 :
-              assetClass == "ENERGY"  ? 3 :
-              assetClass == "CRYPTO"  ? 3 : 2
+p_roundIncr = 0.0
+if assetClass == "CRYPTO"
+    if close > 10000.0
+        p_roundIncr := 1000.0
+    else if close > 1000.0
+        p_roundIncr := 100.0
+    else
+        p_roundIncr := 10.0
+else if assetClass == "METALS"
+    if str.contains(_t, "XAG")
+        p_roundIncr := 0.5
+    else
+        p_roundIncr := 10.0
+else if assetClass == "ENERGY"
+    p_roundIncr := 1.0
+else if assetClass == "INDICES"
+    if close > 10000.0
+        p_roundIncr := 100.0
+    else if close > 1000.0
+        p_roundIncr := 50.0
+    else
+        p_roundIncr := 10.0
+else if assetClass == "BONDS"
+    p_roundIncr := 0.5
 
-// EMA buffer for 200 EMA zone
-p_emaBuf = assetClass == "METALS"  ? 0.8 :
-           assetClass == "ENERGY"  ? 0.9 :
-           assetClass == "CRYPTO"  ? 1.2 :
-           assetClass == "INDICES" ? 0.6 : 0.5
+p_retestWin = 2
+if assetClass == "METALS" or assetClass == "ENERGY" or assetClass == "CRYPTO"
+    p_retestWin := 3
+
+p_emaBuf = 0.5
+if assetClass == "METALS"
+    p_emaBuf := 0.8
+else if assetClass == "ENERGY"
+    p_emaBuf := 0.9
+else if assetClass == "CRYPTO"
+    p_emaBuf := 1.2
+else if assetClass == "INDICES"
+    p_emaBuf := 0.6
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INPUTS — ZONE SOURCES
@@ -601,17 +639,41 @@ else if direction == "SHORT"
     else
         cloudPos := "CLEAR"
 
-atCloudEdge = direction == "LONG"  ? (atCloudLower or inCloud) :
-              direction == "SHORT" ? (atCloudUpper or inCloud) : false
-atCorrectZone = direction == "LONG"  ? atSupp :
-                direction == "SHORT" ? atRes   : false
-atWrongZone   = direction == "LONG"  ? atRes  :
-                direction == "SHORT" ? atSupp  : false
+atCloudEdge = false
+if direction == "LONG"
+    atCloudEdge := atCloudLower or inCloud
+else if direction == "SHORT"
+    atCloudEdge := atCloudUpper or inCloud
 
-nearZoneName    = direction == "LONG"  ? (atSupp ? nearSuppName : atRes ? nearResName : "NONE") :
-                  direction == "SHORT" ? (atRes  ? nearResName  : atSupp ? nearSuppName : "NONE") : "NONE"
-nearZoneDistAtr = direction == "LONG"  ? (atSupp ? str.tostring(suppDistAtr) : "na") :
-                  direction == "SHORT" ? (atRes  ? str.tostring(resDistAtr)  : "na") : "na"
+atCorrectZone = false
+if direction == "LONG"
+    atCorrectZone := atSupp
+else if direction == "SHORT"
+    atCorrectZone := atRes
+
+atWrongZone = false
+if direction == "LONG"
+    atWrongZone := atRes
+else if direction == "SHORT"
+    atWrongZone := atSupp
+
+nearZoneName = "NONE"
+if direction == "LONG"
+    if atSupp
+        nearZoneName := nearSuppName
+    else if atRes
+        nearZoneName := nearResName
+else if direction == "SHORT"
+    if atRes
+        nearZoneName := nearResName
+    else if atSupp
+        nearZoneName := nearSuppName
+
+nearZoneDistAtr = "na"
+if direction == "LONG" and atSupp
+    nearZoneDistAtr := str.tostring(suppDistAtr)
+else if direction == "SHORT" and atRes
+    nearZoneDistAtr := str.tostring(resDistAtr)
 suppDistStr     = na(suppDistAtr) ? "na" : str.tostring(suppDistAtr)
 resDistStr      = na(resDistAtr)  ? "na" : str.tostring(resDistAtr)
 
@@ -773,11 +835,15 @@ if barstate.islast
 
     // Grade label
     if showGradeLbl
-        gCol = grade == "PRIME" or grade == "BREAKOUT_RETEST" ? color.new(#FFD700, 10) :
-               grade == "AT_ZONE" or grade == "AT_CLOUD"      ? color.new(#00C853, 20) :
-               grade == "OPPOSED" or grade == "FALSE_BREAK"   ? color.new(#FF1744, 20) :
-               grade == "BREAKOUT_EXT"                        ? color.new(#FF8C00, 20) :
-               color.new(#444444, 30)
+        gCol = color.new(#444444, 30)
+        if grade == "PRIME" or grade == "BREAKOUT_RETEST"
+            gCol := color.new(#FFD700, 10)
+        else if grade == "AT_ZONE" or grade == "AT_CLOUD"
+            gCol := color.new(#00C853, 20)
+        else if grade == "OPPOSED" or grade == "FALSE_BREAK"
+            gCol := color.new(#FF1744, 20)
+        else if grade == "BREAKOUT_EXT"
+            gCol := color.new(#FF8C00, 20)
 
         clsTag  = showDetected ? " [" + assetClass + "]" : ""
         zoneInf = nearZoneName != "NONE" ? " | " + nearZoneName + " (" + nearZoneDistAtr + " ATR)" : ""
