@@ -1,0 +1,969 @@
+// This Pine Script® code is subject to the Mozilla Public License 2.0
+// © forex-command-centre
+// =============================================================================
+// ULTIMATE UTCC v2.0.0
+// Dual System: Trend Following (TF) + Trend Reversal (TR)
+// Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
+// Full institutional architecture: Regime | Reason Codes | Risk Governor
+// Ported core engine from UTCC Universal v3.0.0
+// Pine Script v6
+// =============================================================================
+
+//@version=6
+indicator("Ultimate UTCC", overlay=true, max_bars_back=500)
+
+// =============================================================================
+// SECTION 1: ASSET CLASS DETECTION
+// Priority: CRYPTO > METALS > ENERGY > BONDS > INDICES > FX
+// =============================================================================
+
+string _t = str.upper(syminfo.ticker)
+
+bool _isCrypto = syminfo.type == "crypto"
+_isCrypto := _isCrypto or str.contains(_t, "BTC") or str.contains(_t, "ETH") or str.contains(_t, "SOL")
+_isCrypto := _isCrypto or str.contains(_t, "LTC") or str.contains(_t, "BCH") or str.contains(_t, "XRP")
+_isCrypto := _isCrypto or str.contains(_t, "ADA") or str.contains(_t, "DOT") or str.contains(_t, "LINK")
+_isCrypto := _isCrypto or str.contains(_t, "AVAX") or str.contains(_t, "MATIC") or str.contains(_t, "MBTC")
+_isCrypto := _isCrypto or str.contains(_t, "BNB") or str.contains(_t, "DOGE") or str.contains(_t, "SHIB")
+
+bool _isMetals = str.contains(_t, "XAU") or str.contains(_t, "XAG") or str.contains(_t, "XPT") or str.contains(_t, "XPD") or str.contains(_t, "XCU")
+_isMetals := _isMetals or str.contains(_t, "GOLD") or str.contains(_t, "SILVER") or str.contains(_t, "COPPER") or str.contains(_t, "PLATINUM")
+_isMetals := _isMetals or (syminfo.type == "futures" and (str.startswith(_t, "GC") or str.startswith(_t, "SI") or str.startswith(_t, "HG") or str.startswith(_t, "PL")))
+
+bool _isEnergy = str.contains(_t, "WTICO") or str.contains(_t, "BCO") or str.contains(_t, "NATGAS") or str.contains(_t, "NGAS")
+_isEnergy := _isEnergy or str.contains(_t, "WTI") or str.contains(_t, "BRENT") or str.contains(_t, "USOIL") or str.contains(_t, "UKOIL") or str.contains(_t, "CRUDE")
+_isEnergy := _isEnergy or (syminfo.type == "futures" and (str.startswith(_t, "CL") or str.startswith(_t, "LCO") or str.startswith(_t, "RB") or str.startswith(_t, "HO")))
+
+bool _isBonds = syminfo.type == "bond"
+_isBonds := _isBonds or str.contains(_t, "US02Y") or str.contains(_t, "US05Y") or str.contains(_t, "US10Y") or str.contains(_t, "US30Y")
+_isBonds := _isBonds or str.contains(_t, "USB") or str.contains(_t, "UK10Y") or str.contains(_t, "DE10Y") or str.contains(_t, "JP10Y")
+_isBonds := _isBonds or str.contains(_t, "BUND") or str.contains(_t, "GILT") or str.contains(_t, "TNX") or str.contains(_t, "TLT") or str.contains(_t, "IEF")
+_isBonds := _isBonds or (syminfo.type == "futures" and (str.startswith(_t, "ZB") or str.startswith(_t, "ZN") or str.startswith(_t, "ZF") or str.startswith(_t, "ZT")))
+
+bool _isIndices = syminfo.type == "index"
+_isIndices := _isIndices or str.contains(_t, "SPX") or str.contains(_t, "NAS") or str.contains(_t, "DOW") or str.contains(_t, "DAX")
+_isIndices := _isIndices or str.contains(_t, "FTSE") or str.contains(_t, "NIKKEI") or str.contains(_t, "JP225") or str.contains(_t, "AU200")
+_isIndices := _isIndices or str.contains(_t, "WALL") or str.contains(_t, "USTECH") or str.contains(_t, "FT100") or str.contains(_t, "US500") or str.contains(_t, "US30")
+_isIndices := _isIndices or str.contains(_t, "FR40") or str.contains(_t, "EU50") or str.contains(_t, "DE30") or str.contains(_t, "ASX")
+_isIndices := _isIndices or (syminfo.type == "futures" and (str.startswith(_t, "ES") or str.startswith(_t, "NQ") or str.startswith(_t, "YM") or str.startswith(_t, "FDAX")))
+
+string detectedClass = "FX"
+if _isCrypto and not _isMetals
+    detectedClass := "CRYPTO"
+else if _isMetals
+    detectedClass := "METALS"
+else if _isEnergy
+    detectedClass := "ENERGY"
+else if _isBonds
+    detectedClass := "BONDS"
+else if _isIndices
+    detectedClass := "INDICES"
+
+// =============================================================================
+// SECTION 2: INPUTS
+// =============================================================================
+
+var string GRP_MODE    = "Mode"
+signalMode   = input.string("Both",   "Signal Mode",    options=["TF Only","TR Only","Both"],            group=GRP_MODE)
+alertModeSel = input.string("Both",   "Alert Mode",     options=["TF Only","TR Only","Both","Off"],       group=GRP_MODE)
+riskGovState = input.string("NORMAL", "Risk Governor",  options=["NORMAL","REDUCED","LOCKED"],            group=GRP_MODE)
+
+// Per-asset thresholds
+var string GRP_FX = "FX Settings"
+fx_tfT=input.int(80,"TF Threshold",minval=60,maxval=95,group=GRP_FX)
+fx_trT=input.int(85,"TR Threshold",minval=70,maxval=99,group=GRP_FX)
+fx_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_FX)
+fx_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_FX)
+fx_quiet=input.bool(true,"Accept QUIET",group=GRP_FX)
+
+var string GRP_CRYPTO = "Crypto Settings"
+cr_tfT=input.int(85,"TF Threshold",minval=60,maxval=95,group=GRP_CRYPTO)
+cr_trT=input.int(88,"TR Threshold",minval=70,maxval=99,group=GRP_CRYPTO)
+cr_adx=input.int(25,"ADX Threshold",minval=10,maxval=50,group=GRP_CRYPTO)
+cr_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_CRYPTO)
+cr_quiet=input.bool(false,"Accept QUIET",group=GRP_CRYPTO)
+
+var string GRP_METALS = "Metals Settings"
+mt_tfT=input.int(79,"TF Threshold",minval=60,maxval=95,group=GRP_METALS)
+mt_trT=input.int(85,"TR Threshold",minval=70,maxval=99,group=GRP_METALS)
+mt_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_METALS)
+mt_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_METALS)
+mt_quiet=input.bool(true,"Accept QUIET",group=GRP_METALS)
+
+var string GRP_ENERGY = "Energy Settings"
+en_tfT=input.int(78,"TF Threshold",minval=60,maxval=95,group=GRP_ENERGY)
+en_trT=input.int(83,"TR Threshold",minval=70,maxval=99,group=GRP_ENERGY)
+en_adx=input.int(19,"ADX Threshold",minval=10,maxval=50,group=GRP_ENERGY)
+en_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_ENERGY)
+en_quiet=input.bool(false,"Accept QUIET",group=GRP_ENERGY)
+
+var string GRP_BONDS = "Bonds Settings"
+bd_tfT=input.int(72,"TF Threshold",minval=60,maxval=95,group=GRP_BONDS)
+bd_trT=input.int(78,"TR Threshold",minval=70,maxval=99,group=GRP_BONDS)
+bd_adx=input.int(18,"ADX Threshold",minval=10,maxval=50,group=GRP_BONDS)
+bd_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_BONDS)
+bd_quiet=input.bool(true,"Accept QUIET",group=GRP_BONDS)
+
+var string GRP_INDICES = "Indices Settings"
+ix_tfT=input.int(78,"TF Threshold",minval=60,maxval=95,group=GRP_INDICES)
+ix_trT=input.int(83,"TR Threshold",minval=70,maxval=99,group=GRP_INDICES)
+ix_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_INDICES)
+ix_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_INDICES)
+ix_quiet=input.bool(true,"Accept QUIET",group=GRP_INDICES)
+
+var string GRP_TREND = "Trend Settings"
+fastLen    = input.int(9,    "Fast EMA",          minval=1, group=GRP_TREND)
+midLen     = input.int(21,   "Mid EMA",           minval=1, group=GRP_TREND)
+slowLen    = input.int(50,   "Slow EMA",          minval=1, group=GRP_TREND)
+trendLen   = input.int(200,  "Trend EMA (200)",   minval=1, group=GRP_TREND)
+adxLen     = input.int(14,   "ADX Length",        minval=1, group=GRP_TREND)
+mtf1       = input.timeframe("60",  "MTF 1", group=GRP_TREND)
+mtf2       = input.timeframe("240", "MTF 2", group=GRP_TREND)
+mtf3       = input.timeframe("D",   "MTF 3", group=GRP_TREND)
+armPersist = input.int(1, "Arm Persistence (bars)", minval=1, maxval=5, group=GRP_TREND)
+
+var string GRP_VOL = "Volatility Settings"
+atrLen       = input.int(14,  "ATR Length",           group=GRP_VOL)
+atrBaseLen   = input.int(50,  "ATR Baseline Length",  group=GRP_VOL)
+atrPctLB     = input.int(252, "ATR Percentile LB",    group=GRP_VOL)
+sepTol       = input.float(0.20, "Separation Tolerance", step=0.01, group=GRP_VOL)
+eqTol        = input.float(0.40, "Equality Tolerance",   step=0.05, group=GRP_VOL)
+acceptExpl   = input.bool(true, "Accept EXPLODE",     group=GRP_VOL)
+explMinPct   = input.int(20,  "EXPLODE Min %ile",     group=GRP_VOL)
+explMaxPct   = input.int(80,  "EXPLODE Max %ile",     group=GRP_VOL)
+
+var string GRP_RSI = "RSI Settings"
+rsiLen     = input.int(14, "RSI Length",              group=GRP_RSI)
+divLB      = input.int(14, "Divergence Lookback",     group=GRP_RSI)
+
+var string GRP_DISARM = "Disarm Settings"
+disarmDrop = input.int(10,   "Score Drop to Disarm", minval=5, maxval=20, group=GRP_DISARM)
+effThresh  = input.float(0.4,"Min Candle Efficiency", step=0.05,          group=GRP_DISARM)
+
+var string GRP_STRUCT = "Structure Settings"
+srLB       = input.int(20,    "S/R Lookback (Daily bars)", group=GRP_STRUCT)
+structPct  = input.float(0.15,"Structure Zone %",  step=0.01,             group=GRP_STRUCT)
+
+var string GRP_DISP = "Display"
+tblPos      = input.string("Top Right","Table Position", options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=GRP_DISP)
+showTimer   = input.bool(true,  "Show Bar Timer", group=GRP_DISP)
+timerWarnM  = input.int(5,      "Timer Warning (min)", group=GRP_DISP)
+
+// =============================================================================
+// SECTION 3: RUNTIME SETTINGS SELECTION
+// =============================================================================
+
+int    tfThresh    = fx_tfT
+int    trThresh    = fx_trT
+int    adxThresh   = fx_adx
+int    atrPctFilt  = fx_atr
+bool   acceptQuiet = fx_quiet
+
+if detectedClass == "CRYPTO"
+    tfThresh := cr_tfT
+    trThresh := cr_trT
+    adxThresh := cr_adx
+    atrPctFilt := cr_atr
+    acceptQuiet := cr_quiet
+else if detectedClass == "METALS"
+    tfThresh := mt_tfT
+    trThresh := mt_trT
+    adxThresh := mt_adx
+    atrPctFilt := mt_atr
+    acceptQuiet := mt_quiet
+else if detectedClass == "ENERGY"
+    tfThresh := en_tfT
+    trThresh := en_trT
+    adxThresh := en_adx
+    atrPctFilt := en_atr
+    acceptQuiet := en_quiet
+else if detectedClass == "BONDS"
+    tfThresh := bd_tfT
+    trThresh := bd_trT
+    adxThresh := bd_adx
+    atrPctFilt := bd_atr
+    acceptQuiet := bd_quiet
+else if detectedClass == "INDICES"
+    tfThresh := ix_tfT
+    trThresh := ix_trT
+    adxThresh := ix_adx
+    atrPctFilt := ix_atr
+    acceptQuiet := ix_quiet
+
+// =============================================================================
+// SECTION 4: CORE CALCULATIONS
+// =============================================================================
+
+// --- EMA System ---
+fastEMA  = ta.ema(close, fastLen)
+midEMA   = ta.ema(close, midLen)
+slowEMA  = ta.ema(close, slowLen)
+trendEMA = ta.ema(close, trendLen)
+
+emaStackBull = fastEMA > midEMA and midEMA > slowEMA and close > trendEMA
+emaStackBear = fastEMA < midEMA and midEMA < slowEMA and close < trendEMA
+trendDir     = emaStackBull ? 1 : emaStackBear ? -1 : 0
+
+// Ribbon Width (% of price, normalised vs 50-bar average)
+ribbonWidth  = math.abs(fastEMA - slowEMA) / close * 100
+ribbonAvg    = ta.sma(ribbonWidth, 50)
+ribbonWide   = ribbonWidth > ribbonAvg * 1.5
+ribbonNarrow = ribbonWidth < ribbonAvg * 0.75
+
+// --- ADX (custom DMI — same engine as Universal) ---
+dirmov(len) =>
+    up       = ta.change(high)
+    down     = -ta.change(low)
+    plusDM   = na(up)   ? na : up > down   and up   > 0 ? up   : 0
+    minusDM  = na(down) ? na : down > up   and down > 0 ? down : 0
+    tr_range = ta.rma(ta.tr, len)
+    plus  = fixnan(100 * ta.rma(plusDM,  len) / tr_range)
+    minus = fixnan(100 * ta.rma(minusDM, len) / tr_range)
+    [plus, minus]
+
+[diPlus, diMinus] = dirmov(adxLen)
+adxVal    = 100 * ta.rma(math.abs(diPlus - diMinus) / (diPlus + diMinus == 0 ? 1 : diPlus + diMinus), adxLen)
+adxRising = adxVal > adxVal[3]
+adxPeaked = adxVal >= 35 and not adxRising
+adxFlat   = math.abs(adxVal - adxVal[3]) < 1.0
+
+// --- ATR Multi-TF Volatility Engine (ported from Universal) ---
+atrCur  = ta.atr(atrLen)
+atrH1   = request.security(syminfo.tickerid, "60",  ta.atr(atrLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+atrH4   = request.security(syminfo.tickerid, "240", ta.atr(atrLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+atrD1   = request.security(syminfo.tickerid, "D",   ta.atr(atrLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+atrBase  = ta.ema(atrCur, atrBaseLen)
+atrRatio = atrBase > 0 ? atrCur / atrBase : 1.0
+atrFilterOK = atrPctFilt == 0 ? true : atrCur > atrBase * (atrPctFilt / 100.0)
+atrPctl  = ta.percentrank(atrD1, atrPctLB)
+
+baseH1 = request.security(syminfo.tickerid, "60",  ta.ema(ta.atr(atrLen), atrBaseLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+baseH4 = request.security(syminfo.tickerid, "240", ta.ema(ta.atr(atrLen), atrBaseLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+baseD1 = request.security(syminfo.tickerid, "D",   ta.ema(ta.atr(atrLen), atrBaseLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+rCur  = atrBase > 0 ? atrCur / atrBase  : 1.0
+rH1v  = baseH1  > 0 ? atrH1  / baseH1  : 1.0
+rH4v  = baseH4  > 0 ? atrH4  / baseH4  : 1.0
+rD1v  = baseD1  > 0 ? atrD1  / baseD1  : 1.0
+
+sep   = 1.0 + sepTol
+q1s = rH1v > rCur  * sep ? 1 : 0
+q2s = rH4v > rH1v  * sep ? 1 : 0
+q3s = rD1v > rH4v  * sep ? 1 : 0
+e1s = rCur  > rH1v * sep ? 1 : 0
+e2s = rH1v  > rH4v * sep ? 1 : 0
+e3s = rH4v  > rD1v * sep ? 1 : 0
+
+quietStr   = q1s + q2s + q3s
+explodeStr = e1s + e2s + e3s
+
+m1v = math.max(math.abs(rCur), math.abs(rH4v))
+m2v = math.max(math.abs(rH4v), math.abs(rD1v))
+approx1 = m1v == 0 ? true : math.abs(rCur - rH4v) / m1v <= eqTol
+approx2 = m2v == 0 ? true : math.abs(rH4v - rD1v) / m2v <= eqTol
+isTrendVol = approx1 and approx2 and not (quietStr >= 2 or explodeStr >= 2)
+
+var string atrState = "MIXED"
+if quietStr == 3
+    atrState := "QUIET"
+else if explodeStr == 3
+    atrState := "EXPLODE"
+else if isTrendVol
+    atrState := "TREND"
+else
+    atrState := "MIXED"
+
+atrExpanding = atrCur > atrCur[3]
+atrContracting = atrCur < atrCur[3]
+atrBlowOff = atrCur[3] > atrBase * 1.3 and atrContracting
+
+// --- MTF Alignment ---
+mtf1Bull = request.security(syminfo.tickerid, mtf1, ta.ema(close, fastLen) > ta.ema(close, slowLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+mtf2Bull = request.security(syminfo.tickerid, mtf2, ta.ema(close, fastLen) > ta.ema(close, slowLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+mtf3Bull = request.security(syminfo.tickerid, mtf3, ta.ema(close, fastLen) > ta.ema(close, slowLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+mtfBullCt   = (mtf1Bull ? 1 : 0) + (mtf2Bull ? 1 : 0) + (mtf3Bull ? 1 : 0)
+mtfBearCt   = (not mtf1Bull ? 1 : 0) + (not mtf2Bull ? 1 : 0) + (not mtf3Bull ? 1 : 0)
+mtfFullBull = mtfBullCt == 3
+mtfFullBear = mtfBearCt == 3
+
+// --- RSI Multi-TF (4 timeframes — Current, 1H, 4H, Daily) ---
+rsiCurr = ta.rsi(close, rsiLen)
+rsiH1   = request.security(syminfo.tickerid, "60",  ta.rsi(close, rsiLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+rsiH4   = request.security(syminfo.tickerid, "240", ta.rsi(close, rsiLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+rsiD1   = request.security(syminfo.tickerid, "D",   ta.rsi(close, rsiLen), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+rsiBullCt = (rsiCurr > 50 ? 1 : 0) + (rsiH1 > 50 ? 1 : 0) + (rsiH4 > 50 ? 1 : 0) + (rsiD1 > 50 ? 1 : 0)
+rsiBearCt = (rsiCurr < 50 ? 1 : 0) + (rsiH1 < 50 ? 1 : 0) + (rsiH4 < 50 ? 1 : 0) + (rsiD1 < 50 ? 1 : 0)
+rsiAllBull  = rsiBullCt == 4
+rsiAllBear  = rsiBearCt == 4
+rsiXUp      = ta.crossover(rsiCurr, 50)
+rsiXDown    = ta.crossunder(rsiCurr, 50)
+
+// RSI Divergence (for TR hard gate)
+bearDiv = high > high[divLB] and rsiCurr < rsiCurr[divLB] and rsiCurr > 45
+bullDiv = low  < low[divLB]  and rsiCurr > rsiCurr[divLB] and rsiCurr < 55
+
+// =============================================================================
+// SECTION 5: REGIME DERIVATION (from Vol State Engine)
+// =============================================================================
+// TREND vol      → R-EXPANSION      (trend following environment)
+// QUIET low pctl → R-COMPRESSION    (consolidation, no trend)
+// QUIET mid pctl → R-DISTRIBUTION   (weakening trend, reversal hunting)
+// EXPLODE        → R-TRANSITION     (breakout, unstable)
+// MIXED          → R-UNCLEAR        (fail closed)
+
+string regime = "R-UNCLEAR"
+if atrState == "TREND"
+    regime := "R-EXPANSION"
+else if atrState == "QUIET" and atrPctl < 30
+    regime := "R-COMPRESSION"
+else if atrState == "QUIET"
+    regime := "R-DISTRIBUTION"
+else if atrState == "EXPLODE"
+    regime := "R-TRANSITION"
+
+// =============================================================================
+// SECTION 6: SESSION + NEWS GATES
+// =============================================================================
+
+utcH = hour(timenow, "UTC")
+
+string currentSession = "Off-Hours"
+if utcH >= 0 and utcH < 8
+    currentSession := "Tokyo"
+else if utcH >= 8 and utcH < 13
+    currentSession := "London"
+else if utcH >= 13 and utcH < 17
+    currentSession := "LON+NY"
+else if utcH >= 17 and utcH < 22
+    currentSession := "NY"
+
+sessionActive   = currentSession != "Off-Hours"
+// TR blocked during LON+NY — volatility too high for safe reversals
+sessionOkForTR  = sessionActive and currentSession != "LON+NY"
+
+// News risk: London open (8 UTC) + NY open (13 UTC)
+newsRisk    = utcH == 8 or utcH == 13
+newsStr     = newsRisk ? "HIGH RISK" : "CLEAR"
+
+// Bar timer
+tfSec    = timeframe.in_seconds()
+barElaps = (timenow - time) / 1000
+barRem   = math.max(0, tfSec - barElaps)
+minsRem  = math.floor(barRem / 60)
+timerStr = barstate.isrealtime ? str.tostring(math.round(minsRem)) + "m" : "---"
+timerWarnOn = barstate.isrealtime and minsRem <= timerWarnM
+
+// =============================================================================
+// SECTION 7: ENTRY ZONE (TF) + S/R STRUCTURE (TR)
+// =============================================================================
+
+// Entry zone — distance from fast EMA in ATR units
+distFast = atrCur > 0 ? math.abs(close - fastEMA) / atrCur : 10.0
+distMid  = atrCur > 0 ? math.abs(close - midEMA)  / atrCur : 10.0
+
+string entryZone = "EXTENDED"
+float  entryPts  = 0.0
+if distFast < 0.3
+    entryZone := "HOT"
+    entryPts  := 25.0
+else if distFast < 0.5
+    entryZone := "OPTIMAL"
+    entryPts  := 20.0
+else if distFast < 1.0
+    entryZone := "ACCEPTABLE"
+    entryPts  := 12.0
+else if distMid < 0.5
+    entryZone := "DEEP"
+    entryPts  := 6.0
+
+bool entryExtended = entryZone == "EXTENDED"
+
+// S/R Structure — Daily swing high/low zones (TR hard gate)
+dHigh = request.security(syminfo.tickerid, "D", ta.highest(high, srLB), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+dLow  = request.security(syminfo.tickerid, "D", ta.lowest(low,  srLB), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+dRange = dHigh - dLow
+
+atResistance = dRange > 0 and close >= dHigh - dRange * structPct
+atSupport    = dRange > 0 and close <= dLow  + dRange * structPct
+string structStr = atResistance ? "RESISTANCE" : atSupport ? "SUPPORT" : "MID-RANGE"
+bool atStructure = atResistance or atSupport
+
+// =============================================================================
+// SECTION 8: RISK GOVERNOR
+// =============================================================================
+
+bool riskLocked  = riskGovState == "LOCKED"
+bool riskReduced = riskGovState == "REDUCED"
+
+string riskCode  = riskLocked ? "K-LOCKED" : riskReduced ? "K-REDUCED" : "K-NORMAL"
+
+// Position sizing
+// TF: 1.5% normal | 0.75% reduced
+// TR: always half of TF (lower win rate priced in) | compounds with governor
+string tfSize = riskReduced ? "0.75%" : "1.5%"
+string trSize = riskReduced ? "0.38%" : "0.75%"
+
+// Score thresholds adjusted upward when governor is REDUCED
+int tfThreshAdj = riskReduced ? tfThresh + 5 : tfThresh
+int trThreshAdj = riskReduced ? trThresh + 8 : trThresh
+
+// =============================================================================
+// SECTION 9: REGIME PERMISSIONS (TF vs TR — opposite regime requirements)
+// =============================================================================
+
+// TF Permission from regime
+// TF needs trending conditions — blocked in everything except Expansion
+string tfRegPerm = "BLOCKED"
+if regime == "R-EXPANSION"
+    tfRegPerm := "FULL"
+else if regime == "R-DISTRIBUTION"
+    tfRegPerm := "CONDITIONAL"
+
+// TR Permission from regime
+// TR needs exhaustion conditions — blocked in Expansion (trend too healthy)
+string trRegPerm = "BLOCKED"
+if regime == "R-DISTRIBUTION"
+    trRegPerm := "FULL"
+else if regime == "R-COMPRESSION" or regime == "R-TRANSITION"
+    trRegPerm := "CONDITIONAL"
+
+// Final TF Permission (regime + risk + session + news)
+string tfPerm = "FULL"
+if riskLocked or not sessionActive or newsRisk
+    tfPerm := "BLOCKED"
+else if tfRegPerm == "BLOCKED"
+    tfPerm := "BLOCKED"
+else if tfRegPerm == "CONDITIONAL" or riskReduced
+    tfPerm := "CONDITIONAL"
+
+// Final TR Permission (regime + risk + session + news — LON+NY also blocked)
+string trPerm = "FULL"
+if riskLocked or not sessionOkForTR or newsRisk
+    trPerm := "BLOCKED"
+else if trRegPerm == "BLOCKED"
+    trPerm := "BLOCKED"
+else if trRegPerm == "CONDITIONAL" or riskReduced
+    trPerm := "CONDITIONAL"
+
+// =============================================================================
+// SECTION 10: TF SCORING
+// =============================================================================
+// Philosophy: Am I early enough? Score penalises maturity.
+//
+// Component             Max Pts  Logic
+// MTF + EMA Direction    30      2/3=30 (emerging), 3/3=22 (mature, slight penalty)
+// Entry Location         25      HOT=25, OPTIMAL=20, ACCEPTABLE=12, DEEP=6, EXTENDED=BLOCKED
+// Volatility State       25      TREND=25, EXPLODE=15, QUIET=10, MIXED=0
+// RSI 4TF Momentum       10      All4=10, 3/4=8, 2/4=5
+// Session + News         10      Session=5, No News=5
+// Total                 100
+
+// MTF direction
+bool tfDirBull = false
+bool tfDirBear = false
+int  tfMtfPts  = 0
+
+if emaStackBull and mtfBullCt >= 2
+    tfDirBull := true
+    tfMtfPts  := mtfBullCt == 3 ? 22 : 30
+else if emaStackBear and mtfBearCt >= 2
+    tfDirBear := true
+    tfMtfPts  := mtfBearCt == 3 ? 22 : 30
+
+// Entry pts (EXTENDED = hard block on signal regardless of score)
+float tfEntryPts = entryExtended ? 0.0 : entryPts
+
+// Volatility pts
+float tfVolPts = 0.0
+bool  tfVolPass = false
+if atrState == "TREND" and atrFilterOK
+    tfVolPts := 25.0
+    tfVolPass := true
+else if atrState == "EXPLODE" and acceptExpl and atrPctl >= explMinPct and atrPctl <= explMaxPct and atrFilterOK
+    tfVolPts := 15.0
+    tfVolPass := true
+else if atrState == "QUIET" and acceptQuiet and atrFilterOK
+    tfVolPts := 10.0
+    tfVolPass := true
+
+// RSI momentum pts
+float tfRsiPts = 0.0
+if tfDirBull
+    if rsiAllBull or rsiXUp
+        tfRsiPts := 10.0
+    else if rsiBullCt >= 3
+        tfRsiPts := 8.0
+    else if rsiBullCt >= 2
+        tfRsiPts := 5.0
+else if tfDirBear
+    if rsiAllBear or rsiXDown
+        tfRsiPts := 10.0
+    else if rsiBearCt >= 3
+        tfRsiPts := 8.0
+    else if rsiBearCt >= 2
+        tfRsiPts := 5.0
+
+// Session + news pts
+float tfCtxPts = 0.0
+if sessionActive
+    tfCtxPts += 5.0
+if not newsRisk
+    tfCtxPts += 5.0
+
+float tfScore = tfMtfPts + tfEntryPts + tfVolPts + tfRsiPts + tfCtxPts
+bool  tfHasDir = tfDirBull or tfDirBear
+
+// TF gate: direction + score + entry not extended + vol passing + not blocked
+bool tfReadyLong  = tfDirBull and tfScore >= tfThreshAdj and not entryExtended and tfVolPass and tfPerm != "BLOCKED"
+bool tfReadyShort = tfDirBear and tfScore >= tfThreshAdj and not entryExtended and tfVolPass and tfPerm != "BLOCKED"
+
+// =============================================================================
+// SECTION 11: TR SCORING
+// =============================================================================
+// Philosophy: Is this trend dying? Score confirms exhaustion depth.
+// Three hard gates — all must pass or score is irrelevant.
+//
+// Component             Max Pts  Logic                           Gate?
+// Trend Maturity 3/3     25      3/3 MTF required                HARD
+// RSI Divergence         20      Price/RSI diverging             HARD
+// HTF Structure          15      At Daily S/R level              HARD
+// Ribbon Width           15      Ribbon unusually wide           HARD
+// ADX Exhaustion         15      ADX peaked above 35, turning
+// ATR Blow-off           10      Spike then contraction
+// Total                 100
+
+// TR direction: opposite to prevailing trend
+bool trDirLong  = mtfFullBear  // downtrend exhausted → long reversal
+bool trDirShort = mtfFullBull  // uptrend exhausted → short reversal
+bool trHasDir   = trDirLong or trDirShort
+
+// Hard gate evaluation
+bool trMtfGate    = mtfFullBull or mtfFullBear
+bool trDivGate    = (trDirLong and bullDiv) or (trDirShort and bearDiv)
+bool trStructGate = (trDirLong and atSupport) or (trDirShort and atResistance)
+bool trRibbonGate = ribbonWide
+bool trAllGates   = trMtfGate and trDivGate and trStructGate and trRibbonGate
+
+// TR scoring (computed per direction)
+int trMtfPts    = trMtfGate ? 25 : 0
+int trDivPts    = trDivGate ? 20 : 0
+int trStructPts = trStructGate ? 15 : 0
+int trRibbonPts = trRibbonGate ? 15 : 0
+
+int trAdxPts = 0
+if adxPeaked
+    trAdxPts := 15
+else if adxVal > 35
+    trAdxPts := 8
+
+int trAtrPts = 0
+if atrBlowOff
+    trAtrPts := 10
+else if atrContracting and atrRatio > 1.0
+    trAtrPts := 6
+
+float trScore = trMtfPts + trDivPts + trStructPts + trRibbonPts + trAdxPts + trAtrPts
+
+// TR gate: all hard gates + score + not blocked
+bool trReadyLong  = trDirLong  and trAllGates and trScore >= trThreshAdj and trPerm != "BLOCKED"
+bool trReadyShort = trDirShort and trAllGates and trScore >= trThreshAdj and trPerm != "BLOCKED"
+
+// =============================================================================
+// SECTION 12: CANDLE EFFICIENCY (for structural damage detection)
+// =============================================================================
+
+candleBody  = math.abs(close - open)
+candleRange = high - low
+rawEff      = candleRange > 0 ? candleBody / candleRange : 0.0
+structDmg   = trendDir == 0 or (trendDir == 1 and rawEff < effThresh and close < open) or (trendDir == -1 and rawEff < effThresh and close > open)
+
+// =============================================================================
+// SECTION 13: TF ARM / DISARM STATE MACHINE
+// =============================================================================
+
+var bool   tfArmed      = false
+var float  tfArmedScore = 0.0
+var int    tfBarsAbove  = 0
+var string tfDisarmCode = ""
+
+bool tfMeetsArm = tfReadyLong or tfReadyShort
+if tfMeetsArm
+    tfBarsAbove := tfBarsAbove + 1
+else
+    tfBarsAbove := 0
+
+// Arm
+if not tfArmed and tfBarsAbove >= armPersist
+    tfArmed      := true
+    tfArmedScore := tfScore
+    tfDisarmCode := ""
+
+// Disarm checks (priority order)
+if tfArmed
+    if tfPerm == "BLOCKED"
+        tfArmed := false
+        tfArmedScore := 0.0
+        tfDisarmCode := "TF-DISARM-PERM"
+    else if trendDir == 0
+        tfArmed := false
+        tfArmedScore := 0.0
+        tfDisarmCode := "TF-DISARM-MTF"
+    else if entryExtended
+        tfArmed := false
+        tfArmedScore := 0.0
+        tfDisarmCode := "TF-DISARM-EXTENDED"
+    else if tfScore < tfArmedScore - disarmDrop and structDmg
+        tfArmed := false
+        tfArmedScore := 0.0
+        tfDisarmCode := "TF-DISARM-SCORE"
+
+// =============================================================================
+// SECTION 14: TR ARM / DISARM STATE MACHINE
+// =============================================================================
+
+var bool   trArmed      = false
+var float  trArmedScore = 0.0
+var int    trBarsAbove  = 0
+var string trDisarmCode = ""
+
+bool trMeetsArm = trReadyLong or trReadyShort
+if trMeetsArm
+    trBarsAbove := trBarsAbove + 1
+else
+    trBarsAbove := 0
+
+// Arm
+if not trArmed and trBarsAbove >= armPersist
+    trArmed      := true
+    trArmedScore := trScore
+    trDisarmCode := ""
+
+// Disarm checks
+if trArmed
+    if trPerm == "BLOCKED"
+        trArmed := false
+        trArmedScore := 0.0
+        trDisarmCode := "TR-DISARM-PERM"
+    else if not trDivGate
+        // Divergence resolved — setup invalidated
+        trArmed := false
+        trArmedScore := 0.0
+        trDisarmCode := "TR-DISARM-DIV"
+    else if not trStructGate
+        // Price broke through structure — invalidated
+        trArmed := false
+        trArmedScore := 0.0
+        trDisarmCode := "TR-DISARM-STRUCT"
+    else if regime == "R-EXPANSION"
+        // Trend resumed — TR cancelled
+        trArmed := false
+        trArmedScore := 0.0
+        trDisarmCode := "TR-DISARM-TREND-RESUME"
+    else if trScore < trArmedScore - disarmDrop
+        trArmed := false
+        trArmedScore := 0.0
+        trDisarmCode := "TR-DISARM-SCORE"
+
+// =============================================================================
+// SECTION 15: CONFLICT RESOLUTION
+// TF LONG + TR SHORT or TF SHORT + TR LONG = both blocked
+// =============================================================================
+
+bool conflict = (tfArmed and tfDirBull and trArmed and trDirShort) or (tfArmed and tfDirBear and trArmed and trDirLong)
+
+if conflict
+    tfArmed := false
+    trArmed := false
+    tfDisarmCode := "CONFLICT-SYSTEM-DIVERGENCE"
+    trDisarmCode := "CONFLICT-SYSTEM-DIVERGENCE"
+
+// =============================================================================
+// SECTION 16: REASON CODES
+// =============================================================================
+
+string tfReason = "TF-WAIT"
+
+if conflict
+    tfReason := "CONFLICT-SYSTEM-DIVERGENCE"
+else if tfArmed
+    if tfScore >= 90
+        tfReason := "TF-ARMED-EXCELLENT"
+    else if tfScore >= 85
+        tfReason := "TF-ARMED-PERFECT"
+    else if tfScore >= tfThreshAdj
+        tfReason := "TF-ARMED-STRONG"
+    else
+        tfReason := "TF-ARMED-READY"
+else if tfDisarmCode != ""
+    tfReason := tfDisarmCode
+else if tfPerm == "BLOCKED"
+    if riskLocked
+        tfReason := "TF-BLOCK-RISK"
+    else if not sessionActive
+        tfReason := "TF-BLOCK-SESSION"
+    else if newsRisk
+        tfReason := "TF-BLOCK-NEWS"
+    else
+        tfReason := "TF-BLOCK-REGIME"
+else if tfHasDir and entryExtended
+    tfReason := "TF-BLOCK-EXTENDED"
+else if tfHasDir and not tfVolPass
+    tfReason := "TF-BLOCK-VOL"
+
+string trReason = "TR-WAIT"
+
+if conflict
+    trReason := "CONFLICT-SYSTEM-DIVERGENCE"
+else if trArmed
+    if trScore >= 90
+        trReason := "TR-ARMED-EXTREME"
+    else if trScore >= 85
+        trReason := "TR-ARMED-STRONG"
+    else
+        trReason := "TR-ARMED-VALID"
+else if trDisarmCode != ""
+    trReason := trDisarmCode
+else if trPerm == "BLOCKED"
+    if riskLocked
+        trReason := "TR-BLOCK-RISK"
+    else if not sessionOkForTR
+        trReason := "TR-BLOCK-SESSION"
+    else if newsRisk
+        trReason := "TR-BLOCK-NEWS"
+    else
+        trReason := "TR-BLOCK-REGIME"
+else if trHasDir and not trMtfGate
+    trReason := "TR-BLOCK-NOMATURE"
+else if trHasDir and trMtfGate and not trDivGate
+    trReason := "TR-BLOCK-NODIV"
+else if trHasDir and trMtfGate and trDivGate and not trStructGate
+    trReason := "TR-BLOCK-NOSTRUCTURE"
+else if trHasDir and trMtfGate and not trRibbonGate
+    trReason := "TR-BLOCK-RIBBON"
+
+// Score tier labels (used in table + alert payload)
+string tfTier = tfScore >= 90 ? "EXCELLENT" : tfScore >= 85 ? "PERFECT" : tfScore >= tfThreshAdj ? "STRONG" : tfScore >= tfThreshAdj - 5 ? "READY" : "BELOW MIN"
+string trTier = trScore >= 90 ? "EXTREME" : trScore >= 85 ? "STRONG" : trScore >= trThreshAdj ? "VALID" : "BELOW MIN"
+
+// =============================================================================
+// SECTION 17: TABLE
+// =============================================================================
+
+tblPosition = tblPos == "Top Right" ? position.top_right : tblPos == "Top Left" ? position.top_left : tblPos == "Bottom Right" ? position.bottom_right : position.bottom_left
+
+// Colours
+c_bg    = color.rgb(10,  14,  20)
+c_hdr   = color.rgb(18,  28,  42)
+c_sep   = color.rgb(25,  35,  48)
+c_pass  = color.rgb(0,   200, 110)
+c_warn  = color.rgb(255, 200, 0)
+c_fail  = color.rgb(200, 55,  55)
+c_dim   = color.rgb(60,  75,  90)
+c_label = color.rgb(150, 170, 200)
+c_white = color.white
+c_tf    = color.rgb(80,  160, 255)
+c_tr    = color.rgb(255, 150, 60)
+c_orange= color.rgb(255, 165, 0)
+
+passCol(cond)       => cond ? c_pass : c_fail
+scoreCol(s, mn)     => s >= mn ? c_pass : s >= mn * 0.85 ? c_warn : c_fail
+
+showTF = signalMode == "TF Only" or signalMode == "Both"
+showTR = signalMode == "TR Only" or signalMode == "Both"
+
+var table tbl = table.new(tblPosition, 3, 28, bgcolor=c_bg, border_color=color.rgb(28, 40, 56), border_width=1, frame_color=color.rgb(28, 40, 56), frame_width=1)
+
+if barstate.islast
+    // R0: Header
+    table.cell(tbl, 0, 0, "ULTIMATE UTCC",  text_color=c_white,  text_size=size.small, bgcolor=color.rgb(20,32,52), text_halign=text.align_center)
+    table.cell(tbl, 1, 0, detectedClass,    text_color=color.yellow, text_size=size.small, bgcolor=color.rgb(20,32,52), text_halign=text.align_center)
+    table.cell(tbl, 2, 0, syminfo.ticker,   text_color=c_label,  text_size=size.small, bgcolor=color.rgb(20,32,52), text_halign=text.align_center)
+
+    // R1: Col headers
+    table.cell(tbl, 0, 1, "COMPONENT", text_color=c_label, text_size=size.tiny, bgcolor=c_hdr)
+    table.cell(tbl, 1, 1, "TF",        text_color=c_tf,    text_size=size.tiny, bgcolor=c_hdr)
+    table.cell(tbl, 2, 1, "TR",        text_color=c_tr,    text_size=size.tiny, bgcolor=c_hdr)
+
+    // R2: Regime
+    regCol = regime == "R-EXPANSION" ? c_pass : regime == "R-DISTRIBUTION" ? c_warn : c_fail
+    table.cell(tbl, 0, 2, "Regime",   text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 2, regime,     text_color=regCol,  text_size=size.tiny)
+    table.cell(tbl, 2, 2, regime,     text_color=regCol,  text_size=size.tiny)
+
+    // R3: Permission
+    tfPermCol = tfPerm == "FULL" ? c_pass : tfPerm == "CONDITIONAL" ? c_warn : c_fail
+    trPermCol = trPerm == "FULL" ? c_pass : trPerm == "CONDITIONAL" ? c_warn : c_fail
+    table.cell(tbl, 0, 3, "Permission", text_color=c_label,   text_size=size.tiny)
+    table.cell(tbl, 1, 3, tfPerm,       text_color=tfPermCol, text_size=size.tiny)
+    table.cell(tbl, 2, 3, trPerm,       text_color=trPermCol, text_size=size.tiny)
+
+    // R4: Risk Governor
+    riskCol = riskLocked ? c_fail : riskReduced ? c_warn : c_pass
+    table.cell(tbl, 0, 4, "Risk Gov",  text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 4, riskCode,    text_color=riskCol, text_size=size.tiny)
+    table.cell(tbl, 2, 4, riskCode,    text_color=riskCol, text_size=size.tiny)
+
+    // R5: Separator
+    table.cell(tbl, 0, 5, "", bgcolor=c_sep)
+    table.cell(tbl, 1, 5, "", bgcolor=c_sep)
+    table.cell(tbl, 2, 5, "", bgcolor=c_sep)
+
+    // R6: MTF Alignment
+    // TF: green when 2/3+, TR: green when 3/3 only
+    mtfStr = mtfBullCt >= mtfBearCt ? str.tostring(mtfBullCt) + "/3 BULL" : str.tostring(mtfBearCt) + "/3 BEAR"
+    table.cell(tbl, 0, 6, "MTF Align",  text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 6, mtfStr, text_color=passCol(mtfBullCt >= 2 or mtfBearCt >= 2), text_size=size.tiny)
+    table.cell(tbl, 2, 6, mtfStr, text_color=passCol(mtfFullBull or mtfFullBear),        text_size=size.tiny)
+
+    // R7: EMA Stack
+    emaStr = emaStackBull ? "BULL" : emaStackBear ? "BEAR" : "MIXED"
+    table.cell(tbl, 0, 7, "EMA Stack", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 7, emaStr, text_color=passCol(emaStackBull or emaStackBear), text_size=size.tiny)
+    table.cell(tbl, 2, 7, emaStr, text_color=c_label, text_size=size.tiny)
+
+    // R8: Ribbon Width
+    // TF: narrow is good (young trend), TR: wide is good (mature/exhausted)
+    ribbonStr = ribbonWide ? "WIDE" : ribbonNarrow ? "NARROW" : "NORMAL"
+    table.cell(tbl, 0, 8, "Ribbon",   text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 8, ribbonStr, text_color=passCol(ribbonNarrow), text_size=size.tiny)
+    table.cell(tbl, 2, 8, ribbonStr, text_color=passCol(ribbonWide),   text_size=size.tiny)
+
+    // R9: ADX
+    // TF: rising and below peak, TR: peaked above 35
+    adxDirStr = adxRising ? " UP" : adxPeaked ? " PEAK" : adxFlat ? " FLAT" : " DOWN"
+    adxStr = str.tostring(math.round(adxVal, 1)) + adxDirStr
+    table.cell(tbl, 0, 9, "ADX",   text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 9, adxStr, text_color=passCol(adxVal < 35 and adxRising), text_size=size.tiny)
+    table.cell(tbl, 2, 9, adxStr, text_color=passCol(adxPeaked),                 text_size=size.tiny)
+
+    // R10: Vol State
+    volCol = atrState == "TREND" ? c_pass : atrState == "EXPLODE" ? c_warn : atrState == "QUIET" ? color.rgb(100,180,255) : c_fail
+    table.cell(tbl, 0, 10, "Vol State", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 10, atrState,    text_color=volCol,  text_size=size.tiny)
+    table.cell(tbl, 2, 10, atrState,    text_color=volCol,  text_size=size.tiny)
+
+    // R11: ATR Ratio + Percentile
+    atrDirStr = atrExpanding ? " EXP" : " CONT"
+    atrStr = str.tostring(math.round(atrRatio, 2)) + "x" + atrDirStr + "  P" + str.tostring(math.round(atrPctl))
+    table.cell(tbl, 0, 11, "ATR",   text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 11, atrStr, text_color=passCol(atrFilterOK and atrExpanding and atrRatio < 1.5), text_size=size.tiny)
+    table.cell(tbl, 2, 11, atrStr, text_color=passCol(atrBlowOff),                                      text_size=size.tiny)
+
+    // R12: RSI 4TF / Divergence
+    rsiStr = rsiBullCt >= rsiBearCt ? str.tostring(rsiBullCt) + "/4 BULL" : str.tostring(rsiBearCt) + "/4 BEAR"
+    divStr = bearDiv ? "BEAR DIV" : bullDiv ? "BULL DIV" : "NO DIV"
+    table.cell(tbl, 0, 12, "RSI / Div", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 12, rsiStr,  text_color=passCol(rsiAllBull or rsiAllBear or rsiBullCt >= 3 or rsiBearCt >= 3), text_size=size.tiny)
+    table.cell(tbl, 2, 12, divStr,  text_color=passCol(bearDiv or bullDiv), text_size=size.tiny)
+
+    // R13: Entry Zone (TF) / Structure (TR)
+    entryCol  = entryZone == "HOT" ? c_pass : entryZone == "OPTIMAL" ? c_pass : entryZone == "ACCEPTABLE" ? c_warn : c_fail
+    structCol = atStructure ? c_pass : c_fail
+    table.cell(tbl, 0, 13, "Location",  text_color=c_label,   text_size=size.tiny)
+    table.cell(tbl, 1, 13, entryZone,   text_color=entryCol,  text_size=size.tiny)
+    table.cell(tbl, 2, 13, structStr,   text_color=structCol, text_size=size.tiny)
+
+    // R14: Session
+    sessCol   = sessionActive   ? c_pass : c_fail
+    trSessCol = sessionOkForTR  ? c_pass : c_fail
+    table.cell(tbl, 0, 14, "Session",       text_color=c_label,   text_size=size.tiny)
+    table.cell(tbl, 1, 14, currentSession,  text_color=sessCol,   text_size=size.tiny)
+    table.cell(tbl, 2, 14, currentSession,  text_color=trSessCol, text_size=size.tiny)
+
+    // R15: News
+    newsCol = newsRisk ? c_fail : c_pass
+    table.cell(tbl, 0, 15, "News",   text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 15, newsStr,  text_color=newsCol, text_size=size.tiny)
+    table.cell(tbl, 2, 15, newsStr,  text_color=newsCol, text_size=size.tiny)
+
+    // R16: Separator
+    table.cell(tbl, 0, 16, "", bgcolor=c_sep)
+    table.cell(tbl, 1, 16, "", bgcolor=c_sep)
+    table.cell(tbl, 2, 16, "", bgcolor=c_sep)
+
+    // R17: Score
+    table.cell(tbl, 0, 17, "SCORE", text_color=c_label, text_size=size.small)
+    table.cell(tbl, 1, 17, showTF ? str.tostring(math.round(tfScore)) + " / 100" : "--", text_color=showTF ? scoreCol(tfScore, tfThreshAdj) : c_dim, text_size=size.small)
+    table.cell(tbl, 2, 17, showTR ? str.tostring(math.round(trScore)) + " / 100" : "--", text_color=showTR ? scoreCol(trScore, trThreshAdj) : c_dim, text_size=size.small)
+
+    // R18: Separator
+    table.cell(tbl, 0, 18, "", bgcolor=c_sep)
+    table.cell(tbl, 1, 18, "", bgcolor=c_sep)
+    table.cell(tbl, 2, 18, "", bgcolor=c_sep)
+
+    // R19: Signal
+    tfSigTxt = tfArmed ? (tfDirBull ? "LONG" : "SHORT") : conflict ? "CONFLICT" : tfPerm == "BLOCKED" ? "BLOCKED" : "WAIT"
+    trSigTxt = trArmed ? (trDirLong ? "LONG" : "SHORT") : conflict ? "CONFLICT" : trPerm == "BLOCKED" ? "BLOCKED" : "WAIT"
+    tfSigCol = tfArmed ? (tfDirBull ? c_pass : c_fail) : conflict ? c_orange : tfPerm == "BLOCKED" ? c_fail : c_dim
+    trSigCol = trArmed ? (trDirLong ? c_pass : c_fail) : conflict ? c_orange : trPerm == "BLOCKED" ? c_fail : c_dim
+    table.cell(tbl, 0, 19, "SIGNAL", text_color=c_label, text_size=size.small)
+    table.cell(tbl, 1, 19, showTF ? tfSigTxt : "--", text_color=showTF ? tfSigCol : c_dim, text_size=size.small)
+    table.cell(tbl, 2, 19, showTR ? trSigTxt : "--", text_color=showTR ? trSigCol : c_dim, text_size=size.small)
+
+    // R20: Tier
+    tfTierCol = tfScore >= 90 ? c_pass : tfScore >= 85 ? c_warn : tfScore >= tfThreshAdj ? color.rgb(100,180,255) : c_fail
+    trTierCol = trScore >= 90 ? c_pass : trScore >= 85 ? c_warn : trScore >= trThreshAdj ? color.rgb(100,180,255) : c_fail
+    table.cell(tbl, 0, 20, "TIER", text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 20, showTF ? tfTier : "--", text_color=showTF ? tfTierCol : c_dim, text_size=size.tiny)
+    table.cell(tbl, 2, 20, showTR ? trTier : "--", text_color=showTR ? trTierCol : c_dim, text_size=size.tiny)
+
+    // R21: Position Size
+    table.cell(tbl, 0, 21, "SIZE",   text_color=c_label, text_size=size.tiny)
+    table.cell(tbl, 1, 21, showTF ? tfSize : "--", text_color=showTF ? c_warn : c_dim, text_size=size.tiny)
+    table.cell(tbl, 2, 21, showTR ? trSize : "--", text_color=showTR ? c_warn : c_dim, text_size=size.tiny)
+
+    // R22: Reason Code
+    tfReasCol = tfArmed ? c_pass : tfReason == "TF-WAIT" ? c_dim : c_fail
+    trReasCol = trArmed ? c_pass : trReason == "TR-WAIT" ? c_dim : c_fail
+    table.cell(tbl, 0, 22, "REASON",  text_color=c_label,   text_size=size.tiny)
+    table.cell(tbl, 1, 22, showTF ? tfReason : "--", text_color=showTF ? tfReasCol : c_dim, text_size=size.tiny)
+    table.cell(tbl, 2, 22, showTR ? trReason : "--", text_color=showTR ? trReasCol : c_dim, text_size=size.tiny)
+
+    // R23: Separator
+    table.cell(tbl, 0, 23, "", bgcolor=c_sep)
+    table.cell(tbl, 1, 23, "", bgcolor=c_sep)
+    table.cell(tbl, 2, 23, "", bgcolor=c_sep)
+
+    // R24: Bar Timer
+    if showTimer
+        timerCol = timerWarnOn ? c_fail : c_dim
+        table.cell(tbl, 0, 24, "Bar Close", text_color=c_label,   text_size=size.tiny)
+        table.cell(tbl, 1, 24, timerStr,    text_color=timerCol,  text_size=size.tiny)
+        table.cell(tbl, 2, 24, timerStr,    text_color=timerCol,  text_size=size.tiny)
+
+// =============================================================================
+// SECTION 18: ALERT PAYLOADS
+// =============================================================================
+// JSON format matches Universal UTCC so FCC parses without changes.
+// type: TF_ARMED or TR_ARMED (FCC armed panel distinguishes by type field)
+
+showTFAlerts = alertModeSel == "TF Only" or alertModeSel == "Both"
+showTRAlerts = alertModeSel == "TR Only" or alertModeSel == "Both"
+
+if barstate.isconfirmed
+    if showTFAlerts and tfArmed and tfDirBull
+        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"LONG","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBullCt) + '/4 BULL","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+
+    if showTFAlerts and tfArmed and tfDirBear
+        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"SHORT","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBearCt) + '/4 BEAR","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+
+    if showTRAlerts and trArmed and trDirLong
+        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BULL DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+
+    if showTRAlerts and trArmed and trDirShort
+        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BEAR DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+
+// Named alert conditions (for TradingView alert dialog)
+alertcondition(tfArmed and tfDirBull,  "TF LONG",  "TF Armed: LONG")
+alertcondition(tfArmed and tfDirBear,  "TF SHORT", "TF Armed: SHORT")
+alertcondition(trArmed and trDirLong,  "TR LONG",  "TR Armed: LONG")
+alertcondition(trArmed and trDirShort, "TR SHORT", "TR Armed: SHORT")
+
+// Hidden plots for alert reference
+plot(tfScore, "TF Score", display=display.none)
+plot(trScore, "TR Score", display=display.none)
+plot(adxVal,  "ADX",      display=display.none)
+plot(atrPctl, "ATR Pctl", display=display.none)
