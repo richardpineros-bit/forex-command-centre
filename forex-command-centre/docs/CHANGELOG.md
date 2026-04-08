@@ -1,3 +1,37 @@
+## [v5.9.0] - 2026-04-08
+### Feature: Ultimate UTCC Integration - TF_ARMED / TR_ARMED
+
+Full integration of Ultimate UTCC alert types across armed panel, alert server, and quick access bar.
+
+**Alert type changes:**
+- `TF_ARMED` (Trend-Following) -- blue badge, 1.5R full position size
+- `TR_ARMED` (Trend-Reversal) -- orange badge, 0.75R reduced position size
+- Legacy `ARMED` type mapped to `TF_ARMED` for backward compatibility
+- Old `ARMED` type deprecated -- Ultimate UTCC fires TF_ARMED/TR_ARMED only
+
+**Card changes (armed-panel.js v1.4.0):**
+- TF/TR badge displayed next to pair name (blue pill for TF, orange pill for TR)
+- Risk column renamed to Size -- shows derived position size (1.5R or 0.75R)
+- Verdict row now shows playbook label right-aligned
+- Verdict row right border accent matches alert type colour (blue/orange)
+- All 3 satellites retained: directional verdict, news bias row, IG sentiment row
+
+**Alert server (index.js v2.9.0):**
+- `parseNewAlert()` detects TF_ARMED and TR_ARMED before generic ARMED
+- State stores `alertType` (TF_ARMED or TR_ARMED) and `positionSize`
+- `GET /state` returns `positionSize` per pair
+- Push notification title updated to show alert type
+
+**Quick access bar (quick-access-bar.js v1.1.0):**
+- Armed chips show TF/TR badge with type colour
+- Chip icon colour matches alert type (blue/orange)
+- Fixed raw emoji characters replaced with Unicode escapes
+
+**Files changed:**
+- `forex-alert-server/index.js` v2.9.0
+- `src/js/armed-panel.js` v1.4.0
+- `src/js/quick-access-bar.js` v1.1.0
+
 ## [v5.8.0] - 2026-04-03
 ### Feature: Armed Validation Gate (FOMO Phase 2)
 

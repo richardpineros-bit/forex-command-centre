@@ -1,4 +1,4 @@
-// quick-access-bar.js - Extracted from index.html Phase 2
+// quick-access-bar.js v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
 // Quick Access Bar Manager
 const QuickAccessBar = (function() {
     const STATE_URL = 'https://api.pineros.club/state';
@@ -77,7 +77,7 @@ const QuickAccessBar = (function() {
                 const pnl = trade.pnl || 0;
                 const pnlSign = pnl >= 0 ? '+' : '';
                 const colour = pnl >= 0 ? '#22c55e' : '#ef4444';
-                const dirEmoji = trade.direction === 'long' || trade.direction === 'buy' ? '📈' : '📉';
+                const dirEmoji = trade.direction === 'long' || trade.direction === 'buy' ? '\u25b2' : '\u25bc';
                 
                 html += '<div class="quick-item open-position" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (trade.pair || '') + '\'; checkCorrelation(); updateInstitutionalChecklist(); }, 100);">' +
                     '<span class="quick-item-emoji">' + dirEmoji + '</span>' +
@@ -93,14 +93,17 @@ const QuickAccessBar = (function() {
         if (armedInstruments && armedInstruments.length > 0) {
             armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION'; }).forEach(armed => {
                 const ttlStatus = calculateTTLStatus(armed.timestamp);
-                const dirEmoji = armed.primary && armed.primary.includes('↑') ? '🎯' : armed.primary && armed.primary.includes('↓') ? '🎯' : '◆';
+                var alertT = (armed.alertType || 'TF_ARMED').toUpperCase();
+                var tfColour = alertT === 'TR_ARMED' ? '#fb923c' : '#60a5fa';
+                var tfLabel  = alertT === 'TR_ARMED' ? 'TR' : 'TF';
+                var dirEmoji = '\u25c6';
                 const itemClass = ttlStatus.state === 'fomo' ? 'armed-fomo' : 'armed-ready';
                 const statusLabel = ttlStatus.state === 'fomo' ? 'FOMO' : 'READY';
                 
-                html += '<div class="quick-item ' + itemClass + '" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (armed.pair || '') + '\'; updateInstitutionalChecklist(); checkCorrelation(); }, 100);" title="' + (armed.pair || '') + ' \u2014 ' + statusLabel + '">' +
-                    '<span class="quick-item-emoji">' + dirEmoji + '</span>' +
+                html += '<div class="quick-item ' + itemClass + '" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (armed.pair || '') + '\'; updateInstitutionalChecklist(); checkCorrelation(); }, 100);" title="' + (armed.pair || '') + ' \u2014 ' + tfLabel + ' \u2014 ' + statusLabel + '">' +
+                    '<span class="quick-item-emoji" style="color:' + tfColour + '">' + dirEmoji + '</span>' +
                     '<span class="quick-item-label">' +
-                        '<span class="quick-item-pair">' + (armed.pair || '?') + '</span>' +
+                        '<span class="quick-item-pair">' + (armed.pair || '?') + ' <span style="font-size:0.55rem;color:' + tfColour + ';font-weight:800">' + tfLabel + '</span></span>' +
                         '<span class="quick-item-status" style="color:' + ttlStatus.colour + '">' + statusLabel + '</span>' +
                         ((armed.structExt || armed.struct_ext) ? '<span class="quick-item-struct" style="color:' + ((armed.structExt || armed.struct_ext) === 'EXTENDED' ? 'var(--color-fail)' : (armed.structExt || armed.struct_ext) === 'DEVELOPING' ? '#eab308' : '#4ade80') + ';font-size:0.6rem;font-weight:700;display:block;line-height:1.1">' + (armed.structExt || armed.struct_ext) + '</span>' : '') +
                     '</span>' +

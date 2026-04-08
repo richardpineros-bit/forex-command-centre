@@ -1,4 +1,4 @@
-// armed-panel.js v1.3.0 - Permanent dismiss (timestamped), open-trade protection, 24/48h age warnings, no auto-expiry
+// armed-panel.js v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -194,6 +194,25 @@
         if (b === 'EXPANDING_SLOW') return '#86efac';
         if (b === 'CONTRACTING')    return 'var(--text-muted)';
         return 'var(--text-secondary)';
+    }
+
+    function alertTypeBadge(p) {
+        var t = (p.alertType || 'TF_ARMED').toUpperCase();
+        if (t === 'TR_ARMED') {
+            return '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:#7c2d12;color:#fb923c;font-size:0.6rem;font-weight:800;letter-spacing:0.05em;vertical-align:middle">TR</span>';
+        }
+        return '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:#1e3a5f;color:#60a5fa;font-size:0.6rem;font-weight:800;letter-spacing:0.05em;vertical-align:middle">TF</span>';
+    }
+
+    function alertTypeAccent(p) {
+        var t = (p.alertType || 'TF_ARMED').toUpperCase();
+        return t === 'TR_ARMED' ? '#f97316' : '#3b82f6';
+    }
+
+    function positionSizeLabel(p) {
+        if (p.positionSize) return p.positionSize;
+        var t = (p.alertType || 'TF_ARMED').toUpperCase();
+        return t === 'TR_ARMED' ? '0.75R' : '1.5R';
     }
 
     function tvWebUrl(pair) {
@@ -407,13 +426,17 @@
         var arrow   = dir === 'LONG' ? '\u25b2' : '\u25bc';
         var dirColour = dir === 'LONG' ? '#16a34a' : '#b91c1c';
 
-        return '<div class="armed-verdict-row" style="border-left:3px solid ' + dirColour + '">' +
+        var playbookLabel = (p.playbook || '').toUpperCase().replace(/_/g, ' ');
+        var accentColour  = alertTypeAccent(p);
+
+        return '<div class="armed-verdict-row" style="border-left:3px solid ' + dirColour + ';border-right:3px solid ' + accentColour + '">' +
             '<span style="color:' + dirColour + ';font-weight:800;font-size:0.75rem;letter-spacing:0.03em">' +
                 arrow + ' ' + dir +
             '</span>' +
             '<span style="color:' + confColour + ';font-size:0.65rem;font-weight:700;letter-spacing:0.04em">' +
                 confLabel +
             '</span>' +
+            (playbookLabel ? '<span style="color:var(--text-muted);font-size:0.6rem;font-weight:600;margin-left:auto;padding-right:6px;letter-spacing:0.03em">' + playbookLabel + '</span>' : '') +
         '</div>';
     }
 
@@ -521,10 +544,10 @@
             dismissBtn +
             '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
-                '<span class="armed-pair-name">' + (p.pair || '') + '</span>' +
+                '<span class="armed-pair-name">' + alertTypeBadge(p) + ' ' + (p.pair || '') + '</span>' +
                 '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
                 '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
-                '<span class="armed-maxrisk">' + ((p.maxRisk || '').split('|')[0].trim() || '\u2014') + '</span>' +
+                '<span class="armed-maxrisk">' + positionSizeLabel(p) + '</span>' +
                 '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
                 '<span class="armed-atr">' + atrHtml + '</span>' +
                 '<span class="armed-struct">' + structHtml + '</span>' +
@@ -569,7 +592,7 @@
             '<span>Pair</span>' +
             '<span>Regime</span>' +
             '<span>Perm</span>' +
-            '<span>Risk</span>' +
+            '<span>Size</span>' +
             '<span>Sc</span>' +
             '<span>ATR</span>' +
             '<span>Struct</span>' +

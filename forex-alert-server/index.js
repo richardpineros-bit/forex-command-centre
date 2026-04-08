@@ -15,8 +15,9 @@ const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.j
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.7.0';
+const VERSION = '2.9.0';
 const CHANGES = [
+    '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
     '2.8.0 - SESSION_RESET no longer clears armed pairs — natural disarm only; pairs survive session transitions',
     '2.7.0 - pushBlocked(): PWA push notification on BLOCKED alerts — position management signal with human-readable disarm reason',
     '2.6.0 - GET /te-snapshot: serve te-snapshot.json (Trading Economics macro briefing) with 8h staleness check',
@@ -147,7 +148,7 @@ function pushArmed(alert) {
     var state = loadState();
     var armedCount = Object.keys(state.pairs).length;
     sendPushToAll({
-        title:   'ARMED: ' + alert.pair,
+        title:   (alert.type || 'TF_ARMED') + ': ' + alert.pair,
         body:    body,
         icon:    '/icons/icon-192.png',
         tag:     'armed-' + alert.pair,
@@ -632,10 +633,13 @@ function parseNewAlert(body) {
     var typeField = parts[0];
     var alertType = null;
 
-    // Order matters: check ARMED before BLOCKED to avoid false match
-    // (ARMED doesn't contain BLOCKED, so no conflict)
-    if (typeField.includes('ARMED')) {
-        alertType = 'ARMED';
+    // Order matters: check TF_ARMED/TR_ARMED before generic ARMED
+    if (typeField.includes('TF_ARMED')) {
+        alertType = 'TF_ARMED';
+    } else if (typeField.includes('TR_ARMED')) {
+        alertType = 'TR_ARMED';
+    } else if (typeField.includes('ARMED')) {
+        alertType = 'ARMED';  // legacy fallback (old Universal UTCC)
     } else if (typeField.includes('BLOCKED')) {
         alertType = 'BLOCKED';
     } else if (typeField.includes('CANDIDATE')) {
@@ -875,7 +879,7 @@ var server = http.createServer(function(req, res) {
             var d = state.pairs[pair];
             return {
                 pair: pair,
-                alertType: d.alertType || 'ARMED',
+                alertType: d.alertType || 'TF_ARMED',
                 primary: d.primary || 'LEGACY',
                 permission: d.permission || 'FULL',
                 maxRisk: d.maxRisk || '1.0R',
@@ -896,7 +900,8 @@ var server = http.createServer(function(req, res) {
                 structBars: d.structBars !== undefined ? d.structBars : null,
                 riskMult: d.riskMult || 1.0,
                 rsi: d.rsi || 0,
-                playbook: d.playbook || ''
+                playbook: d.playbook || '',
+                positionSize: d.positionSize || (d.alertType === 'TR_ARMED' ? '0.75R' : '1.5R')
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
@@ -942,14 +947,18 @@ var server = http.createServer(function(req, res) {
             var state = loadState();
 
             // ----------------------------------------------------------------
-            // ARMED: Add/update pair in state (new institutional fields)
+            // TF_ARMED / TR_ARMED: Add/update pair in state
+            // Legacy ARMED mapped to TF_ARMED for backward compatibility
             // ----------------------------------------------------------------
-            if (alert.type === 'ARMED') {
+            if (alert.type === 'TF_ARMED' || alert.type === 'TR_ARMED' || alert.type === 'ARMED') {
+                var derivedType = alert.type === 'ARMED' ? 'TF_ARMED' : alert.type;
+                var derivedPosSize = derivedType === 'TR_ARMED' ? '0.75R' : '1.5R';
                 state.pairs[alert.pair] = {
-                    alertType: 'ARMED',
+                    alertType: derivedType,
                     primary: alert.primary,
                     permission: alert.permission || 'FULL',
-                    maxRisk: alert.maxRisk || '1.0R',
+                    maxRisk: alert.maxRisk || derivedPosSize,
+                    positionSize: derivedPosSize,
                     score: alert.score || 0,
                     riskState: alert.riskState || 'K-NORMAL',
                     session: alert.session || '',
@@ -972,7 +981,7 @@ var server = http.createServer(function(req, res) {
                 appendArmEvent(alert, timestamp);
 
 
-                console.log('  -> ARMED ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-') + ' | struct:' + (alert.structExt || 'NONE'));
+                console.log('  -> ' + derivedType + ' ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-') + ' | struct:' + (alert.structExt || 'NONE'));
 
                 // Push notification — ARMED fires
                 pushArmed(alert);
