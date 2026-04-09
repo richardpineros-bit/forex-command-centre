@@ -12,13 +12,15 @@ const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.j
 const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
 const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.json';
 const LOCATION_FILE     = process.env.LOCATION_FILE     || '/data/location.json';
+const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-history.json';
 
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.9.0';
+const VERSION = '2.10.0';
 const CHANGES = [
     '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
+    '2.10.0 - Location History: append every location payload to location-history.json for calibration analysis',
     '2.9.0 - Location Engine: POST /webhook/location + GET /location endpoints; per-pair location grade fed from FCC-LOC Pine indicator',
     '2.8.0 - SESSION_RESET no longer clears armed pairs — natural disarm only; pairs survive session transitions',
     '2.7.0 - pushBlocked(): PWA push notification on BLOCKED alerts — position management signal with human-readable disarm reason',
@@ -493,6 +495,52 @@ function saveLocation(data) {
         fs.writeFileSync(LOCATION_FILE, JSON.stringify(data, null, 2));
     } catch (e) {
         console.error('[Location] Save error:', e.message);
+    }
+}
+
+// ============================================================================
+// LOCATION HISTORY - append every webhook payload for calibration analysis
+// ============================================================================
+function loadLocHistory() {
+    try {
+        if (fs.existsSync(LOC_HISTORY_FILE)) {
+            return JSON.parse(fs.readFileSync(LOC_HISTORY_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('[LocHistory] Load error:', e.message);
+    }
+    return { events: [], total: 0, last_updated: null };
+}
+
+function appendLocHistory(payload) {
+    try {
+        var data = loadLocHistory();
+        var event = {
+            timestamp:      new Date().toISOString(),
+            pair:           payload.pair            || '',
+            asset_class:    payload.asset_class      || 'FX',
+            direction:      payload.direction        || 'NEUTRAL',
+            grade:          payload.grade            || 'WAIT',
+            zone:           payload.zone             || 'NONE',
+            zone_dist_atr:  parseFloat(payload.zone_dist_atr)  || null,
+            cloud_pos:      payload.cloud_pos        || 'CLEAR',
+            cloud_dist_atr: parseFloat(payload.cloud_dist_atr) || null,
+            breakout:       payload.breakout         || 'NONE',
+            supp_name:      payload.supp_name        || 'NONE',
+            supp_dist_atr:  parseFloat(payload.supp_dist_atr)  || null,
+            res_name:       payload.res_name         || 'NONE',
+            res_dist_atr:   parseFloat(payload.res_dist_atr)   || null
+        };
+        data.events.push(event);
+        data.total        = data.events.length;
+        data.last_updated = event.timestamp;
+        if (data.events.length > 10000) {
+            data.events = data.events.slice(-10000);
+            data.total  = data.events.length;
+        }
+        fs.writeFileSync(LOC_HISTORY_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error('[LocHistory] Append error:', e.message);
     }
 }
 
@@ -1452,6 +1500,7 @@ var server = http.createServer(function(req, res) {
                     timestamp:      now.toISOString()
                 };
                 saveLocation(data);
+                appendLocHistory(payload);
                 console.log('[Location] ' + payload.pair + ' | ' + (payload.direction||'?') + ' | ' + payload.grade + ' | zone=' + (payload.zone||'NONE') + ' | cloud=' + (payload.cloud_pos||'?') + ' | brk=' + (payload.breakout||'NONE'));
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ ok: true, pair: payload.pair, grade: payload.grade }));
@@ -1501,6 +1550,65 @@ var server = http.createServer(function(req, res) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ count: active.length, pairs: active, lastUpdate: data.lastUpdate }));
         }
+        return;
+    }
+
+    // GET /location-history - Return location history for calibration analysis
+    // Usage: /location-history?pair=EURUSD&grade=PRIME&limit=200&asset_class=FX
+    if (req.method === 'GET' && req.url.startsWith('/location-history')) {
+        var urlParts = req.url.split('?');
+        var params   = {};
+        (urlParts[1] || '').split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+        var data   = loadLocHistory();
+        var events = data.events || [];
+
+        // Filters
+        if (params.pair)        events = events.filter(function(e) { return e.pair === params.pair; });
+        if (params.grade)       events = events.filter(function(e) { return e.grade === params.grade; });
+        if (params.asset_class) events = events.filter(function(e) { return e.asset_class === params.asset_class; });
+        if (params.direction)   events = events.filter(function(e) { return e.direction === params.direction; });
+
+        var limit = parseInt(params.limit) || 500;
+        if (events.length > limit) events = events.slice(-limit);
+
+        // Summary stats for calibration
+        var grades = {};
+        var cloudDists = [];
+        var suppDists  = [];
+        var resDists   = [];
+
+        events.forEach(function(e) {
+            grades[e.grade] = (grades[e.grade] || 0) + 1;
+            if (e.cloud_dist_atr !== null) cloudDists.push(e.cloud_dist_atr);
+            if (e.supp_dist_atr  !== null) suppDists.push(e.supp_dist_atr);
+            if (e.res_dist_atr   !== null) resDists.push(e.res_dist_atr);
+        });
+
+        function avg(arr) {
+            if (!arr.length) return null;
+            return Math.round((arr.reduce(function(a,b){return a+b;},0) / arr.length) * 100) / 100;
+        }
+        function pct(n, total) { return total ? Math.round(n / total * 1000) / 10 : 0; }
+
+        var total = events.length;
+        var gradeSummary = Object.keys(grades).map(function(g) {
+            return { grade: g, count: grades[g], pct: pct(grades[g], total) };
+        }).sort(function(a,b) { return b.count - a.count; });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            total:          data.total,
+            filtered:       total,
+            last_updated:   data.last_updated,
+            grade_summary:  gradeSummary,
+            avg_cloud_dist: avg(cloudDists),
+            avg_supp_dist:  avg(suppDists),
+            avg_res_dist:   avg(resDists),
+            events:         events
+        }));
         return;
     }
 

@@ -378,6 +378,7 @@ body {
     <div class="tab" onclick="showTab('newsbias',this);loadNewsBias()">News Bias</div>
     <div class="tab" onclick="showTab('tebriefing',this);loadTEBriefing()">&#x1F310; Macro</div>
     <div class="tab" onclick="showTab('igsentiment',this);loadIGSentiment()">&#x1F9ED; Sentiment</div>
+    <div class="tab" onclick="showTab('loccalib',this);loadLocCalib()">&#x1F4CD; Location</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -574,6 +575,78 @@ body {
     <div class="card">
         <div class="card-header"><span class="card-title">&#x1F4CA; Sentiment Summary</span></div>
         <div class="card-body" id="igs-summary-body"><div class="loading">&#x23F3;</div></div>
+    </div>
+</div>
+
+<!-- LOCATION CALIBRATION TAB -->
+<div class="page" id="tab-loccalib">
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F4CD; Location Grade Distribution</span>
+            <span class="card-meta" id="lc-meta">Loading&#x2026;</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px 6px">
+            <select id="lc-pair" onchange="renderLocCalib()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Pairs</option>
+            </select>
+            <select id="lc-dir" onchange="renderLocCalib()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Directions</option>
+                <option value="LONG">LONG</option>
+                <option value="SHORT">SHORT</option>
+                <option value="NEUTRAL">NEUTRAL</option>
+            </select>
+            <select id="lc-asset" onchange="renderLocCalib()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Asset Classes</option>
+                <option value="FX">FX</option>
+                <option value="METALS">Metals</option>
+                <option value="ENERGY">Energy</option>
+                <option value="INDICES">Indices</option>
+                <option value="CRYPTO">Crypto</option>
+                <option value="BONDS">Bonds</option>
+            </select>
+        </div>
+        <div class="card-body" id="lc-grades"><div class="loading">Fetching location history&#x2026;</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px" class="mb">
+        <div class="card">
+            <div class="card-header"><span class="card-title">&#x2601; Cloud Distance</span></div>
+            <div class="card-body" id="lc-cloud-stats" style="font-size:0.8rem;"><div class="loading">&#x2026;</div></div>
+        </div>
+        <div class="card">
+            <div class="card-header"><span class="card-title">&#x25BC; Support Distance</span></div>
+            <div class="card-body" id="lc-supp-stats" style="font-size:0.8rem;"><div class="loading">&#x2026;</div></div>
+        </div>
+        <div class="card">
+            <div class="card-header"><span class="card-title">&#x25B2; Resistance Distance</span></div>
+            <div class="card-body" id="lc-res-stats" style="font-size:0.8rem;"><div class="loading">&#x2026;</div></div>
+        </div>
+    </div>
+
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F4CB; Calibration Summary</span>
+            <span class="card-meta">Use these averages to tune Profile settings</span>
+        </div>
+        <div class="card-body" id="lc-calib-tips" style="font-size:0.8rem;"></div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Raw Location Events</span>
+            <span class="card-meta" id="lc-raw-meta"></span>
+        </div>
+        <div style="overflow-x:auto">
+            <table class="data-table" id="lc-raw-table">
+                <thead><tr>
+                    <th>Time</th><th>Pair</th><th>Class</th><th>Dir</th>
+                    <th>Grade</th><th>Zone</th><th>Zone ATR</th>
+                    <th>Cloud Pos</th><th>Cloud ATR</th>
+                    <th>Supp ATR</th><th>Res ATR</th><th>Breakout</th>
+                </tr></thead>
+                <tbody id="lc-raw-body"><tr><td colspan="12" style="text-align:center;color:var(--text-muted)">Load data above</td></tr></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -1353,6 +1426,159 @@ function igSentimentBg(signal, strength) {
     if (signal === 'BULLISH') return strength === 'STRONG' ? 'rgba(74,222,128,0.08)' : 'rgba(74,222,128,0.04)';
     if (signal === 'BEARISH') return strength === 'STRONG' ? 'rgba(248,113,113,0.08)' : 'rgba(248,113,113,0.04)';
     return 'transparent';
+}
+
+function loadLocCalib() {
+    fetch(API_BASE + '/location-history?limit=2000')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            window._locHistoryAll = d;
+            populateLocPairFilter(d.events || []);
+            renderLocCalib();
+        })
+        .catch(function(e) {
+            document.getElementById('lc-grades').innerHTML = '<p style="color:var(--color-fail)">Failed to load: ' + e.message + '</p>';
+        });
+}
+
+function populateLocPairFilter(events) {
+    var pairs = {};
+    events.forEach(function(e) { if (e.pair) pairs[e.pair] = 1; });
+    var sel = document.getElementById('lc-pair');
+    var sorted = Object.keys(pairs).sort();
+    sorted.forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p; opt.textContent = p;
+        sel.appendChild(opt);
+    });
+}
+
+function renderLocCalib() {
+    var d = window._locHistoryAll;
+    if (!d) return;
+    var events = d.events || [];
+
+    var pairF  = document.getElementById('lc-pair').value;
+    var dirF   = document.getElementById('lc-dir').value;
+    var assetF = document.getElementById('lc-asset').value;
+
+    if (pairF)  events = events.filter(function(e) { return e.pair === pairF; });
+    if (dirF)   events = events.filter(function(e) { return e.direction === dirF; });
+    if (assetF) events = events.filter(function(e) { return e.asset_class === assetF; });
+
+    var total = events.length;
+    document.getElementById('lc-meta').textContent = total + ' events | Total stored: ' + d.total;
+
+    // Grade distribution
+    var gradeOrder = ['PRIME','AT_ZONE','AT_CLOUD','IN_CLOUD','WAIT','OPPOSED','BREAKOUT_RETEST','BREAKOUT_EXT','FALSE_BREAK','NO_DIRECTION'];
+    var gradeCols  = { PRIME:'#FFD700', AT_ZONE:'#00C853', AT_CLOUD:'#00BFFF', IN_CLOUD:'#7ec8e3',
+                       WAIT:'#888', OPPOSED:'#FF1744', BREAKOUT_RETEST:'#69f0ae',
+                       BREAKOUT_EXT:'#FF8C00', FALSE_BREAK:'#FF1744', NO_DIRECTION:'#888' };
+    var grades = {};
+    events.forEach(function(e) { grades[e.grade] = (grades[e.grade] || 0) + 1; });
+
+    var html = '<table class="data-table"><thead><tr><th>Grade</th><th class="r">Count</th><th class="r">%</th><th>Bar</th></tr></thead><tbody>';
+    gradeOrder.forEach(function(g) {
+        if (!grades[g]) return;
+        var cnt = grades[g];
+        var pct = total ? Math.round(cnt / total * 1000) / 10 : 0;
+        var col = gradeCols[g] || '#888';
+        var barW = Math.round(pct * 2);
+        html += '<tr><td><span style="color:' + col + ';font-weight:700">' + g + '</span></td>' +
+                '<td class="r">' + cnt + '</td><td class="r">' + pct + '%</td>' +
+                '<td><div style="background:' + col + ';width:' + barW + 'px;height:10px;border-radius:2px;opacity:0.7"></div></td></tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('lc-grades').innerHTML = html;
+
+    // Distance stats per grade
+    function statsByGrade(field) {
+        var byGrade = {};
+        events.forEach(function(e) {
+            var v = e[field];
+            if (v !== null && v > 0) {
+                if (!byGrade[e.grade]) byGrade[e.grade] = [];
+                byGrade[e.grade].push(v);
+            }
+        });
+        return byGrade;
+    }
+    function avg(arr) { return arr.length ? Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length*100)/100 : null; }
+    function mn(arr)  { return arr.length ? Math.round(Math.min.apply(null,arr)*100)/100 : null; }
+
+    function renderDistCard(elId, byGrade) {
+        var h = '';
+        gradeOrder.forEach(function(g) {
+            if (!byGrade[g] || !byGrade[g].length) return;
+            var a = avg(byGrade[g]); var m = mn(byGrade[g]);
+            var col = gradeCols[g] || '#888';
+            h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border-color)">' +
+                 '<span style="color:' + col + ';font-weight:600;font-size:0.7rem">' + g + '</span>' +
+                 '<span style="color:var(--text-secondary);font-size:0.7rem">avg <strong>' + a + '</strong> | min <strong>' + m + '</strong> ATR</span></div>';
+        });
+        document.getElementById(elId).innerHTML = h || '<span style="color:var(--text-muted)">No data</span>';
+    }
+
+    renderDistCard('lc-cloud-stats', statsByGrade('cloud_dist_atr'));
+    renderDistCard('lc-supp-stats',  statsByGrade('supp_dist_atr'));
+    renderDistCard('lc-res-stats',   statsByGrade('res_dist_atr'));
+
+    // Calibration tips
+    var cloudByGrade = statsByGrade('cloud_dist_atr');
+    var primeCloud   = cloudByGrade['PRIME']   ? avg(cloudByGrade['PRIME'])   : null;
+    var waitCloud    = cloudByGrade['WAIT']     ? avg(cloudByGrade['WAIT'])    : null;
+    var atCloudDist  = cloudByGrade['AT_CLOUD'] ? avg(cloudByGrade['AT_CLOUD']): null;
+
+    var tips = '<div style="display:grid;gap:8px">';
+    if (atCloudDist !== null) {
+        tips += '<div style="padding:8px;background:var(--bg-tertiary);border-radius:6px;border-left:3px solid #00BFFF">' +
+                '<strong style="color:#00BFFF">Cloud Proximity setting:</strong> ' +
+                'AT_CLOUD grades average <strong>' + atCloudDist + ' ATR</strong> from cloud edge. ' +
+                'Set Cloud Proximity ATR to at least <strong>' + (Math.round((atCloudDist + 0.05)*10)/10) + '</strong> to catch these.</div>';
+    }
+    if (primeCloud !== null) {
+        tips += '<div style="padding:8px;background:var(--bg-tertiary);border-radius:6px;border-left:3px solid #FFD700">' +
+                '<strong style="color:#FFD700">PRIME zones:</strong> ' +
+                'Cloud distance at PRIME grade averages <strong>' + primeCloud + ' ATR</strong>. ' +
+                'These are your best entry signals.</div>';
+    }
+    var suppByGrade = statsByGrade('supp_dist_atr');
+    var atZoneSupp  = suppByGrade['AT_ZONE'] ? avg(suppByGrade['AT_ZONE']) : null;
+    if (atZoneSupp !== null) {
+        tips += '<div style="padding:8px;background:var(--bg-tertiary);border-radius:6px;border-left:3px solid #00C853">' +
+                '<strong style="color:#00C853">Zone Proximity setting:</strong> ' +
+                'AT_ZONE grades average <strong>' + atZoneSupp + ' ATR</strong> from support. ' +
+                'Set Zone Proximity ATR to at least <strong>' + (Math.round((atZoneSupp + 0.05)*10)/10) + '</strong>.</div>';
+    }
+    tips += '</div>';
+    if (primeCloud === null && atZoneSupp === null && atCloudDist === null) {
+        tips = '<p style="color:var(--text-muted)">Not enough data yet. Tips appear after a few hours of location webhooks.</p>';
+    }
+    document.getElementById('lc-calib-tips').innerHTML = tips;
+
+    // Raw table
+    document.getElementById('lc-raw-meta').textContent = total + ' rows shown';
+    var recent = events.slice(-100).reverse();
+    var tbody = '';
+    recent.forEach(function(e) {
+        var gc = gradeCols[e.grade] || '#888';
+        var dt = e.timestamp ? new Date(e.timestamp).toLocaleString('en-AU',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+        tbody += '<tr>' +
+            '<td style="font-size:0.65rem;color:var(--text-muted)">' + dt + '</td>' +
+            '<td><strong>' + (e.pair||'') + '</strong></td>' +
+            '<td style="font-size:0.65rem">' + (e.asset_class||'') + '</td>' +
+            '<td style="font-size:0.65rem">' + (e.direction||'') + '</td>' +
+            '<td><span style="color:' + gc + ';font-weight:700;font-size:0.7rem">' + (e.grade||'') + '</span></td>' +
+            '<td style="font-size:0.65rem">' + (e.zone||'') + '</td>' +
+            '<td class="r" style="font-size:0.65rem">' + (e.zone_dist_atr||'') + '</td>' +
+            '<td style="font-size:0.65rem">' + (e.cloud_pos||'') + '</td>' +
+            '<td class="r" style="font-size:0.65rem">' + (e.cloud_dist_atr||'') + '</td>' +
+            '<td class="r" style="font-size:0.65rem">' + (e.supp_dist_atr||'') + '</td>' +
+            '<td class="r" style="font-size:0.65rem">' + (e.res_dist_atr||'') + '</td>' +
+            '<td style="font-size:0.65rem">' + (e.breakout||'') + '</td>' +
+            '</tr>';
+    });
+    document.getElementById('lc-raw-body').innerHTML = tbody || '<tr><td colspan="12" style="text-align:center;color:var(--text-muted)">No events</td></tr>';
 }
 
 function loadIGSentiment() {
