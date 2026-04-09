@@ -181,6 +181,8 @@ fx_minRoundTch  = input.int(3,      "Min Round Number Touches",          group=g
 fx_roundIncr    = input.float(0.01, "Round Number Increment (0=auto)",   group=grpFX, minval=0, step=0.0001,
                    tooltip="0=auto. FX majors=0.01, JPY pairs=1.0. Auto-detected from price if 0.")
 fx_retestWin    = input.int(2,      "Breakout Retest Window (bars)",     group=grpFX, minval=1, maxval=8)
+fx_mergeGap     = input.float(0.3,  "Merge Gap ATR x (zones closer than this merge)", group=grpFX, minval=0.0, maxval=2.0, step=0.05,
+                   tooltip="Zones within this distance of each other merge into one, even if not overlapping. 0 = only merge exact overlaps.")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROFILE — METALS
@@ -203,6 +205,7 @@ met_minRoundTch = input.int(2,      "Min Round Number Touches",          group=g
 met_roundIncr   = input.float(10.0, "Round Number Increment",            group=grpMET, minval=0, step=0.5,
                    tooltip="Gold=10, Silver=0.5")
 met_retestWin   = input.int(3,      "Breakout Retest Window (bars)",     group=grpMET, minval=1, maxval=8)
+met_mergeGap    = input.float(0.4,  "Merge Gap ATR x", group=grpMET, minval=0.0, maxval=2.0, step=0.05)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROFILE — ENERGY
@@ -224,6 +227,7 @@ ene_exhausted   = input.int(5,      "Exhausted At (touches)",            group=g
 ene_minRoundTch = input.int(2,      "Min Round Number Touches",          group=grpENE, minval=0, maxval=5)
 ene_roundIncr   = input.float(1.0,  "Round Number Increment",            group=grpENE, minval=0, step=0.5)
 ene_retestWin   = input.int(3,      "Breakout Retest Window (bars)",     group=grpENE, minval=1, maxval=8)
+ene_mergeGap    = input.float(0.5,  "Merge Gap ATR x", group=grpENE, minval=0.0, maxval=2.0, step=0.05)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROFILE — INDICES
@@ -246,6 +250,7 @@ idx_minRoundTch = input.int(2,      "Min Round Number Touches",          group=g
 idx_roundIncr   = input.float(50.0, "Round Number Increment",            group=grpIDX, minval=0, step=10.0,
                    tooltip="e.g. S&P500=50, Nasdaq=100, DAX=100, AU200=50")
 idx_retestWin   = input.int(2,      "Breakout Retest Window (bars)",     group=grpIDX, minval=1, maxval=8)
+idx_mergeGap    = input.float(0.4,  "Merge Gap ATR x", group=grpIDX, minval=0.0, maxval=2.0, step=0.05)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROFILE — CRYPTO
@@ -268,6 +273,7 @@ cry_minRoundTch = input.int(1,       "Min Round Number Touches",          group=
 cry_roundIncr   = input.float(1000.0,"Round Number Increment",            group=grpCRY, minval=0, step=100.0,
                    tooltip="BTC=1000, ETH=100, smaller alts=10")
 cry_retestWin   = input.int(3,       "Breakout Retest Window (bars)",     group=grpCRY, minval=1, maxval=8)
+cry_mergeGap    = input.float(0.6,  "Merge Gap ATR x", group=grpCRY, minval=0.0, maxval=2.0, step=0.05)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROFILE — BONDS
@@ -289,6 +295,7 @@ bnd_exhausted   = input.int(4,      "Exhausted At (touches)",            group=g
 bnd_minRoundTch = input.int(2,      "Min Round Number Touches",          group=grpBND, minval=0, maxval=5)
 bnd_roundIncr   = input.float(0.5,  "Round Number Increment",            group=grpBND, minval=0, step=0.25)
 bnd_retestWin   = input.int(2,      "Breakout Retest Window (bars)",     group=grpBND, minval=1, maxval=8)
+bnd_mergeGap    = input.float(0.3,  "Merge Gap ATR x", group=grpBND, minval=0.0, maxval=2.0, step=0.05)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // RESOLVE ACTIVE PROFILE
@@ -314,6 +321,7 @@ _isJPYQuote = str.endswith(_t, "JPY")
 if roundIncr == 0.0 and _isJPYQuote
     roundIncr := 1.0
 retestWin   = fx_retestWin
+mergeGap    = fx_mergeGap
 
 if assetClass == "METALS"
     zoneHW      := met_zoneHW
@@ -331,6 +339,7 @@ if assetClass == "METALS"
     minRoundTch := met_minRoundTch
     roundIncr   := met_roundIncr
     retestWin   := met_retestWin
+    mergeGap    := met_mergeGap
 else if assetClass == "ENERGY"
     zoneHW      := ene_zoneHW
     zoneProxMul := ene_zoneProx
@@ -347,6 +356,7 @@ else if assetClass == "ENERGY"
     minRoundTch := ene_minRoundTch
     roundIncr   := ene_roundIncr
     retestWin   := ene_retestWin
+    mergeGap    := ene_mergeGap
 else if assetClass == "INDICES"
     zoneHW      := idx_zoneHW
     zoneProxMul := idx_zoneProx
@@ -363,6 +373,7 @@ else if assetClass == "INDICES"
     minRoundTch := idx_minRoundTch
     roundIncr   := idx_roundIncr
     retestWin   := idx_retestWin
+    mergeGap    := idx_mergeGap
 else if assetClass == "CRYPTO"
     zoneHW      := cry_zoneHW
     zoneProxMul := cry_zoneProx
@@ -379,6 +390,7 @@ else if assetClass == "CRYPTO"
     minRoundTch := cry_minRoundTch
     roundIncr   := cry_roundIncr
     retestWin   := cry_retestWin
+    mergeGap    := cry_mergeGap
 else if assetClass == "BONDS"
     zoneHW      := bnd_zoneHW
     zoneProxMul := bnd_zoneProx
@@ -395,6 +407,7 @@ else if assetClass == "BONDS"
     minRoundTch := bnd_minRoundTch
     roundIncr   := bnd_roundIncr
     retestWin   := bnd_retestWin
+    mergeGap    := bnd_mergeGap
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ATR + DERIVED SIZES
@@ -884,7 +897,8 @@ if barstate.islast
     for k = 0 to nz - 1
         array.push(absorbed, false)
 
-    maxHalfW = atr14 * zoneHW  // cap: never wider than a single zone
+    maxHalfW    = atr14 * zoneHW       // cap: never wider than a single zone
+    mergeGapAbs = atr14 * mergeGap     // proximity gap for near-miss merging
 
     if nz > 0
         for i = 0 to nz - 1
@@ -903,8 +917,8 @@ if barstate.islast
                     for j = i + 1 to nz - 1
                         if not array.get(absorbed, j)
                             zj = array.get(zones, j)
-                            if zj.bot <= iTop and zj.top >= iBot
-                                // Intersection: take INNER boundaries
+                            if zj.bot <= iTop + mergeGapAbs and zj.top >= iBot - mergeGapAbs
+                                // Intersection: take INNER boundaries (gap zones centre-point merge)
                                 if zj.top < iTop
                                     iTop := zj.top
                                 if zj.bot > iBot
