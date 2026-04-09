@@ -875,43 +875,44 @@ if barstate.islast
                     else
                         zj.conflSrc := zj.conflSrc + "+" + zi.src
 
-    // Pass 2: merge overlapping zones into single combined zones
-    // Build merged zone list — each zone either standalone or absorbed into a group
+    // Pass 2: merge overlapping zones using INTERSECTION (not union)
+    // The merged box is the overlapping region shared by all zones in the group,
+    // capped at 2x zoneHW ATR so it never grows wider than a single zone.
     merged      = array.new<Zone>()
     absorbed    = array.new_bool(0)
     nz          = array.size(zones)
     for k = 0 to nz - 1
         array.push(absorbed, false)
 
+    maxHalfW = atr14 * zoneHW  // cap: never wider than a single zone
+
     if nz > 0
         for i = 0 to nz - 1
             if not array.get(absorbed, i)
-                zi       = array.get(zones, i)
-                mTop     = zi.top
-                mBot     = zi.bot
-                mSrc     = zi.src
-                mTouches = zi.touches
-                mConfl   = zi.confluence
+                zi        = array.get(zones, i)
+                // Intersection starts as the first zone boundaries
+                iTop      = zi.top
+                iBot      = zi.bot
+                mSrc      = zi.src
+                mTouches  = zi.touches
+                mConfl    = zi.confluence
                 mStrength = zi.strength
 
-                // Find all zones overlapping with this one and absorb them
+                // Absorb overlapping zones, narrowing to intersection
                 if i < nz - 1
                     for j = i + 1 to nz - 1
                         if not array.get(absorbed, j)
                             zj = array.get(zones, j)
-                            if zj.bot <= mTop and zj.top >= mBot
-                                // Expand the merged box
-                                if zj.top > mTop
-                                    mTop := zj.top
-                                if zj.bot < mBot
-                                    mBot := zj.bot
-                                // Combine source names
+                            if zj.bot <= iTop and zj.top >= iBot
+                                // Intersection: take INNER boundaries
+                                if zj.top < iTop
+                                    iTop := zj.top
+                                if zj.bot > iBot
+                                    iBot := zj.bot
                                 mSrc := mSrc + "+" + zj.src
-                                // Use highest touch count
                                 if zj.touches > mTouches
                                     mTouches := zj.touches
                                 mConfl := true
-                                // Use strongest strength
                                 if zj.strength == "EXHAUSTED" or mStrength == "EXHAUSTED"
                                     mStrength := "EXHAUSTED"
                                 else if zj.strength == "STRONG" or mStrength == "STRONG"
@@ -920,8 +921,13 @@ if barstate.islast
                                     mStrength := "MODERATE"
                                 array.set(absorbed, j, true)
 
-                mLevel = (mTop + mBot) / 2
-                array.push(merged, Zone.new(mLevel, mTop, mBot, mSrc, zi.srcType, mTouches, mStrength, mConfl, ""))
+                // Cap height at 2x zoneHW so no merged zone is fatter than a single zone
+                mLevel = (iTop + iBot) / 2
+                if iTop - iBot > maxHalfW * 2
+                    iTop := mLevel + maxHalfW
+                    iBot := mLevel - maxHalfW
+
+                array.push(merged, Zone.new(mLevel, iTop, iBot, mSrc, zi.srcType, mTouches, mStrength, mConfl, ""))
                 array.set(absorbed, i, true)
 
     // Draw merged zones
