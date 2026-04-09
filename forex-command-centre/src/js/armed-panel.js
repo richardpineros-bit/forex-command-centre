@@ -1,4 +1,4 @@
-// armed-panel.js v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -89,10 +89,12 @@
         var changed = false;
         armedPairs.forEach(function(p) {
             var rec = _dismissedPairs[p.pair];
-            if (rec) {
-                // v1.5.0: Use armedAt (first arm time, stable) NOT timestamp (updates every candle).
-                // Using timestamp caused dismiss to be defeated on every 4H candle-close re-ARMED.
-                var armedAt     = new Date(p.armedAt || p.timestamp).getTime();
+            if (rec && p.armedAt) {
+                // v1.5.1: Only auto-restore if the pair has a stable armedAt field (set by
+                // server v2.10.1+). Without armedAt, timestamp updates every candle close
+                // and would defeat the dismiss immediately. Pairs lacking armedAt stay
+                // dismissed until naturally BLOCKED and re-armed with the new server.
+                var armedAt     = new Date(p.armedAt).getTime();
                 var dismissedAt = new Date(rec.dismissedAt).getTime();
                 if (armedAt > dismissedAt) {
                     delete _dismissedPairs[p.pair];
@@ -100,6 +102,7 @@
                     console.log('[ArmedPanel] Auto-restored ' + p.pair + ' — new ARMED since dismiss');
                 }
             }
+            // No armedAt = pre-v2.10.1 pair; keep dismissed, do not auto-restore
         });
         if (changed) saveDismissed();
     }
@@ -830,12 +833,14 @@
         _dismissedPairs[pairName] = { dismissedAt: new Date().toISOString() };
         saveDismissed();
         if (window._lastArmedData) renderArmedState(window._lastArmedData);
+        if (window.refreshQuickAccessBar) window.refreshQuickAccessBar();
     };
 
     window.restoreArmedPair = function(pairName) {
         delete _dismissedPairs[pairName];
         saveDismissed();
         if (window._lastArmedData) renderArmedState(window._lastArmedData);
+        if (window.refreshQuickAccessBar) window.refreshQuickAccessBar();
     };
 
     window.toggleArmedDismissed = function() {
