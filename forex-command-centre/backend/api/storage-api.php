@@ -36,7 +36,11 @@ $allowedFiles = [
     'daily-context' => 'daily-context.json',
     'armed-exclude' => 'armed-exclude.json',
     'armed-dismissed' => 'armed-dismissed.json',
-    'dashboard-theme' => 'dashboard-theme.json'
+    'dashboard-theme' => 'dashboard-theme.json',
+    'armed-validation' => 'armed-validation.json',
+    'scans' => 'scans.json',
+    'goals' => 'goals.json',
+    'no-trades' => 'no-trades.json'
 ];
 
 // ============================================================
