@@ -490,11 +490,13 @@ type Zone
 countTouches(zTop, zBot) =>
     count = 0
     lastTch = -tchCooldown - 1
-    for i = 0 to tchLookback - 1
-        if (i - lastTch) >= tchCooldown
-            if low[i] <= zTop and high[i] >= zBot
-                count += 1
-                lastTch := i
+    safeLimit = math.min(tchLookback, bar_index)
+    if safeLimit > 0
+        for i = 0 to safeLimit - 1
+            if (i - lastTch) >= tchCooldown
+                if low[i] <= zTop and high[i] >= zBot
+                    count += 1
+                    lastTch := i
     count
 
 toStrength(t) =>
