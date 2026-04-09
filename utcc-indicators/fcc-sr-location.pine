@@ -895,29 +895,30 @@ if barstate.islast
                 mStrength = zi.strength
 
                 // Find all zones overlapping with this one and absorb them
-                for j = i + 1 to nz - 1
-                    if not array.get(absorbed, j)
-                        zj = array.get(zones, j)
-                        if zj.bot <= mTop and zj.top >= mBot
-                            // Expand the merged box
-                            if zj.top > mTop
-                                mTop := zj.top
-                            if zj.bot < mBot
-                                mBot := zj.bot
-                            // Combine source names
-                            mSrc := mSrc + "+" + zj.src
-                            // Use highest touch count
-                            if zj.touches > mTouches
-                                mTouches := zj.touches
-                            mConfl := true
-                            // Use strongest strength
-                            if zj.strength == "EXHAUSTED" or mStrength == "EXHAUSTED"
-                                mStrength := "EXHAUSTED"
-                            else if zj.strength == "STRONG" or mStrength == "STRONG"
-                                mStrength := "STRONG"
-                            else if zj.strength == "MODERATE" or mStrength == "MODERATE"
-                                mStrength := "MODERATE"
-                            array.set(absorbed, j, true)
+                if i < nz - 1
+                    for j = i + 1 to nz - 1
+                        if not array.get(absorbed, j)
+                            zj = array.get(zones, j)
+                            if zj.bot <= mTop and zj.top >= mBot
+                                // Expand the merged box
+                                if zj.top > mTop
+                                    mTop := zj.top
+                                if zj.bot < mBot
+                                    mBot := zj.bot
+                                // Combine source names
+                                mSrc := mSrc + "+" + zj.src
+                                // Use highest touch count
+                                if zj.touches > mTouches
+                                    mTouches := zj.touches
+                                mConfl := true
+                                // Use strongest strength
+                                if zj.strength == "EXHAUSTED" or mStrength == "EXHAUSTED"
+                                    mStrength := "EXHAUSTED"
+                                else if zj.strength == "STRONG" or mStrength == "STRONG"
+                                    mStrength := "STRONG"
+                                else if zj.strength == "MODERATE" or mStrength == "MODERATE"
+                                    mStrength := "MODERATE"
+                                array.set(absorbed, j, true)
 
                 mLevel = (mTop + mBot) / 2
                 array.push(merged, Zone.new(mLevel, mTop, mBot, mSrc, zi.srcType, mTouches, mStrength, mConfl, ""))
