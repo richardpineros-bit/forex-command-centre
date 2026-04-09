@@ -35,14 +35,8 @@ $allowedFiles = [
     'app-state' => 'app-state.json',
     'daily-context' => 'daily-context.json',
     'armed-exclude' => 'armed-exclude.json',
-    'dashboard-theme' => 'dashboard-theme.json',
     'armed-dismissed' => 'armed-dismissed.json',
-    'scans' => 'scans.json',
-    'goals' => 'goals.json',
-    'no-trades' => 'no-trades.json',
-    'armed-validation' => 'armed-validation.json',
-    'location'         => 'location.json',
-    'location-history'  => 'location-history.json'
+    'dashboard-theme' => 'dashboard-theme.json'
 ];
 
 // ============================================================
@@ -137,7 +131,8 @@ if ($action === 'canExecuteTrade') {
     exit;
 }
 // Get requested file
-$fileKey = $_GET['file'] ?? $_POST['file'] ?? null;
+$_jsonBody = json_decode(file_get_contents('php://input'), true);
+$fileKey = $_GET['file'] ?? $_POST['file'] ?? ($_jsonBody['file'] ?? null);
 
 if (!$fileKey || !isset($allowedFiles[$fileKey])) {
     http_response_code(400);
@@ -173,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 // Handle POST - Save data
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
+    $input = $_jsonBody ?? json_decode(file_get_contents('php://input'), true);
     
     if (!isset($input['data'])) {
         http_response_code(400);
