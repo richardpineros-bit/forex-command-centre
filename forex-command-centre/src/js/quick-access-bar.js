@@ -1,4 +1,4 @@
-// quick-access-bar.js v1.2.0 - Filter dismissed pairs via ArmedPanel.getDismissedPairs(); v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
+// quick-access-bar.js v1.2.1 - Apply armed panel isExcluded filter (bonds etc.); v1.2.0 - Filter dismissed pairs via ArmedPanel.getDismissedPairs(); v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
 // Quick Access Bar Manager
 const QuickAccessBar = (function() {
     const STATE_URL = 'https://api.pineros.club/state';
@@ -89,10 +89,11 @@ const QuickAccessBar = (function() {
             });
         }
         
-        // Add armed instruments (exclude R-OFFSESSION and dismissed pairs)
-        var _dismissed = (window.ArmedPanel && window.ArmedPanel.getDismissedPairs) ? window.ArmedPanel.getDismissedPairs() : {};
+        // Add armed instruments (exclude R-OFFSESSION, dismissed, and excluded pairs)
+        var _dismissed  = (window.ArmedPanel && window.ArmedPanel.getDismissedPairs) ? window.ArmedPanel.getDismissedPairs() : {};
+        var _isExcluded = (window.ArmedPanel && window.ArmedPanel.isExcluded) ? window.ArmedPanel.isExcluded : function() { return false; };
         if (armedInstruments && armedInstruments.length > 0) {
-            armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION' && !_dismissed[a.pair]; }).forEach(armed => {
+            armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION' && !_dismissed[a.pair] && !_isExcluded(a.pair); }).forEach(armed => {
                 const ttlStatus = calculateTTLStatus(armed.timestamp);
                 var alertT = (armed.alertType || 'TF_ARMED').toUpperCase();
                 var tfColour = alertT === 'TR_ARMED' ? '#fb923c' : '#60a5fa';

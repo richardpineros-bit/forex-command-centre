@@ -1,4 +1,4 @@
-// armed-panel.js v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -825,7 +825,8 @@
     window.refreshArmedPanel = fetchArmedState;
     window.ArmedPanel = {
         toggleContextFilter: toggleContextFilter,
-        getDismissedPairs: function() { return _dismissedPairs; }
+        getDismissedPairs: function() { return _dismissedPairs; },
+        isExcluded: isExcluded
     };
     window.openTV = openTV;
 
