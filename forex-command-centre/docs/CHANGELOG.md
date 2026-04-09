@@ -1,3 +1,20 @@
+## [v5.11.0] - 2026-04-09
+### Fix: Ultimate UTCC v2.3.0 — TR System + Full Integration Audit
+
+**Pine Script (ultimate-utcc.pine v2.3.0):**
+- TR thresholds recalibrated: FX 85→70, Crypto 88→72, Metals 85→70, Energy 83→68, Bonds 78→63, Indices 83→68. Old values assumed ribbon (15pts) would contribute regularly — it almost never does at exhaustion.
+- Ribbon removed from TR score entirely (architecturally wrong — trend strength metric used in reversal system). Still defined but contributes 0. Threshold adjusted accordingly.
+- Dead `TR-BLOCK-RIBBON` reason code removed from reason logic
+- Stale `RIB:` removed from `trBreakdown` display string
+- `playbook` added to all 4 alert() JSON payloads (was missing — showed blank on FCC cards)
+
+**Alert Server (index.js v3.0.0):**
+- Pure JSON parsing path added for Ultimate UTCC `alert()` payloads. Old parser expected pipe-delimited header and returned null for pure JSON — all Ultimate UTCC alerts were silently dropped.
+- `entry_zone` field mapping fixed: was reading `ctx.entry`, Ultimate UTCC sends `ctx.entry_zone`
+- `atr_pct` field mapping fixed: was reading `ctx.vol_level`, Ultimate UTCC sends `ctx.atr_pct`
+- Playbook extraction now reads `json.playbook` (top-level) in addition to `ctx.playbook`
+
+
 ## [v5.10.0] - 2026-04-08
 ### Feature: Location Engine - Live Entry Location Grade in Armed Panel
 

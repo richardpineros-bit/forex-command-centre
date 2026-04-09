@@ -1,12 +1,13 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.2.0
+// ULTIMATE UTCC v2.3.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
 // Ported core engine from UTCC Universal v3.0.0
 // Display: Compact (default) | Full (settings toggle)
+// v2.3.0: TR threshold recalibrated | Ribbon removed from TR score | TR-BLOCK-RIBBON removed | Playbook in alert payload
 // v2.2.0: Trend slope | Spread monitor | ATR guidance | Playbook | Execution | Score breakdown | Compact/Full modes
 // Pine Script v6
 // =============================================================================
@@ -73,42 +74,42 @@ riskGovState = input.string("NORMAL", "Risk Governor",  options=["NORMAL","REDUC
 // Per-asset thresholds
 var string GRP_FX = "FX Settings"
 fx_tfT=input.int(80,"TF Threshold",minval=60,maxval=95,group=GRP_FX)
-fx_trT=input.int(85,"TR Threshold",minval=70,maxval=99,group=GRP_FX)
+fx_trT=input.int(70,"TR Threshold",minval=55,maxval=99,group=GRP_FX)
 fx_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_FX)
 fx_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_FX)
 fx_quiet=input.bool(true,"Accept QUIET",group=GRP_FX)
 
 var string GRP_CRYPTO = "Crypto Settings"
 cr_tfT=input.int(85,"TF Threshold",minval=60,maxval=95,group=GRP_CRYPTO)
-cr_trT=input.int(88,"TR Threshold",minval=70,maxval=99,group=GRP_CRYPTO)
+cr_trT=input.int(72,"TR Threshold",minval=55,maxval=99,group=GRP_CRYPTO)
 cr_adx=input.int(25,"ADX Threshold",minval=10,maxval=50,group=GRP_CRYPTO)
 cr_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_CRYPTO)
 cr_quiet=input.bool(false,"Accept QUIET",group=GRP_CRYPTO)
 
 var string GRP_METALS = "Metals Settings"
 mt_tfT=input.int(79,"TF Threshold",minval=60,maxval=95,group=GRP_METALS)
-mt_trT=input.int(85,"TR Threshold",minval=70,maxval=99,group=GRP_METALS)
+mt_trT=input.int(70,"TR Threshold",minval=55,maxval=99,group=GRP_METALS)
 mt_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_METALS)
 mt_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_METALS)
 mt_quiet=input.bool(true,"Accept QUIET",group=GRP_METALS)
 
 var string GRP_ENERGY = "Energy Settings"
 en_tfT=input.int(78,"TF Threshold",minval=60,maxval=95,group=GRP_ENERGY)
-en_trT=input.int(83,"TR Threshold",minval=70,maxval=99,group=GRP_ENERGY)
+en_trT=input.int(68,"TR Threshold",minval=55,maxval=99,group=GRP_ENERGY)
 en_adx=input.int(19,"ADX Threshold",minval=10,maxval=50,group=GRP_ENERGY)
 en_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_ENERGY)
 en_quiet=input.bool(false,"Accept QUIET",group=GRP_ENERGY)
 
 var string GRP_BONDS = "Bonds Settings"
 bd_tfT=input.int(72,"TF Threshold",minval=60,maxval=95,group=GRP_BONDS)
-bd_trT=input.int(78,"TR Threshold",minval=70,maxval=99,group=GRP_BONDS)
+bd_trT=input.int(63,"TR Threshold",minval=55,maxval=99,group=GRP_BONDS)
 bd_adx=input.int(18,"ADX Threshold",minval=10,maxval=50,group=GRP_BONDS)
 bd_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_BONDS)
 bd_quiet=input.bool(true,"Accept QUIET",group=GRP_BONDS)
 
 var string GRP_INDICES = "Indices Settings"
 ix_tfT=input.int(78,"TF Threshold",minval=60,maxval=95,group=GRP_INDICES)
-ix_trT=input.int(83,"TR Threshold",minval=70,maxval=99,group=GRP_INDICES)
+ix_trT=input.int(68,"TR Threshold",minval=55,maxval=99,group=GRP_INDICES)
 ix_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_INDICES)
 ix_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_INDICES)
 ix_quiet=input.bool(true,"Accept QUIET",group=GRP_INDICES)
@@ -548,7 +549,6 @@ bool tfReadyShort = tfDirBear and tfScore >= tfThreshAdj and not entryExtended a
 // Trend Maturity 3/3     25      3/3 MTF required                HARD
 // RSI Divergence         20      Price/RSI diverging             HARD
 // HTF Structure          15      At Daily S/R level              HARD
-// Ribbon Width           15      Ribbon unusually wide           HARD
 // ADX Exhaustion         15      ADX peaked above 35, turning
 // ATR Blow-off           10      Spike then contraction
 // Total                 100
@@ -569,7 +569,7 @@ bool trAllGates   = trMtfGate and trDivGate and trStructGate
 int trMtfPts    = trMtfGate ? 25 : 0
 int trDivPts    = trDivGate ? 20 : 0
 int trStructPts = trStructGate ? 15 : 0
-int trRibbonPts = trRibbonGate ? 15 : 0
+int trRibbonPts = 0 // Ribbon removed from TR score: wrong tool for reversal system
 
 int trAdxPts = 0
 if adxPeaked
@@ -762,8 +762,7 @@ else if trHasDir and trMtfGate and not trDivGate
     trReason := "TR-BLOCK-NODIV"
 else if trHasDir and trMtfGate and trDivGate and not trStructGate
     trReason := "TR-BLOCK-NOSTRUCTURE"
-else if trHasDir and trMtfGate and not trRibbonGate
-    trReason := "TR-BLOCK-RIBBON"
+// TR-BLOCK-RIBBON removed: ribbon no longer a gate in TR system
 
 // Score tier labels (used in table + alert payload)
 string tfTier = tfScore >= 90 ? "EXCELLENT" : tfScore >= 85 ? "PERFECT" : tfScore >= tfThreshAdj ? "STRONG" : tfScore >= tfThreshAdj - 5 ? "READY" : "BELOW MIN"
@@ -800,7 +799,7 @@ if trArmed
 
 // Score Breakdown (compact — fits one table cell)
 string tfBreakdown = "MTF:" + str.tostring(tfMtfPts) + " ENT:" + str.tostring(math.round(tfEntryPts)) + " VOL:" + str.tostring(math.round(tfVolPts)) + " RSI:" + str.tostring(math.round(tfRsiPts)) + " CTX:" + str.tostring(math.round(tfCtxPts))
-string trBreakdown = "MAT:" + str.tostring(trMtfPts) + " DIV:" + str.tostring(trDivPts) + " STR:" + str.tostring(trStructPts) + " RIB:" + str.tostring(trRibbonPts) + " ADX:" + str.tostring(trAdxPts) + " ATR:" + str.tostring(trAtrPts)
+string trBreakdown = "MAT:" + str.tostring(trMtfPts) + " DIV:" + str.tostring(trDivPts) + " STR:" + str.tostring(trStructPts) + " ADX:" + str.tostring(trAdxPts) + " ATR:" + str.tostring(trAtrPts)
 
 // Slope display
 string slopeStr = trendSlopeUp ? "UP" : trendSlopeDown ? "DOWN" : "FLAT"
@@ -1161,16 +1160,16 @@ showTRAlerts = alertModeSel == "TR Only" or alertModeSel == "Both"
 
 if barstate.isconfirmed
     if showTFAlerts and tfArmed and tfDirBull
-        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"LONG","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBullCt) + '/4 BULL","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"LONG","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBullCt) + '/4 BULL","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"}}', alert.freq_once_per_bar)
 
     if showTFAlerts and tfArmed and tfDirBear
-        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"SHORT","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBearCt) + '/4 BEAR","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"SHORT","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBearCt) + '/4 BEAR","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"}}', alert.freq_once_per_bar)
 
     if showTRAlerts and trArmed and trDirLong
-        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BULL DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BULL DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
 
     if showTRAlerts and trArmed and trDirShort
-        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BEAR DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '"}}', alert.freq_once_per_bar)
+        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BEAR DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
 
 // Named alert conditions (for TradingView alert dialog)
 alertcondition(tfArmed and tfDirBull,  "TF LONG",  "TF Armed: LONG")

@@ -19,6 +19,7 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 const VERSION = '2.10.0';
 const CHANGES = [
+    '3.0.0 - Pure JSON parsing path for Ultimate UTCC alert() payloads; entry_zone + atr_pct field mapping fixed; playbook extraction added',
     '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
     '2.10.0 - Location History: append every location payload to location-history.json for calibration analysis',
     '2.9.0 - Location Engine: POST /webhook/location + GET /location endpoints; per-pair location grade fed from FCC-LOC Pine indicator',
@@ -715,6 +716,40 @@ function parseNewAlert(body) {
     var lines = text.split('\n');
     var headerLine = lines[0].trim();
 
+    // --- Pure JSON path (Ultimate UTCC alert() payloads) ---
+    // Ultimate UTCC fires alert() with raw JSON body. No pipe header.
+    if (headerLine.charAt(0) === '{') {
+        try {
+            var jsonAlert = JSON.parse(headerLine);
+            var jCtx = jsonAlert.context || {};
+            return {
+                type:         jsonAlert.type || 'TF_ARMED',
+                pair:         jsonAlert.pair || '',
+                primary:      jsonAlert.reason || jsonAlert.regime || '',
+                permission:   jsonAlert.permission || 'FULL',
+                maxRisk:      jsonAlert.position_size || (jsonAlert.type === 'TR_ARMED' ? '0.75R' : '1.5R'),
+                score:        parseInt(jsonAlert.score) || 0,
+                riskState:    jsonAlert.risk_state || 'K-NORMAL',
+                session:      jCtx.session || '',
+                timestamp:    new Date().toISOString(),
+                direction:    jsonAlert.direction || '',
+                entryZone:    jCtx.entry_zone || '',
+                mtf:          parseInt(jCtx.mtf) || 0,
+                criteria:     0,
+                volState:     jCtx.vol_state || '',
+                volBehaviour: '',
+                volLevel:     jCtx.atr_pct !== undefined ? String(jCtx.atr_pct) : '',
+                structExt:    '',
+                structBars:   null,
+                riskMult:     1.0,
+                rsi:          parseInt(jCtx.rsi) || 0,
+                playbook:     jsonAlert.playbook || ''
+            };
+        } catch (e) {
+            // Not valid JSON - fall through to pipe parser
+        }
+    }
+
     // Split scan line on pipe delimiter
     var parts = headerLine.split('|').map(function(p) { return p.trim(); });
     if (parts.length < 3) return null;
@@ -795,17 +830,17 @@ function parseNewAlert(body) {
                 // Extract from context object
                 var ctx = json.context || {};
                 direction = ctx.direction || json.direction || '';
-                entryZone = ctx.entry || json.entry || '';
+                entryZone = ctx.entry_zone || ctx.entry || json.entry || ''; // Ultimate UTCC sends entry_zone
                 mtf = parseInt(ctx.mtf) || 0;
                 criteria = parseInt(ctx.criteria) || 0;
                 volState = ctx.vol_state || '';
                 volBehaviour = ctx.vol_behaviour || '';
-                volLevel = ctx.vol_level || '';
+                volLevel = ctx.atr_pct !== undefined ? String(ctx.atr_pct) : (ctx.vol_level || ''); // Ultimate UTCC sends atr_pct
                 structExt = ctx.struct_ext || '';
                 structBars = ctx.struct_bars !== undefined ? ctx.struct_bars : null;
                 riskMult = parseFloat(ctx.risk_mult) || 1.0;
                 rsi = parseInt(ctx.rsi) || 0;
-                playbook = ctx.playbook || '';
+                playbook = json.playbook || ctx.playbook || '';
                 // Also extract top-level fields if header missed them
                 if (!permission && json.permission) permission = json.permission;
                 if (!session && ctx.session) session = ctx.session;
