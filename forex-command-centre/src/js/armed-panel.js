@@ -1,4 +1,4 @@
-// armed-panel.js v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -106,8 +106,6 @@
         });
         if (changed) saveDismissed();
     }
-
-    loadDismissed();
 
     // Armed panel instrument filter
     function getExcludedPairs() {
@@ -817,9 +815,14 @@
         return date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
     }
     
-    fetchArmedState();
-    setInterval(fetchArmedState, REFRESH_INTERVAL);
-    setInterval(fetchLocation, 5 * 60 * 1000); // refresh location every 5 minutes
+    // v1.5.3: await loadDismissed() before first fetchArmedState() to prevent
+    // race condition where state renders before dismissed pairs are loaded
+    (async function() {
+        await loadDismissed();
+        fetchArmedState();
+        setInterval(fetchArmedState, REFRESH_INTERVAL);
+        setInterval(fetchLocation, 5 * 60 * 1000);
+    })();
     
     // Global API
     window.refreshArmedPanel = fetchArmedState;
