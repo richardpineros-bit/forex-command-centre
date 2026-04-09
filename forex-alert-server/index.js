@@ -17,12 +17,13 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.10.0';
+const VERSION = '2.10.1';
 const CHANGES = [
     '3.0.0 - Pure JSON parsing path for Ultimate UTCC alert() payloads; entry_zone + atr_pct field mapping fixed; playbook extraction added',
     '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
     '2.10.0 - Location History: append every location payload to location-history.json for calibration analysis',
     '2.9.0 - Location Engine: POST /webhook/location + GET /location endpoints; per-pair location grade fed from FCC-LOC Pine indicator',
+    '2.10.1 - Preserve armedAt on re-ARMED; prevents dismiss reconcile defeat by repeated candle-close alerts',
     '2.8.0 - SESSION_RESET no longer clears armed pairs — natural disarm only; pairs survive session transitions',
     '2.7.0 - pushBlocked(): PWA push notification on BLOCKED alerts — position management signal with human-readable disarm reason',
     '2.6.0 - GET /te-snapshot: serve te-snapshot.json (Trading Economics macro briefing) with 8h staleness check',
@@ -1079,6 +1080,9 @@ var server = http.createServer(function(req, res) {
             if (alert.type === 'TF_ARMED' || alert.type === 'TR_ARMED' || alert.type === 'ARMED') {
                 var derivedType = alert.type === 'ARMED' ? 'TF_ARMED' : alert.type;
                 var derivedPosSize = derivedType === 'TR_ARMED' ? '0.75R' : '1.5R';
+                // v2.10.1: Preserve armedAt (first arm time) so dismiss reconcile
+                // is not defeated by repeated candle-close ARMED alerts updating timestamp
+                var existingPair = state.pairs[alert.pair];
                 state.pairs[alert.pair] = {
                     alertType: derivedType,
                     primary: alert.primary,
@@ -1088,6 +1092,7 @@ var server = http.createServer(function(req, res) {
                     score: alert.score || 0,
                     riskState: alert.riskState || 'K-NORMAL',
                     session: alert.session || '',
+                    armedAt: (existingPair && existingPair.armedAt) ? existingPair.armedAt : timestamp,
                     timestamp: timestamp,
                     // v2.1.0: UTCC context from JSON body
                     direction: alert.direction || '',

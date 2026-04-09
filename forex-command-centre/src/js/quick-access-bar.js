@@ -1,4 +1,4 @@
-// quick-access-bar.js v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
+// quick-access-bar.js v1.2.0 - Filter dismissed pairs via ArmedPanel.getDismissedPairs(); v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
 // Quick Access Bar Manager
 const QuickAccessBar = (function() {
     const STATE_URL = 'https://api.pineros.club/state';
@@ -89,9 +89,10 @@ const QuickAccessBar = (function() {
             });
         }
         
-        // Add armed instruments (exclude R-OFFSESSION -- shown in watchlist only)
+        // Add armed instruments (exclude R-OFFSESSION and dismissed pairs)
+        var _dismissed = (window.ArmedPanel && window.ArmedPanel.getDismissedPairs) ? window.ArmedPanel.getDismissedPairs() : {};
         if (armedInstruments && armedInstruments.length > 0) {
-            armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION'; }).forEach(armed => {
+            armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION' && !_dismissed[a.pair]; }).forEach(armed => {
                 const ttlStatus = calculateTTLStatus(armed.timestamp);
                 var alertT = (armed.alertType || 'TF_ARMED').toUpperCase();
                 var tfColour = alertT === 'TR_ARMED' ? '#fb923c' : '#60a5fa';

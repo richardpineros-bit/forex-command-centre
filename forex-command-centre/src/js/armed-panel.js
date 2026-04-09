@@ -1,4 +1,4 @@
-// armed-panel.js v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -89,8 +89,10 @@
         var changed = false;
         armedPairs.forEach(function(p) {
             var rec = _dismissedPairs[p.pair];
-            if (rec && p.timestamp) {
-                var armedAt    = new Date(p.timestamp).getTime();
+            if (rec) {
+                // v1.5.0: Use armedAt (first arm time, stable) NOT timestamp (updates every candle).
+                // Using timestamp caused dismiss to be defeated on every 4H candle-close re-ARMED.
+                var armedAt     = new Date(p.armedAt || p.timestamp).getTime();
                 var dismissedAt = new Date(rec.dismissedAt).getTime();
                 if (armedAt > dismissedAt) {
                     delete _dismissedPairs[p.pair];
@@ -612,7 +614,7 @@
 
         return '<div class="' + wrapperCls + '">' +
             dismissBtn +
-            '<a href="#" class="' + rowClass + ' armed-row-link" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
+            '<a href="#" class="' + rowClass + ' armed-row-link" data-pair="' + (p.pair || '') + '" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
                 '<span class="armed-pair-name">' + alertTypeBadge(p) + ' ' + (p.pair || '') + '</span>' +
                 '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
@@ -818,7 +820,10 @@
     
     // Global API
     window.refreshArmedPanel = fetchArmedState;
-    window.ArmedPanel = { toggleContextFilter: toggleContextFilter };
+    window.ArmedPanel = {
+        toggleContextFilter: toggleContextFilter,
+        getDismissedPairs: function() { return _dismissedPairs; }
+    };
     window.openTV = openTV;
 
     window.dismissArmedPair = function(pairName) {
@@ -864,9 +869,8 @@ async function clearExpiredArmed() {
     var expiredPairs = [];
     document.querySelectorAll('#armed-list .armed-ttl-expired').forEach(function(el) {
         var row = el.closest('.armed-pair-row');
-        if (row) {
-            var pairEl = row.querySelector('.armed-pair-name');
-            if (pairEl) expiredPairs.push(pairEl.textContent.trim());
+        if (row && row.dataset && row.dataset.pair) {
+            expiredPairs.push(row.dataset.pair);
         }
     });
     
