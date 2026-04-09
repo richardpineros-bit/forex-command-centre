@@ -563,7 +563,7 @@ bool trMtfGate    = mtfFullBull or mtfFullBear
 bool trDivGate    = (trDirLong and bullDiv) or (trDirShort and bearDiv)
 bool trStructGate = (trDirLong and atSupport) or (trDirShort and atResistance)
 bool trRibbonGate = ribbonWide
-bool trAllGates   = trMtfGate and trDivGate and trStructGate and trRibbonGate
+bool trAllGates   = trMtfGate and trDivGate and trStructGate
 
 // TR scoring (computed per direction)
 int trMtfPts    = trMtfGate ? 25 : 0
@@ -613,8 +613,11 @@ if tfMeetsArm
 else
     tfBarsAbove := 0
 
-// Arm
-if not tfArmed and tfBarsAbove >= armPersist
+// Arm -- block if price at adverse structure (location gate)
+bool tfLongAtResistance = (tfReadyLong  and atResistance)
+bool tfShortAtSupport   = (tfReadyShort and atSupport)
+bool tfLocationOK       = not tfLongAtResistance and not tfShortAtSupport
+if not tfArmed and tfBarsAbove >= armPersist and tfLocationOK
     tfArmed      := true
     tfArmedScore := tfScore
     tfDisarmCode := ""
