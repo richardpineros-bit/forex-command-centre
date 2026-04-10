@@ -17,8 +17,9 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.10.3';
+const VERSION = '2.11.0';
 const CHANGES = [
+    '2.11.0 - Location score enrichment: FCC-SRL grade drives entry location pts (0-25) added server-side to base UTCC score (max 75). enrichedScore + locScore + locGrade + locTimestamp exposed on /state. structExt derived from locGrade (FRESH/EXTENDED). Fixes broken PRIME/STANDARD/DEGRADED tier grouping in armed panel.',
     '2.10.3 - /state now exposes armedAt field (fixes dismiss auto-restore); pure JSON path reads context.playbook fallback (fixes blank playbook on Ultimate UTCC cards)',
     '3.0.0 - Pure JSON parsing path for Ultimate UTCC alert() payloads; entry_zone + atr_pct field mapping fixed; playbook extraction added',
     '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
@@ -499,6 +500,66 @@ function saveLocation(data) {
         fs.writeFileSync(LOCATION_FILE, JSON.stringify(data, null, 2));
     } catch (e) {
         console.error('[Location] Save error:', e.message);
+    }
+}
+
+// ============================================================================
+// LOCATION SCORE ENRICHMENT
+// Maps FCC-SRL grade to entry location pts and enriches the armed pair score.
+// Called in two places:
+//   1. When a UTCC alert arms a pair (location data may already exist)
+//   2. When a location update arrives for a pair that is already armed
+// ============================================================================
+
+function gradeToLocPts(grade) {
+    var map = {
+        'PRIME':           25,
+        'AT_ZONE':         20,
+        'BREAKOUT_RETEST': 20,
+        'AT_CLOUD':        12,
+        'IN_CLOUD':         6,
+        'WAIT':             0,
+        'OPPOSED':          0,
+        'FALSE_BREAK':      0,
+        'BREAKOUT_EXT':     0,
+        'NO_DIRECTION':     0
+    };
+    return map[grade] !== undefined ? map[grade] : 0;
+}
+
+function gradeToStructExt(grade) {
+    if (grade === 'PRIME' || grade === 'AT_ZONE' || grade === 'BREAKOUT_RETEST') return 'FRESH';
+    return 'EXTENDED';
+}
+
+function enrichArmedPair(pair) {
+    try {
+        var locData = loadLocation();
+        var now     = new Date();
+        var ttlMs   = CONFIG.LOCATION_TTL_HOURS * 60 * 60 * 1000;
+        var loc     = locData.pairs ? locData.pairs[pair] : null;
+
+        if (!loc || !loc.grade || loc.grade === 'NO_DATA') return false;
+        if ((now - new Date(loc.timestamp)) > ttlMs) return false;
+
+        var state = loadState();
+        if (!state.pairs[pair]) return false;
+
+        var baseScore = state.pairs[pair].score || 0;
+        var locPts    = gradeToLocPts(loc.grade);
+
+        state.pairs[pair].locScore      = locPts;
+        state.pairs[pair].enrichedScore = Math.min(100, baseScore + locPts);
+        state.pairs[pair].locGrade      = loc.grade;
+        state.pairs[pair].locTimestamp  = loc.timestamp;
+        state.pairs[pair].structExt     = gradeToStructExt(loc.grade);
+
+        saveState(state);
+        console.log('[Enrich] ' + pair + ' | grade:' + loc.grade + ' | locPts:' + locPts + ' | enriched:' + state.pairs[pair].enrichedScore + ' | structExt:' + state.pairs[pair].structExt);
+        return true;
+    } catch (e) {
+        console.error('[Enrich] Error enriching ' + pair + ':', e.message);
+        return false;
     }
 }
 
@@ -1031,7 +1092,11 @@ var server = http.createServer(function(req, res) {
                 rsi: d.rsi || 0,
                 playbook: d.playbook || '',
                 positionSize: d.positionSize || (d.alertType === 'TR_ARMED' ? '0.75R' : '1.5R'),
-                armedAt: d.armedAt || null
+                armedAt:       d.armedAt || null,
+                locScore:      d.locScore      !== undefined ? d.locScore      : null,
+                enrichedScore: d.enrichedScore !== undefined ? d.enrichedScore : null,
+                locGrade:      d.locGrade      || null,
+                locTimestamp:  d.locTimestamp  || null
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
@@ -1116,7 +1181,7 @@ var server = http.createServer(function(req, res) {
                 };
                 saveState(state);
                 appendArmEvent(alert, timestamp);
-
+                enrichArmedPair(alert.pair);
 
                 console.log('  -> ' + derivedType + ' ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-') + ' | struct:' + (alert.structExt || 'NONE'));
 
@@ -1547,6 +1612,7 @@ var server = http.createServer(function(req, res) {
                 };
                 saveLocation(data);
                 appendLocHistory(payload);
+                enrichArmedPair(payload.pair);
                 console.log('[Location] ' + payload.pair + ' | ' + (payload.direction||'?') + ' | ' + payload.grade + ' | zone=' + (payload.zone||'NONE') + ' | cloud=' + (payload.cloud_pos||'?') + ' | brk=' + (payload.breakout||'NONE'));
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ ok: true, pair: payload.pair, grade: payload.grade }));

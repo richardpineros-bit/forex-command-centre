@@ -1,4 +1,4 @@
-// armed-panel.js v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -143,6 +143,10 @@
     }
 
     // Quality Tier - returns 'PRIME' | 'STANDARD' | 'DEGRADED'
+    // v1.6.0: uses locGrade from FCC-SRL enrichment (server-side).
+    // OPPOSED/FALSE_BREAK -> DEGRADED (hard veto, score irrelevant).
+    // PRIME/AT_ZONE/BREAKOUT_RETEST -> eligible for PRIME tier.
+    // Falls back to structExt when locGrade not yet available.
     function qualityTier(p) {
         var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
         var atrLabel = null;
@@ -153,7 +157,20 @@
             else                   atrLabel = 'IDEAL';
         }
 
-        var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
+        // v1.6.0: location grade from server-side enrichment (FCC-SRL)
+        var locGrade = (p.locGrade || '').toUpperCase();
+
+        // Hard veto: at wrong-side S/R - price is at the wrong location.
+        // A score of 92 at resistance is still a bad trade. No override.
+        if (locGrade === 'OPPOSED' || locGrade === 'FALSE_BREAK') {
+            return 'DEGRADED';
+        }
+
+        // Derive structRaw from locGrade when available; fall back to legacy field
+        var locFresh = locGrade === 'PRIME' || locGrade === 'AT_ZONE' || locGrade === 'BREAKOUT_RETEST';
+        var structRaw = locGrade
+            ? (locFresh ? 'FRESH' : 'EXTENDED')
+            : (p.structExt || p.struct_ext || '').toUpperCase();
 
         var biasConf = null;
         if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
@@ -621,7 +638,13 @@
                 '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
                 '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
                 '<span class="armed-maxrisk">' + positionSizeLabel(p) + '</span>' +
-                '<span class="armed-score" style="color:' + scoreColour(p.score || 0) + '">' + (p.score || '\u2014') + '</span>' +
+                (function() {
+                    var baseS  = p.score || 0;
+                    var enrichS = (p.enrichedScore !== null && p.enrichedScore !== undefined) ? p.enrichedScore : baseS;
+                    var locPts  = (p.locScore !== null && p.locScore !== undefined) ? p.locScore : null;
+                    var tip = locPts !== null ? baseS + ' + ' + locPts + ' (loc) = ' + enrichS : String(enrichS);
+                    return '<span class="armed-score" style="color:' + scoreColour(enrichS) + '" title="' + tip + '">' + enrichS + '</span>';
+                })() +
                 '<span class="armed-atr">' + atrHtml + '</span>' +
                 '<span class="armed-struct">' + structHtml + '</span>' +
                 '<span class="armed-age">' + statusHtml + '</span>' +
@@ -753,7 +776,9 @@
                 var ta = order[a._tier] !== undefined ? order[a._tier] : 1;
                 var tb = order[b._tier] !== undefined ? order[b._tier] : 1;
                 if (ta !== tb) return ta - tb;
-                return (b.score || 0) - (a.score || 0);
+                var sa = (a.enrichedScore !== null && a.enrichedScore !== undefined) ? a.enrichedScore : (a.score || 0);
+                var sb = (b.enrichedScore !== null && b.enrichedScore !== undefined) ? b.enrichedScore : (b.score || 0);
+                return sb - sa;
             });
 
             var primeGroup    = activePairs.filter(function(p) { return p._tier === 'PRIME'; });
