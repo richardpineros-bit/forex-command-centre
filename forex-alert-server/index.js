@@ -10,7 +10,8 @@ const STRUCTURE_FILE = process.env.STRUCTURE_FILE || '/data/structure.json';
 const ARM_HISTORY_FILE = process.env.ARM_HISTORY_FILE || '/data/arm-history.json';
 const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.json';
 const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
-const IG_SENTIMENT_FILE = process.env.IG_SENTIMENT_FILE || '/data/ig-sentiment.json';
+const IG_SENTIMENT_FILE  = process.env.IG_SENTIMENT_FILE  || '/data/ig-sentiment.json';
+const OANDA_BOOK_FILE    = process.env.OANDA_BOOK_FILE    || '/data/oanda-orderbook.json';
 const LOCATION_FILE     = process.env.LOCATION_FILE     || '/data/location.json';
 const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-history.json';
 
@@ -2087,6 +2088,39 @@ var server = http.createServer(function(req, res) {
         } catch (e) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: false, error: 'ig-sentiment read error: ' + e.message, stale: true }));
+        }
+        return;
+    }
+
+    // GET /oanda-book/latest - Return Oanda position book contrarian signals per instrument
+    // Reads oanda-orderbook.json written by oanda_orderbook_scraper.py (every 4h)
+    if (req.method === 'GET' && req.url === '/oanda-book/latest') {
+        var STALE_HOURS_OB = 6;
+        try {
+            if (!fs.existsSync(OANDA_BOOK_FILE)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: false,
+                    error: 'oanda-orderbook.json not found. Run oanda_orderbook_scraper.py first.',
+                    last_updated: null,
+                    stale: true
+                }));
+                return;
+            }
+            var obRaw  = fs.readFileSync(OANDA_BOOK_FILE, 'utf8');
+            var obData = JSON.parse(obRaw);
+            var isStale = true;
+            if (obData.last_updated) {
+                var ageMsOB = Date.now() - new Date(obData.last_updated).getTime();
+                isStale = ageMsOB > (STALE_HOURS_OB * 60 * 60 * 1000);
+            }
+            obData.stale = isStale;
+            obData.ok    = true;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(obData));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'oanda-book read error: ' + e.message, stale: true }));
         }
         return;
     }

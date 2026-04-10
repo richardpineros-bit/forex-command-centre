@@ -1,8 +1,9 @@
-// armed-panel.js v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
     const SENTIMENT_URL  = 'https://api.pineros.club/ig-sentiment/latest';
+    const ORDERBOOK_URL  = 'https://api.pineros.club/oanda-book/latest';
     const LOCATION_URL   = 'https://api.pineros.club/location';
     const REFRESH_INTERVAL = 30000; // 30 seconds
     const API_URL        = '/api/storage-api.php';
@@ -11,6 +12,10 @@
     var _sentimentData  = null;
     var _sentimentStale = true;
     var _locationData   = {};   // keyed by pair name
+
+    // Oanda order book cache
+    var _orderBookData  = null;
+    var _orderBookStale = true;
 
     // Dismissed pairs state (server-side, permanent until new ARMED re-arms the pair)
     // Structure: { pair: { dismissedAt: ISO string } }
@@ -29,6 +34,19 @@
         } catch(e) {}
     }
     fetchSentiment();
+
+    async function fetchOrderBook() {
+        try {
+            var r = await fetch(ORDERBOOK_URL, { cache: 'no-cache' });
+            if (!r.ok) return;
+            var d = await r.json();
+            if (d && d.order_book) {
+                _orderBookData  = d.order_book;
+                _orderBookStale = d.stale || false;
+            }
+        } catch(e) {}
+    }
+    fetchOrderBook();
 
     async function fetchLocation() {
         try {
@@ -313,117 +331,14 @@
                  fomoCountdown: fomoCountdown, ageHours: ageHours };
     }
 
-    function buildSentimentRow(p) {
-        var pair = (p.pair || '').toUpperCase().replace('/', '');
-        if (!_sentimentData || !_sentimentData[pair]) return '';
-        var s        = _sentimentData[pair];
-        var longPct  = s.long_pct;
-        var shortPct = s.short_pct;
-        var label    = s.label || 'NEUTRAL';
-        var signal   = s.contrarian_signal || 'NEUTRAL';
-        var strength = s.strength || 'NEUTRAL';
-
-        var dir      = (p.direction || '').toUpperCase();
-        var crowdDir = (s.crowd_direction || '').toUpperCase();
-        var crowdAligned = (dir === 'LONG' && crowdDir === 'LONG') ||
-                           (dir === 'SHORT' && crowdDir === 'SHORT');
-        var crowdContra  = (dir === 'LONG' && crowdDir === 'SHORT') ||
-                           (dir === 'SHORT' && crowdDir === 'LONG');
-
-        var sigColour;
-        if (signal === 'NEUTRAL') {
-            sigColour = 'var(--text-muted)';
-        } else if (crowdAligned && strength !== 'NEUTRAL') {
-            sigColour = 'var(--color-fail)';
-        } else if (crowdContra && strength !== 'NEUTRAL') {
-            sigColour = 'var(--color-pass)';
-        } else {
-            sigColour = signal === 'BULLISH' ? 'var(--color-pass)' :
-                        signal === 'BEARISH' ? 'var(--color-fail)' : 'var(--text-muted)';
-        }
-
-        var warningHtml = '';
-        if (crowdAligned && strength !== 'NEUTRAL') {
-            warningHtml = '<span style="color:var(--color-warning);font-size:0.65rem;font-weight:700;margin-left:6px">&#x26A0; CROWD WITH YOU</span>';
-        }
-        var staleHtml = _sentimentStale ?
-            '<span style="color:var(--text-muted);font-size:0.6rem;margin-left:4px">(stale)</span>' : '';
-
-        return '<div class="armed-sentiment-row">' +
-            '<span style="color:var(--text-muted);font-size:0.7rem">IG Sentiment:</span>' +
-            '<span style="margin-left:6px;font-size:0.7rem">' +
-                '<span style="color:#15803d">' + longPct + '% L</span>' +
-                '<span style="color:var(--text-muted)"> / </span>' +
-                '<span style="color:#b91c1c">' + shortPct + '% S</span>' +
-            '</span>' +
-            '<span style="margin-left:6px;font-size:0.7rem;font-weight:700;color:' + sigColour + '">' + label + '</span>' +
-            warningHtml + staleHtml +
-        '</div>';
-    }
-
-    function buildBiasRow(p) {
-        var pair = (p.pair || '').toUpperCase().replace('/', '');
-        var dir  = (p.direction || '').toLowerCase();
-
-        if (!window.NewsBiasEngine || !window.NewsBiasEngine.hasData()) {
-            return '<div class="armed-bias-row awaiting">&#x23F3; News bias: awaiting data</div>';
-        }
-
-        var verdict = window.NewsBiasEngine.getVerdict(pair, dir);
-        if (!verdict) {
-            return '<div class="armed-bias-row awaiting">&#x23F3; News bias: no data for ' + pair + '</div>';
-        }
-
-        var base  = verdict.base_bias  || {};
-        var quote = verdict.quote_bias || {};
-
-        var INDEX_CCY = {
-            'AU200AUD':['AUD','USD'],'CN50USD':['CNY','USD'],'HK33HKD':['HKD','USD'],
-            'JP225YJPY':['JPY','USD'],'JP225USD':['JPY','USD'],
-            'US30USD':['USD','USD'],'US2000USD':['USD','USD'],'SPX500USD':['USD','USD'],
-            'NAS100USD':['USD','USD'],'UK100GBP':['GBP','USD'],
-            'FR40EUR':['EUR','USD'],'EU50EUR':['EUR','USD'],'DE30EUR':['EUR','USD'],
-        };
-        var baseCcy   = INDEX_CCY[pair] ? INDEX_CCY[pair][0] : pair.substring(0, 3);
-        var quoteCcy  = INDEX_CCY[pair] ? INDEX_CCY[pair][1] : pair.substring(3, 6);
-        var baseBias  = base.bias  || 'NEUTRAL';
-        var quoteBias = quote.bias || 'NEUTRAL';
-        var baseArrow  = baseBias  === 'BULLISH' ? '\u25b2' : baseBias  === 'BEARISH' ? '\u25bc' : '\u25b6';
-        var quoteArrow = quoteBias === 'BULLISH' ? '\u25b2' : quoteBias === 'BEARISH' ? '\u25bc' : '\u25b6';
-
-        var conf = verdict.confluence;
-        var confLabel, confColour;
-        if (!dir || verdict.direction === 'NEUTRAL') {
-            confLabel  = 'NEUTRAL';
-            confColour = 'var(--text-muted)';
-        } else {
-            confLabel  = conf;
-            confColour = biasColour(conf);
-        }
-
-        var netStr = (verdict.net_score >= 0 ? '+' : '') + (verdict.net_score || 0).toFixed(1);
-
-        return '<div class="armed-bias-row">' +
-            '<span class="armed-bias-ccy">' + baseCcy + ' ' + baseArrow + ' ' + baseBias + '</span>' +
-            '<span class="armed-bias-sep">|</span>' +
-            '<span class="armed-bias-ccy">' + quoteCcy + ' ' + quoteArrow + ' ' + quoteBias + '</span>' +
-            '<span class="armed-bias-net" style="color:' + confColour + ';font-weight:700;margin-left:6px">' +
-                'Net: ' + netStr + ' ' + confLabel +
-            '</span>' +
-        '</div>';
-    }
-
-
-    function buildDirectionalVerdict(p) {
+    function computeVerdictScore(p) {
         var dir = (p.direction || '').toUpperCase();
         if (!dir || (dir !== 'LONG' && dir !== 'SHORT')) {
-            return '<div class="armed-verdict-row"><span class="armed-verdict-badge neutral">' +
-                '\u21c4 NO DIR</span></div>';
+            return { dir: '', arrow: '', dirColour: 'var(--text-muted)', score: -99, confLabel: 'NO DIR', confColour: 'var(--text-muted)' };
         }
-
         var score = 0;
 
-        // 1. Bias confluence
+        // 1. News bias
         if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
             var bv = window.NewsBiasEngine.getVerdict(
                 (p.pair || '').toUpperCase().replace('/', ''),
@@ -435,16 +350,14 @@
             }
         }
 
-        // 2. Sentiment (contrarian logic)
+        // 2. IG Sentiment (contrarian)
         if (_sentimentData) {
             var sym = (p.pair || '').toUpperCase().replace('/', '');
             var s   = _sentimentData[sym];
             if (s && (s.strength || 'NEUTRAL') !== 'NEUTRAL') {
-                var cd = (s.crowd_direction || '').toUpperCase();
-                var contra = (dir === 'LONG'  && cd === 'SHORT') ||
-                             (dir === 'SHORT' && cd === 'LONG');
-                var aligned = (dir === 'LONG'  && cd === 'LONG') ||
-                              (dir === 'SHORT' && cd === 'SHORT');
+                var cd      = (s.crowd_direction || '').toUpperCase();
+                var contra  = (dir === 'LONG'  && cd === 'SHORT') || (dir === 'SHORT' && cd === 'LONG');
+                var aligned = (dir === 'LONG'  && cd === 'LONG')  || (dir === 'SHORT' && cd === 'SHORT');
                 if (contra)  score += 1;
                 if (aligned) score -= 1;
             }
@@ -455,29 +368,132 @@
         if (st === 'FRESH')    score += 1;
         if (st === 'EXTENDED') score -= 1;
 
+        // 4. Oanda Order Book (4th satellite — contrarian_signal = expected price direction)
+        if (_orderBookData) {
+            var obSym = (p.pair || '').toUpperCase().replace('/', '');
+            var ob    = _orderBookData[obSym];
+            if (ob && ob.contrarian_signal && (ob.strength || 'NEUTRAL') !== 'NEUTRAL') {
+                var obSig  = ob.contrarian_signal;
+                var obConf = (dir === 'LONG'  && obSig === 'BULLISH') || (dir === 'SHORT' && obSig === 'BEARISH');
+                var obOppo = (dir === 'LONG'  && obSig === 'BEARISH') || (dir === 'SHORT' && obSig === 'BULLISH');
+                if (obConf) score += 1;
+                if (obOppo) score -= 1;
+            }
+        }
+
+        // 4 inputs max. HIGH>=3, MED>=1, LOW<=0
         var confLabel, confColour;
-        if (score >= 2)      { confLabel = 'HIGH CONF'; confColour = '#15803d'; }
-        else if (score >= 0) { confLabel = 'MED CONF';  confColour = '#92400e'; }
+        if (score >= 3)      { confLabel = 'HIGH CONF'; confColour = '#15803d'; }
+        else if (score >= 1) { confLabel = 'MED CONF';  confColour = '#92400e'; }
         else                 { confLabel = 'LOW CONF';  confColour = '#b91c1c'; }
 
-        var arrow   = dir === 'LONG' ? '\u25b2' : '\u25bc';
+        var arrow     = dir === 'LONG' ? '\u25b2' : '\u25bc';
         var dirColour = dir === 'LONG' ? '#16a34a' : '#b91c1c';
+        return { dir: dir, arrow: arrow, dirColour: dirColour, score: score, confLabel: confLabel, confColour: confColour };
+    }
 
+    function buildIntelligenceStrip(p) {
+        var dir   = (p.direction || '').toUpperCase();
+        var pair  = (p.pair || '').toUpperCase().replace('/', '');
+        var parts = [];
+
+        // 1. News bias
+        if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
+            var bv = window.NewsBiasEngine.getVerdict(pair, dir.toLowerCase());
+            if (bv) {
+                var netStr = (bv.net_score >= 0 ? '+' : '') + (bv.net_score || 0).toFixed(1);
+                var conf   = bv.confluence || 'NEUTRAL';
+                var colour = biasColour(conf);
+                parts.push('<span class="intel-item"><span class="intel-label">News</span><span style="color:' + colour + ';font-weight:700">' + netStr + ' ' + conf + '</span></span>');
+            } else {
+                parts.push('<span class="intel-item intel-muted"><span class="intel-label">News</span>\u2014</span>');
+            }
+        } else {
+            parts.push('<span class="intel-item intel-muted"><span class="intel-label">News</span>awaiting</span>');
+        }
+
+        // 2. IG Sentiment
+        if (_sentimentData && _sentimentData[pair]) {
+            var s        = _sentimentData[pair];
+            var signal   = s.contrarian_signal || 'NEUTRAL';
+            var strength = s.strength || 'NEUTRAL';
+            var longPct  = s.long_pct  || 0;
+            var shortPct = s.short_pct || 0;
+            var cd       = (s.crowd_direction || '').toUpperCase();
+            var contra   = (dir === 'LONG' && cd === 'SHORT') || (dir === 'SHORT' && cd === 'LONG');
+            var aligned  = (dir === 'LONG' && cd === 'LONG')  || (dir === 'SHORT' && cd === 'SHORT');
+            var igColour;
+            if (strength === 'NEUTRAL')  igColour = 'var(--text-muted)';
+            else if (contra)             igColour = 'var(--color-pass)';
+            else if (aligned)            igColour = 'var(--color-fail)';
+            else                         igColour = 'var(--text-secondary)';
+            var igLabel   = strength === 'NEUTRAL' ? 'NEUTRAL' : strength + ' ' + signal;
+            var crowdWarn = (aligned && strength !== 'NEUTRAL') ? ' <span style="color:var(--color-warning)">&#x26A0;</span>' : '';
+            var staleTag  = _sentimentStale ? '<span style="color:var(--text-muted);font-size:0.6rem"> (stale)</span>' : '';
+            parts.push('<span class="intel-item"><span class="intel-label">IG</span><span style="color:var(--text-muted);font-size:0.62rem">' + Math.round(longPct) + 'L/' + Math.round(shortPct) + 'S</span> <span style="color:' + igColour + ';font-weight:700">' + igLabel + '</span>' + crowdWarn + staleTag + '</span>');
+        } else {
+            parts.push('<span class="intel-item intel-muted"><span class="intel-label">IG</span>' + (_sentimentData ? '\u2014' : 'loading') + '</span>');
+        }
+
+        // 3. Oanda Order Book
+        if (_orderBookData) {
+            var ob = _orderBookData[pair];
+            if (ob && (ob.strength || 'NEUTRAL') !== 'NEUTRAL') {
+                var obSig    = ob.contrarian_signal;
+                var obStr    = ob.strength;
+                var obConf   = (dir === 'LONG' && obSig === 'BULLISH') || (dir === 'SHORT' && obSig === 'BEARISH');
+                var obOppo   = (dir === 'LONG' && obSig === 'BEARISH') || (dir === 'SHORT' && obSig === 'BULLISH');
+                var obColour = obConf ? 'var(--color-pass)' : obOppo ? 'var(--color-fail)' : 'var(--text-secondary)';
+                var obLabel  = obStr + ' ' + obSig;
+                var obPcts   = (ob.long_pct != null && ob.short_pct != null)
+                    ? '<span style="color:var(--text-muted);font-size:0.62rem">' + Math.round(ob.long_pct) + 'L/' + Math.round(ob.short_pct) + 'S</span> '
+                    : '';
+                var obStale  = _orderBookStale ? '<span style="color:var(--text-muted);font-size:0.6rem"> (stale)</span>' : '';
+                parts.push('<span class="intel-item"><span class="intel-label">OB</span>' + obPcts + '<span style="color:' + obColour + ';font-weight:700">' + obLabel + '</span>' + obStale + '</span>');
+            } else if (ob) {
+                parts.push('<span class="intel-item intel-muted"><span class="intel-label">OB</span>NEUTRAL</span>');
+            } else {
+                parts.push('<span class="intel-item intel-muted"><span class="intel-label">OB</span>\u2014</span>');
+            }
+        } else {
+            parts.push('<span class="intel-item intel-muted"><span class="intel-label">OB</span>loading</span>');
+        }
+
+        // 4. ATR (moved from header row)
+        var atrBehav = (p.volBehaviour || '').toUpperCase();
+        var atrPct   = p.volLevel ? Math.round(Number(p.volLevel)) : null;
+        if (atrPct !== null) {
+            var atrLbl, atrC;
+            if (atrPct >= 80)      { atrLbl = 'EXHAUSTED'; atrC = 'var(--color-fail)'; }
+            else if (atrPct >= 60) { atrLbl = 'ELEVATED';  atrC = '#eab308'; }
+            else if (atrPct >= 30) { atrLbl = 'NORMAL';    atrC = 'var(--color-pass)'; }
+            else                   { atrLbl = 'IDEAL';     atrC = '#86efac'; }
+            parts.push('<span class="intel-item"><span class="intel-label">ATR</span><span style="color:' + atrC + ';font-weight:700">' + atrLbl + '</span><span style="color:var(--text-muted);font-size:0.62rem"> ' + atrPct + '%ile</span></span>');
+        } else if (atrBehav) {
+            parts.push('<span class="intel-item"><span class="intel-label">ATR</span><span style="color:' + atrColour(atrBehav) + ';font-weight:700">' + atrBehav.replace('_', ' ') + '</span></span>');
+        }
+
+        // 5. Structure (moved from header row)
+        var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
+        var stC, stL;
+        if      (structRaw === 'FRESH')      { stC = '#4ade80';              stL = 'FRESH'; }
+        else if (structRaw === 'DEVELOPING') { stC = '#eab308';              stL = 'DEV'; }
+        else if (structRaw === 'EXTENDED')   { stC = 'var(--color-fail)';    stL = 'EXT'; }
+        if (stL) {
+            parts.push('<span class="intel-item"><span class="intel-label">Struct</span><span style="color:' + stC + ';font-weight:700">' + stL + '</span></span>');
+        }
+
+        // Playbook label (right-aligned)
         var playbookLabel = (p.playbook || '').toUpperCase().replace(/_/g, ' ');
-        var accentColour  = alertTypeAccent(p);
+        var playbookHtml  = playbookLabel ? '<span class="intel-playbook">' + playbookLabel + '</span>' : '';
 
-        return '<div class="armed-verdict-row" style="border-left:3px solid ' + dirColour + ';border-right:3px solid ' + accentColour + '">' +
-            '<span style="color:' + dirColour + ';font-weight:800;font-size:0.75rem;letter-spacing:0.03em">' +
-                arrow + ' ' + dir +
-            '</span>' +
-            '<span style="color:' + confColour + ';font-size:0.65rem;font-weight:700;letter-spacing:0.04em">' +
-                confLabel +
-            '</span>' +
-            (playbookLabel ? '<span style="color:var(--text-muted);font-size:0.6rem;font-weight:600;margin-left:auto;padding-right:6px;letter-spacing:0.03em">' + playbookLabel + '</span>' : '') +
+        return '<div class="armed-intelligence-strip">' +
+            parts.join('<span class="intel-sep">|</span>') +
+            playbookHtml +
         '</div>';
     }
 
-    function buildLocationRow(p) {
+        function buildLocationRow(p) {
         var loc = _locationData[p.pair || ''];
 
         if (!loc || loc.grade === 'NO_DATA' || loc.grade === 'STALE') {
@@ -530,19 +546,18 @@
     }
 
     function buildTierHeader(tier, count) {
-        var label, cls;
+        var label, cls, icon;
         if (tier === 'PRIME') {
-            label = '&#x2B50; PRIME';
-            cls   = 'tier-prime';
+            label = 'PRIME SETUPS'; icon = '&#x2B50;'; cls = 'tier-prime';
         } else if (tier === 'STANDARD') {
-            label = 'STANDARD';
-            cls   = 'tier-standard';
+            label = 'STANDARD'; icon = '&#x25CF;'; cls = 'tier-standard';
         } else {
-            label = '&#x26A0; DEGRADED';
-            cls   = 'tier-degraded';
+            label = 'DEGRADED &#x2014; review before trading'; icon = '&#x26A0;'; cls = 'tier-degraded';
         }
         return '<div class="armed-tier-header ' + cls + '">' +
-            label + '<span class="tier-count">' + count + '</span>' +
+            '<span class="tier-icon">' + icon + '</span>' +
+            '<span class="tier-label">' + label + '</span>' +
+            '<span class="tier-count">' + count + '</span>' +
         '</div>';
     }
 
@@ -553,11 +568,11 @@
         var permLabel = p.permission || '\u2014';
         if (permLabel === 'CONDITIONAL') permLabel = 'COND';
 
-        var ttl = calculateTTLState(p);
+        var ttl      = calculateTTLState(p);
         var rowClass = 'armed-pair-row ' + permCls;
-        if (ttl.fomoBlocked) rowClass += ' fomo-blocked';
-        if (ttl.ttlState === 'stale') rowClass += ' ttl-stale';
-        
+        if (ttl.fomoBlocked)           rowClass += ' fomo-blocked';
+        if (ttl.ttlState === 'stale')  rowClass += ' ttl-stale';
+
         var statusHtml = '';
         if (ttl.fomoBlocked) {
             statusHtml = '<span class="armed-fomo-gate" title="FOMO Gate: 1-hour forced analysis pause (' + ttl.fomoCountdown + ')">' + ttl.fomoCountdown + '</span>';
@@ -569,49 +584,8 @@
             statusHtml = '<span class="armed-ttl-status armed-ttl-expired" title="Armed over 48 hours \u2014 review required">STALE</span>';
         }
 
-        var atrBehav = (p.volBehaviour || '').toUpperCase();
-        var atrPct   = p.volLevel ? Math.round(Number(p.volLevel)) : null;
-
-        var atrLabel, atrLabelColour;
-        if (atrPct === null) {
-            atrLabel = null;
-        } else if (atrPct >= 80) {
-            atrLabel = 'EXHAUSTED'; atrLabelColour = 'var(--color-fail)';
-        } else if (atrPct >= 60) {
-            atrLabel = 'ELEVATED';  atrLabelColour = '#eab308';
-        } else if (atrPct >= 30) {
-            atrLabel = 'NORMAL';    atrLabelColour = 'var(--color-pass)';
-        } else {
-            atrLabel = 'IDEAL';     atrLabelColour = '#86efac';
-        }
-
-        var atrHtml;
-        if (atrLabel) {
-            var pctStr = atrPct !== null ? atrPct + '%ile' : '';
-            atrHtml = '<span style="color:' + atrLabelColour + ';font-size:0.7rem;font-weight:700;display:block;line-height:1.2">' + atrLabel + '</span>' +
-                      (pctStr ? '<span style="color:var(--text-muted);font-size:0.6rem;display:block;line-height:1.1">' + pctStr + '</span>' : '');
-        } else if (atrBehav) {
-            atrHtml = '<span style="color:' + atrColour(atrBehav) + ';font-size:0.7rem;font-weight:700">' + atrBehav.replace('_', ' ') + '</span>';
-        } else {
-            atrHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
-        }
-
-        var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
-        var structHtml;
-        if (structRaw === 'FRESH') {
-            structHtml = '<span style="color:#4ade80;font-size:0.7rem;font-weight:700">FRESH</span>';
-        } else if (structRaw === 'DEVELOPING') {
-            structHtml = '<span style="color:#eab308;font-size:0.7rem;font-weight:700">DEV</span>';
-        } else if (structRaw === 'EXTENDED') {
-            structHtml = '<span style="color:var(--color-fail);font-size:0.7rem;font-weight:700">EXT</span>';
-        } else {
-            structHtml = '<span style="color:var(--text-muted)">&#x2014;</span>';
-        }
-
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
-        // Dismiss button -- only for active armed pairs (tier param truthy)
-        // Disabled if an open Oanda trade exists for this pair
         var dismissBtn = '';
         if (tier) {
             var hasOpenTrade = (window._armedOpenTrades || {})[p.pair || ''];
@@ -625,38 +599,46 @@
 
         var wrapperCls = 'armed-pair-wrapper' + (tier ? ' ' + tier : '');
 
-        var biasRowHtml      = buildBiasRow(p);
-        var sentimentRowHtml = buildSentimentRow(p);
-        var verdictRowHtml   = buildDirectionalVerdict(p);
+        // Direction + confidence badge (satellite-weighted verdict)
+        var verdict = computeVerdictScore(p);
+        var dirBadgeHtml;
+        if (verdict.dir) {
+            dirBadgeHtml =
+                '<span class="armed-dir-group">' +
+                    '<span class="armed-dir-arrow" style="color:' + verdict.dirColour + '">' + verdict.arrow + ' ' + verdict.dir + '</span>' +
+                    '<span class="armed-conf-pill" style="background:' + verdict.confColour + '22;color:' + verdict.confColour + ';border:1px solid ' + verdict.confColour + '55">' + verdict.confLabel + '</span>' +
+                '</span>';
+        } else {
+            dirBadgeHtml = '<span class="armed-dir-group"><span class="armed-dir-nodir">\u21c4 NO DIR</span></span>';
+        }
+
         var locationRowHtml  = buildLocationRow(p);
+        var intelligenceHtml = buildIntelligenceStrip(p);
 
         return '<div class="' + wrapperCls + '">' +
             dismissBtn +
             '<a href="#" class="' + rowClass + ' armed-row-link" data-pair="' + (p.pair || '') + '" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
                 '<span class="armed-pair-name">' + alertTypeBadge(p) + ' ' + (p.pair || '') + '</span>' +
+                dirBadgeHtml +
                 '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
                 '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
                 '<span class="armed-maxrisk">' + positionSizeLabel(p) + '</span>' +
                 (function() {
-                    var baseS  = p.score || 0;
+                    var baseS   = p.score || 0;
                     var enrichS = (p.enrichedScore !== null && p.enrichedScore !== undefined) ? p.enrichedScore : baseS;
                     var locPts  = (p.locScore !== null && p.locScore !== undefined) ? p.locScore : null;
-                    var tip = locPts !== null ? baseS + ' + ' + locPts + ' (loc) = ' + enrichS : String(enrichS);
+                    var tip     = locPts !== null ? baseS + ' + ' + locPts + ' (loc) = ' + enrichS : String(enrichS);
                     return '<span class="armed-score" style="color:' + scoreColour(enrichS) + '" title="' + tip + '">' + enrichS + '</span>';
                 })() +
-                '<span class="armed-atr">' + atrHtml + '</span>' +
-                '<span class="armed-struct">' + structHtml + '</span>' +
                 '<span class="armed-age">' + statusHtml + '</span>' +
             '</a>' +
-            verdictRowHtml +
             locationRowHtml +
-            biasRowHtml +
-            sentimentRowHtml +
+            intelligenceHtml +
         '</div>';
     }
 
-    function buildDismissedSection(dismissedItems) {
+        function buildDismissedSection(dismissedItems) {
         var count     = dismissedItems.length;
         var display   = _dismissedExpanded ? 'block' : 'none';
         var arrow     = _dismissedExpanded ? '\u25b2' : '\u25bc';
