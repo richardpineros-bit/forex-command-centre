@@ -1,12 +1,13 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.3.0
+// ULTIMATE UTCC v2.4.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
 // Ported core engine from UTCC Universal v3.0.0
 // Display: Compact (default) | Full (settings toggle)
+// v2.4.0: TR fixes: FX threshold 70->62, RSI div range widened, structPct 0.15->0.25, all three customisable
 // v2.3.0: TR threshold recalibrated | Ribbon removed from TR score | TR-BLOCK-RIBBON removed | Playbook in alert payload
 // v2.2.0: Trend slope | Spread monitor | ATR guidance | Playbook | Execution | Score breakdown | Compact/Full modes
 // Pine Script v6
@@ -74,7 +75,7 @@ riskGovState = input.string("NORMAL", "Risk Governor",  options=["NORMAL","REDUC
 // Per-asset thresholds
 var string GRP_FX = "FX Settings"
 fx_tfT=input.int(80,"TF Threshold",minval=60,maxval=95,group=GRP_FX)
-fx_trT=input.int(70,"TR Threshold",minval=55,maxval=99,group=GRP_FX)
+fx_trT=input.int(62,"TR Threshold",minval=55,maxval=99,group=GRP_FX)
 fx_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_FX)
 fx_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_FX)
 fx_quiet=input.bool(true,"Accept QUIET",group=GRP_FX)
@@ -138,6 +139,8 @@ explMaxPct   = input.int(80,  "EXPLODE Max %ile",     group=GRP_VOL)
 var string GRP_RSI = "RSI Settings"
 rsiLen     = input.int(14, "RSI Length",              group=GRP_RSI)
 divLB      = input.int(14, "Divergence Lookback",     group=GRP_RSI)
+divBullMax = input.int(60, "Bull Div RSI Max (price/RSI div)", minval=50, maxval=75, group=GRP_RSI)
+divBearMin = input.int(40, "Bear Div RSI Min (price/RSI div)", minval=25, maxval=50, group=GRP_RSI)
 
 var string GRP_DISARM = "Disarm Settings"
 disarmDrop = input.int(10,   "Score Drop to Disarm", minval=5, maxval=20, group=GRP_DISARM)
@@ -145,7 +148,7 @@ effThresh  = input.float(0.4,"Min Candle Efficiency", step=0.05,          group=
 
 var string GRP_STRUCT = "Structure Settings"
 srLB       = input.int(20,    "S/R Lookback (Daily bars)", group=GRP_STRUCT)
-structPct  = input.float(0.15,"Structure Zone %",  step=0.01,             group=GRP_STRUCT)
+structPct  = input.float(0.25,"Structure Zone %",  step=0.01,             group=GRP_STRUCT)
 
 var string GRP_DISP = "Display"
 displayMode = input.string("Compact", "Display Mode", options=["Compact","Full"], group=GRP_DISP)
@@ -311,8 +314,8 @@ rsiXUp      = ta.crossover(rsiCurr, 50)
 rsiXDown    = ta.crossunder(rsiCurr, 50)
 
 // RSI Divergence (for TR hard gate)
-bearDiv = high > high[divLB] and rsiCurr < rsiCurr[divLB] and rsiCurr > 45
-bullDiv = low  < low[divLB]  and rsiCurr > rsiCurr[divLB] and rsiCurr < 55
+bearDiv = high > high[divLB] and rsiCurr < rsiCurr[divLB] and rsiCurr > divBearMin
+bullDiv = low  < low[divLB]  and rsiCurr > rsiCurr[divLB] and rsiCurr < divBullMax
 
 // =============================================================================
 // SECTION 5: REGIME DERIVATION (from Vol State Engine)
