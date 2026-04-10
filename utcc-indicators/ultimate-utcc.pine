@@ -1,12 +1,13 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.4.0
+// ULTIMATE UTCC v2.5.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
 // Ported core engine from UTCC Universal v3.0.0
 // Display: Compact (default) | Full (settings toggle)
+// v2.5.0: TR gate 2 replaced: RSI divergence removed, 1H structure break (higher low/lower high) is now hard gate
 // v2.4.0: TR fixes: FX threshold 70->62, RSI div range widened, structPct 0.15->0.25, all three customisable
 // v2.3.0: TR threshold recalibrated | Ribbon removed from TR score | TR-BLOCK-RIBBON removed | Playbook in alert payload
 // v2.2.0: Trend slope | Spread monitor | ATR guidance | Playbook | Execution | Score breakdown | Compact/Full modes
@@ -138,9 +139,6 @@ explMaxPct   = input.int(80,  "EXPLODE Max %ile",     group=GRP_VOL)
 
 var string GRP_RSI = "RSI Settings"
 rsiLen     = input.int(14, "RSI Length",              group=GRP_RSI)
-divLB      = input.int(14, "Divergence Lookback",     group=GRP_RSI)
-divBullMax = input.int(60, "Bull Div RSI Max (price/RSI div)", minval=50, maxval=75, group=GRP_RSI)
-divBearMin = input.int(40, "Bear Div RSI Min (price/RSI div)", minval=25, maxval=50, group=GRP_RSI)
 
 var string GRP_DISARM = "Disarm Settings"
 disarmDrop = input.int(10,   "Score Drop to Disarm", minval=5, maxval=20, group=GRP_DISARM)
@@ -149,6 +147,8 @@ effThresh  = input.float(0.4,"Min Candle Efficiency", step=0.05,          group=
 var string GRP_STRUCT = "Structure Settings"
 srLB       = input.int(20,    "S/R Lookback (Daily bars)", group=GRP_STRUCT)
 structPct  = input.float(0.25,"Structure Zone %",  step=0.01,             group=GRP_STRUCT)
+lhPivStr   = input.int(3,     "1H Break Pivot Strength",   minval=2, maxval=5,  group=GRP_STRUCT)
+lhRecency  = input.int(12,    "1H Break Recency (bars)",   minval=6, maxval=48, group=GRP_STRUCT)
 
 var string GRP_DISP = "Display"
 displayMode = input.string("Compact", "Display Mode", options=["Compact","Full"], group=GRP_DISP)
@@ -314,8 +314,40 @@ rsiXUp      = ta.crossover(rsiCurr, 50)
 rsiXDown    = ta.crossunder(rsiCurr, 50)
 
 // RSI Divergence (for TR hard gate)
-bearDiv = high > high[divLB] and rsiCurr < rsiCurr[divLB] and rsiCurr > divBearMin
-bullDiv = low  < low[divLB]  and rsiCurr > rsiCurr[divLB] and rsiCurr < divBullMax
+// 1H Structure Break: replaces RSI divergence as TR hard gate 2
+// Reversal confirmed when LTF prints higher lows (bull) or lower highs (bear)
+// Security calls at script scope as required by Pine v6
+h1PivLow  = request.security(syminfo.tickerid, "60", ta.pivotlow(low,  lhPivStr, lhPivStr), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+h1PivHigh = request.security(syminfo.tickerid, "60", ta.pivothigh(high, lhPivStr, lhPivStr), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+// Find two most recent distinct confirmed 1H pivots within recency window
+h1Low1  = float(na)
+h1Low2  = float(na)
+h1High1 = float(na)
+h1High2 = float(na)
+
+for i = 0 to lhRecency - 1
+    v = h1PivLow[i]
+    if not na(v)
+        if na(h1Low1)
+            h1Low1 := v
+        else if v != h1Low1 and na(h1Low2)
+            h1Low2 := v
+            break
+
+for i = 0 to lhRecency - 1
+    v = h1PivHigh[i]
+    if not na(v)
+        if na(h1High1)
+            h1High1 := v
+        else if v != h1High1 and na(h1High2)
+            h1High2 := v
+            break
+
+// Higher low: 1H buyers stepping in at higher levels = bullish break confirmed
+// Lower high: 1H sellers capping at lower levels = bearish break confirmed
+h1HigherLow = not na(h1Low1)  and not na(h1Low2)  and h1Low1  > h1Low2
+h1LowerHigh = not na(h1High1) and not na(h1High2) and h1High1 < h1High2
 
 // =============================================================================
 // SECTION 5: REGIME DERIVATION (from Vol State Engine)
@@ -563,14 +595,14 @@ bool trHasDir   = trDirLong or trDirShort
 
 // Hard gate evaluation
 bool trMtfGate    = mtfFullBull or mtfFullBear
-bool trDivGate    = (trDirLong and bullDiv) or (trDirShort and bearDiv)
+bool trBreakGate  = (trDirLong and h1HigherLow) or (trDirShort and h1LowerHigh)
 bool trStructGate = (trDirLong and atSupport) or (trDirShort and atResistance)
 bool trRibbonGate = ribbonWide
-bool trAllGates   = trMtfGate and trDivGate and trStructGate
+bool trAllGates   = trMtfGate and trBreakGate and trStructGate
 
 // TR scoring (computed per direction)
 int trMtfPts    = trMtfGate ? 25 : 0
-int trDivPts    = trDivGate ? 20 : 0
+int trBreakPts  = trBreakGate ? 20 : 0
 int trStructPts = trStructGate ? 15 : 0
 int trRibbonPts = 0 // Ribbon removed from TR score: wrong tool for reversal system
 
@@ -586,7 +618,7 @@ if atrBlowOff
 else if atrContracting and atrRatio > 1.0
     trAtrPts := 6
 
-float trScore = trMtfPts + trDivPts + trStructPts + trRibbonPts + trAdxPts + trAtrPts
+float trScore = trMtfPts + trBreakPts + trStructPts + trRibbonPts + trAdxPts + trAtrPts
 
 // TR gate: all hard gates + score + spread OK + not blocked
 bool trReadyLong  = trDirLong  and trAllGates and trScore >= trThreshAdj and spreadOK and trPerm != "BLOCKED"
@@ -671,11 +703,11 @@ if trArmed
         trArmed := false
         trArmedScore := 0.0
         trDisarmCode := "TR-DISARM-PERM"
-    else if not trDivGate
-        // Divergence resolved — setup invalidated
+    else if not trBreakGate
+        // 1H structure break invalidated
         trArmed := false
         trArmedScore := 0.0
-        trDisarmCode := "TR-DISARM-DIV"
+        trDisarmCode := "TR-DISARM-BREAK"
     else if not trStructGate
         // Price broke through structure — invalidated
         trArmed := false
@@ -761,9 +793,9 @@ else if trPerm == "BLOCKED"
         trReason := "TR-BLOCK-REGIME"
 else if trHasDir and not trMtfGate
     trReason := "TR-BLOCK-NOMATURE"
-else if trHasDir and trMtfGate and not trDivGate
-    trReason := "TR-BLOCK-NODIV"
-else if trHasDir and trMtfGate and trDivGate and not trStructGate
+else if trHasDir and trMtfGate and not trBreakGate
+    trReason := "TR-BLOCK-NOBREAK"
+else if trHasDir and trMtfGate and trBreakGate and not trStructGate
     trReason := "TR-BLOCK-NOSTRUCTURE"
 // TR-BLOCK-RIBBON removed: ribbon no longer a gate in TR system
 
@@ -802,7 +834,7 @@ if trArmed
 
 // Score Breakdown (compact — fits one table cell)
 string tfBreakdown = "MTF:" + str.tostring(tfMtfPts) + " ENT:" + str.tostring(math.round(tfEntryPts)) + " VOL:" + str.tostring(math.round(tfVolPts)) + " RSI:" + str.tostring(math.round(tfRsiPts)) + " CTX:" + str.tostring(math.round(tfCtxPts))
-string trBreakdown = "MAT:" + str.tostring(trMtfPts) + " DIV:" + str.tostring(trDivPts) + " STR:" + str.tostring(trStructPts) + " ADX:" + str.tostring(trAdxPts) + " ATR:" + str.tostring(trAtrPts)
+string trBreakdown = "MAT:" + str.tostring(trMtfPts) + " BRK:" + str.tostring(trBreakPts) + " STR:" + str.tostring(trStructPts) + " ADX:" + str.tostring(trAdxPts) + " ATR:" + str.tostring(trAtrPts)
 
 // Slope display
 string slopeStr = trendSlopeUp ? "UP" : trendSlopeDown ? "DOWN" : "FLAT"
@@ -935,12 +967,12 @@ if barstate.islast
         table.cell(tbl, 1, 14, entryZone,   text_color=eC2,     text_size=size.tiny)
         table.cell(tbl, 2, 14, structStr,   text_color=sC2,     text_size=size.tiny)
 
-        // R15: RSI (TF) / Divergence (TR)
+        // R15: RSI (TF) / 1H Structure Break (TR)
         rsiS2 = rsiBullCt >= rsiBearCt ? str.tostring(rsiBullCt) + "/4 BULL" : str.tostring(rsiBearCt) + "/4 BEAR"
-        divS2 = bearDiv ? "BEAR DIV" : bullDiv ? "BULL DIV" : "NO DIV"
-        table.cell(tbl, 0, 15, "RSI / Div", text_color=c_label, text_size=size.tiny)
+        brkS2 = (trDirShort and h1LowerHigh) ? "1H LOWER HIGH" : (trDirLong and h1HigherLow) ? "1H HIGHER LOW" : "NO BREAK"
+        table.cell(tbl, 0, 15, "RSI / Break", text_color=c_label, text_size=size.tiny)
         table.cell(tbl, 1, 15, rsiS2,  text_color=passCol(rsiAllBull or rsiAllBear or rsiBullCt >= 3 or rsiBearCt >= 3), text_size=size.tiny)
-        table.cell(tbl, 2, 15, divS2,  text_color=passCol(bearDiv or bullDiv), text_size=size.tiny)
+        table.cell(tbl, 2, 15, brkS2,  text_color=passCol(trBreakGate), text_size=size.tiny)
 
         // R16: Separator
         table.cell(tbl, 0, 16, "", bgcolor=c_sep)
@@ -1044,12 +1076,12 @@ if barstate.islast
         table.cell(tbl, 1, 11, atrStr, text_color=passCol(atrFilterOK and atrExpanding and atrRatio < 1.5), text_size=size.tiny)
         table.cell(tbl, 2, 11, atrStr, text_color=passCol(atrBlowOff),                                      text_size=size.tiny)
 
-        // R12: RSI / Divergence
+        // R12: RSI / 1H Structure Break
         rsiStr = rsiBullCt >= rsiBearCt ? str.tostring(rsiBullCt) + "/4 BULL" : str.tostring(rsiBearCt) + "/4 BEAR"
-        divStr = bearDiv ? "BEAR DIV" : bullDiv ? "BULL DIV" : "NO DIV"
-        table.cell(tbl, 0, 12, "RSI / Div", text_color=c_label, text_size=size.tiny)
+        brkStr = (trDirShort and h1LowerHigh) ? "1H LOWER HIGH" : (trDirLong and h1HigherLow) ? "1H HIGHER LOW" : "NO BREAK"
+        table.cell(tbl, 0, 12, "RSI / Break", text_color=c_label, text_size=size.tiny)
         table.cell(tbl, 1, 12, rsiStr,  text_color=passCol(rsiAllBull or rsiAllBear or rsiBullCt >= 3 or rsiBearCt >= 3), text_size=size.tiny)
-        table.cell(tbl, 2, 12, divStr,  text_color=passCol(bearDiv or bullDiv), text_size=size.tiny)
+        table.cell(tbl, 2, 12, brkStr,  text_color=passCol(trBreakGate), text_size=size.tiny)
 
         // R13: 200 EMA Slope
         slopeAligned = (tfDirBull and trendSlopeUp) or (tfDirBear and trendSlopeDown)
@@ -1169,10 +1201,10 @@ if barstate.isconfirmed
         alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"SHORT","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBearCt) + '/4 BEAR","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"}}', alert.freq_once_per_bar)
 
     if showTRAlerts and trArmed and trDirLong
-        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BULL DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
+        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"ltf_break":"1H_HIGHER_LOW","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
 
     if showTRAlerts and trArmed and trDirShort
-        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi_div":"BEAR DIV","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
+        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"ltf_break":"1H_LOWER_HIGH","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
 
 // Named alert conditions (for TradingView alert dialog)
 alertcondition(tfArmed and tfDirBull,  "TF LONG",  "TF Armed: LONG")
