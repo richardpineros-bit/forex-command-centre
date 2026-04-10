@@ -1,12 +1,13 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.5.0
+// ULTIMATE UTCC v2.6.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
 // Ported core engine from UTCC Universal v3.0.0
 // Display: Compact (default) | Full (settings toggle)
+// v2.6.0: TF scoring: RSI multi-TF momentum replaced with ADX directional bias (diPlus/diMinus). RSI retained for display only.
 // v2.5.0: TR gate 2 replaced: RSI divergence removed, 1H structure break (higher low/lower high) is now hard gate
 // v2.4.0: TR fixes: FX threshold 70->62, RSI div range widened, structPct 0.15->0.25, all three customisable
 // v2.3.0: TR threshold recalibrated | Ribbon removed from TR score | TR-BLOCK-RIBBON removed | Playbook in alert payload
@@ -509,7 +510,7 @@ else if trRegPerm == "CONDITIONAL" or riskReduced
 // MTF + EMA Direction    30      2/3=30 (emerging), 3/3=22 (mature, slight penalty)
 // Entry Location         25      HOT=25, OPTIMAL=20, ACCEPTABLE=12, DEEP=6, EXTENDED=BLOCKED
 // Volatility State       25      TREND=25, EXPLODE=15, QUIET=10, MIXED=0
-// RSI 4TF Momentum       10      All4=10, 3/4=8, 2/4=5
+// ADX Dir Bias (DI+/DI-)  10      Aligned+Strong=10, Aligned=5, Against=0
 // Session + News         10      Session=5, No News=5
 // Total                 100
 
@@ -543,22 +544,21 @@ else if atrState == "QUIET" and acceptQuiet and atrFilterOK
     tfVolPts := 10.0
     tfVolPass := true
 
-// RSI momentum pts
-float tfRsiPts = 0.0
+// ADX Directional Bias pts
+// diPlus > diMinus = buying pressure dominant (bullish)
+// diMinus > diPlus = selling pressure dominant (bearish)
+// Strong = directional bias present AND ADX above threshold (trend has both direction and strength)
+float tfDiPts = 0.0
 if tfDirBull
-    if rsiAllBull or rsiXUp
-        tfRsiPts := 10.0
-    else if rsiBullCt >= 3
-        tfRsiPts := 8.0
-    else if rsiBullCt >= 2
-        tfRsiPts := 5.0
+    if diPlus > diMinus and adxVal >= adxThresh
+        tfDiPts := 10.0
+    else if diPlus > diMinus
+        tfDiPts := 5.0
 else if tfDirBear
-    if rsiAllBear or rsiXDown
-        tfRsiPts := 10.0
-    else if rsiBearCt >= 3
-        tfRsiPts := 8.0
-    else if rsiBearCt >= 2
-        tfRsiPts := 5.0
+    if diMinus > diPlus and adxVal >= adxThresh
+        tfDiPts := 10.0
+    else if diMinus > diPlus
+        tfDiPts := 5.0
 
 // Session + news pts
 float tfCtxPts = 0.0
@@ -567,7 +567,7 @@ if sessionActive
 if not newsRisk
     tfCtxPts += 5.0
 
-float tfScore = tfMtfPts + tfEntryPts + tfVolPts + tfRsiPts + tfCtxPts
+float tfScore = tfMtfPts + tfEntryPts + tfVolPts + tfDiPts + tfCtxPts
 bool  tfHasDir = tfDirBull or tfDirBear
 
 // TF gate: direction + score + entry not extended + vol passing + spread OK + not blocked
@@ -833,7 +833,7 @@ if trArmed
     trExec := trPerm == "FULL" ? trSize + " | 2 TRADES" : trSize + " | 1 TRADE"
 
 // Score Breakdown (compact — fits one table cell)
-string tfBreakdown = "MTF:" + str.tostring(tfMtfPts) + " ENT:" + str.tostring(math.round(tfEntryPts)) + " VOL:" + str.tostring(math.round(tfVolPts)) + " RSI:" + str.tostring(math.round(tfRsiPts)) + " CTX:" + str.tostring(math.round(tfCtxPts))
+string tfBreakdown = "MTF:" + str.tostring(tfMtfPts) + " ENT:" + str.tostring(math.round(tfEntryPts)) + " VOL:" + str.tostring(math.round(tfVolPts)) + " DI:" + str.tostring(math.round(tfDiPts)) + " CTX:" + str.tostring(math.round(tfCtxPts))
 string trBreakdown = "MAT:" + str.tostring(trMtfPts) + " BRK:" + str.tostring(trBreakPts) + " STR:" + str.tostring(trStructPts) + " ADX:" + str.tostring(trAdxPts) + " ATR:" + str.tostring(trAtrPts)
 
 // Slope display
