@@ -1,12 +1,13 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.6.0
+// ULTIMATE UTCC v2.7.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
 // Ported core engine from UTCC Universal v3.0.0
 // Display: Compact (default) | Full (settings toggle)
+// v2.7.0: Entry location pts removed from TF score (now server-side via FCC-SRL). Max TF score 100->75. TF thresholds recalibrated x0.75.
 // v2.6.0: TF scoring: RSI multi-TF momentum replaced with ADX directional bias (diPlus/diMinus). RSI retained for display only.
 // v2.5.0: TR gate 2 replaced: RSI divergence removed, 1H structure break (higher low/lower high) is now hard gate
 // v2.4.0: TR fixes: FX threshold 70->62, RSI div range widened, structPct 0.15->0.25, all three customisable
@@ -76,42 +77,42 @@ riskGovState = input.string("NORMAL", "Risk Governor",  options=["NORMAL","REDUC
 
 // Per-asset thresholds
 var string GRP_FX = "FX Settings"
-fx_tfT=input.int(80,"TF Threshold",minval=60,maxval=95,group=GRP_FX)
+fx_tfT=input.int(60,"TF Threshold",minval=40,maxval=75,group=GRP_FX)
 fx_trT=input.int(62,"TR Threshold",minval=55,maxval=99,group=GRP_FX)
 fx_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_FX)
 fx_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_FX)
 fx_quiet=input.bool(true,"Accept QUIET",group=GRP_FX)
 
 var string GRP_CRYPTO = "Crypto Settings"
-cr_tfT=input.int(85,"TF Threshold",minval=60,maxval=95,group=GRP_CRYPTO)
+cr_tfT=input.int(64,"TF Threshold",minval=40,maxval=75,group=GRP_CRYPTO)
 cr_trT=input.int(72,"TR Threshold",minval=55,maxval=99,group=GRP_CRYPTO)
 cr_adx=input.int(25,"ADX Threshold",minval=10,maxval=50,group=GRP_CRYPTO)
 cr_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_CRYPTO)
 cr_quiet=input.bool(false,"Accept QUIET",group=GRP_CRYPTO)
 
 var string GRP_METALS = "Metals Settings"
-mt_tfT=input.int(79,"TF Threshold",minval=60,maxval=95,group=GRP_METALS)
+mt_tfT=input.int(59,"TF Threshold",minval=40,maxval=75,group=GRP_METALS)
 mt_trT=input.int(70,"TR Threshold",minval=55,maxval=99,group=GRP_METALS)
 mt_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_METALS)
 mt_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_METALS)
 mt_quiet=input.bool(true,"Accept QUIET",group=GRP_METALS)
 
 var string GRP_ENERGY = "Energy Settings"
-en_tfT=input.int(78,"TF Threshold",minval=60,maxval=95,group=GRP_ENERGY)
+en_tfT=input.int(59,"TF Threshold",minval=40,maxval=75,group=GRP_ENERGY)
 en_trT=input.int(68,"TR Threshold",minval=55,maxval=99,group=GRP_ENERGY)
 en_adx=input.int(19,"ADX Threshold",minval=10,maxval=50,group=GRP_ENERGY)
 en_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_ENERGY)
 en_quiet=input.bool(false,"Accept QUIET",group=GRP_ENERGY)
 
 var string GRP_BONDS = "Bonds Settings"
-bd_tfT=input.int(72,"TF Threshold",minval=60,maxval=95,group=GRP_BONDS)
+bd_tfT=input.int(54,"TF Threshold",minval=40,maxval=75,group=GRP_BONDS)
 bd_trT=input.int(63,"TR Threshold",minval=55,maxval=99,group=GRP_BONDS)
 bd_adx=input.int(18,"ADX Threshold",minval=10,maxval=50,group=GRP_BONDS)
 bd_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_BONDS)
 bd_quiet=input.bool(true,"Accept QUIET",group=GRP_BONDS)
 
 var string GRP_INDICES = "Indices Settings"
-ix_tfT=input.int(78,"TF Threshold",minval=60,maxval=95,group=GRP_INDICES)
+ix_tfT=input.int(59,"TF Threshold",minval=40,maxval=75,group=GRP_INDICES)
 ix_trT=input.int(68,"TR Threshold",minval=55,maxval=99,group=GRP_INDICES)
 ix_adx=input.int(20,"ADX Threshold",minval=10,maxval=50,group=GRP_INDICES)
 ix_atr=input.int(80,"ATR Filter %",minval=0,maxval=150,group=GRP_INDICES)
@@ -460,7 +461,7 @@ string tfSize = riskReduced ? "0.75%" : "1.5%"
 string trSize = riskReduced ? "0.38%" : "0.75%"
 
 // Score thresholds adjusted upward when governor is REDUCED
-int tfThreshAdj = riskReduced ? tfThresh + 5 : tfThresh
+int tfThreshAdj = riskReduced ? tfThresh + 4 : tfThresh  // +4 on 75pt scale (was +5 on 100pt)
 int trThreshAdj = riskReduced ? trThresh + 8 : trThresh
 
 // =============================================================================
@@ -508,11 +509,11 @@ else if trRegPerm == "CONDITIONAL" or riskReduced
 //
 // Component             Max Pts  Logic
 // MTF + EMA Direction    30      2/3=30 (emerging), 3/3=22 (mature, slight penalty)
-// Entry Location         25      HOT=25, OPTIMAL=20, ACCEPTABLE=12, DEEP=6, EXTENDED=BLOCKED
 // Volatility State       25      TREND=25, EXPLODE=15, QUIET=10, MIXED=0
 // ADX Dir Bias (DI+/DI-)  10      Aligned+Strong=10, Aligned=5, Against=0
 // Session + News         10      Session=5, No News=5
-// Total                 100
+// Total (base)           75      Entry location (0-25 pts) added server-side via FCC-SRL grade
+// EMA entry zone retained as rough pre-filter hard gate only (not scored)
 
 // MTF direction
 bool tfDirBull = false
@@ -528,8 +529,9 @@ else if emaStackBear and mtfBearCt >= 2
     int baseMtfBr = mtfBearCt == 3 ? 22 : 30
     tfMtfPts  := trendSlopeDown ? baseMtfBr : baseMtfBr - 5
 
-// Entry pts (EXTENDED = hard block on signal regardless of score)
-float tfEntryPts = entryExtended ? 0.0 : entryPts
+// Entry zone: display and rough pre-filter only. Scoring moved to server-side (FCC-SRL grade).
+// entryExtended still blocks arming when price is clearly overextended from EMA - rough guard only.
+float tfEntryPts = 0.0  // always zero - location pts added server-side
 
 // Volatility pts
 float tfVolPts = 0.0
@@ -567,7 +569,7 @@ if sessionActive
 if not newsRisk
     tfCtxPts += 5.0
 
-float tfScore = tfMtfPts + tfEntryPts + tfVolPts + tfDiPts + tfCtxPts
+float tfScore = tfMtfPts + tfVolPts + tfDiPts + tfCtxPts  // max 75; entry location scored server-side
 bool  tfHasDir = tfDirBull or tfDirBear
 
 // TF gate: direction + score + entry not extended + vol passing + spread OK + not blocked
@@ -833,7 +835,7 @@ if trArmed
     trExec := trPerm == "FULL" ? trSize + " | 2 TRADES" : trSize + " | 1 TRADE"
 
 // Score Breakdown (compact — fits one table cell)
-string tfBreakdown = "MTF:" + str.tostring(tfMtfPts) + " ENT:" + str.tostring(math.round(tfEntryPts)) + " VOL:" + str.tostring(math.round(tfVolPts)) + " DI:" + str.tostring(math.round(tfDiPts)) + " CTX:" + str.tostring(math.round(tfCtxPts))
+string tfBreakdown = "MTF:" + str.tostring(tfMtfPts) + " VOL:" + str.tostring(math.round(tfVolPts)) + " DI:" + str.tostring(math.round(tfDiPts)) + " CTX:" + str.tostring(math.round(tfCtxPts))
 string trBreakdown = "MAT:" + str.tostring(trMtfPts) + " BRK:" + str.tostring(trBreakPts) + " STR:" + str.tostring(trStructPts) + " ADX:" + str.tostring(trAdxPts) + " ATR:" + str.tostring(trAtrPts)
 
 // Slope display
@@ -919,7 +921,7 @@ if barstate.islast
 
         // R7: Score
         table.cell(tbl, 0, 7, "SCORE", text_color=c_label, text_size=size.small)
-        table.cell(tbl, 1, 7, showTF ? str.tostring(math.round(tfScore)) + " / 100" : "--", text_color=showTF ? scoreCol(tfScore, tfThreshAdj) : c_dim, text_size=size.small)
+        table.cell(tbl, 1, 7, showTF ? str.tostring(math.round(tfScore)) + " / 75 (base)" : "--", text_color=showTF ? scoreCol(tfScore, tfThreshAdj) : c_dim, text_size=size.small)
         table.cell(tbl, 2, 7, showTR ? str.tostring(math.round(trScore)) + " / 100" : "--", text_color=showTR ? scoreCol(trScore, trThreshAdj) : c_dim, text_size=size.small)
 
         // R8: Playbook
@@ -1123,7 +1125,7 @@ if barstate.islast
 
         // R19: Score
         table.cell(tbl, 0, 19, "SCORE", text_color=c_label, text_size=size.small)
-        table.cell(tbl, 1, 19, showTF ? str.tostring(math.round(tfScore)) + " / 100" : "--", text_color=showTF ? scoreCol(tfScore, tfThreshAdj) : c_dim, text_size=size.small)
+        table.cell(tbl, 1, 19, showTF ? str.tostring(math.round(tfScore)) + " / 75 (base)" : "--", text_color=showTF ? scoreCol(tfScore, tfThreshAdj) : c_dim, text_size=size.small)
         table.cell(tbl, 2, 19, showTR ? str.tostring(math.round(trScore)) + " / 100" : "--", text_color=showTR ? scoreCol(trScore, trThreshAdj) : c_dim, text_size=size.small)
 
         // R20: Score Breakdown
