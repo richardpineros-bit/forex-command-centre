@@ -17,8 +17,9 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.10.2';
+const VERSION = '2.10.3';
 const CHANGES = [
+    '2.10.3 - /state now exposes armedAt field (fixes dismiss auto-restore); pure JSON path reads context.playbook fallback (fixes blank playbook on Ultimate UTCC cards)',
     '3.0.0 - Pure JSON parsing path for Ultimate UTCC alert() payloads; entry_zone + atr_pct field mapping fixed; playbook extraction added',
     '2.9.0 - Ultimate UTCC integration: TF_ARMED (trend-following, 1.5R) and TR_ARMED (trend-reversal, 0.75R); legacy ARMED mapped to TF_ARMED; positionSize derived from alert type',
     '2.10.0 - Location History: append every location payload to location-history.json for calibration analysis',
@@ -745,7 +746,7 @@ function parseNewAlert(body) {
                 structBars:   null,
                 riskMult:     1.0,
                 rsi:          parseInt(jCtx.rsi) || 0,
-                playbook:     jsonAlert.playbook || ''
+                playbook:     jsonAlert.playbook || jCtx.playbook || ''
             };
         } catch (e) {
             // Not valid JSON - fall through to pipe parser
@@ -1029,7 +1030,8 @@ var server = http.createServer(function(req, res) {
                 riskMult: d.riskMult || 1.0,
                 rsi: d.rsi || 0,
                 playbook: d.playbook || '',
-                positionSize: d.positionSize || (d.alertType === 'TR_ARMED' ? '0.75R' : '1.5R')
+                positionSize: d.positionSize || (d.alertType === 'TR_ARMED' ? '0.75R' : '1.5R'),
+                armedAt: d.armedAt || null
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
