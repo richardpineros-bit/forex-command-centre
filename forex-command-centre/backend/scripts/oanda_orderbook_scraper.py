@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-oanda_orderbook_scraper.py v2.0.0
+oanda_orderbook_scraper.py v3.0.0
 
-Scrapes Oanda's public order book tool (no API auth required):
-  https://www.oanda.com/bvi-en/cfds/tools/orderbook/
+Fetches Oanda's public position book via their GraphQL API (no auth required).
+Endpoint: https://labs-api.oanda.com/graphql
+Query:    orderPositionBook(instrument, bookType:POSITION, recentHours:1)
 
-Signal logic (contrarian, same as ig_sentiment_scraper.py):
+Signal logic (contrarian, mirrors ig_sentiment_scraper.py):
   - Retail crowd 70%+ LONG  -> expect DOWN -> contrarian = BEARISH
   - Retail crowd 70%+ SHORT -> expect UP   -> contrarian = BULLISH
+  - 60-70% = SOFT, 70%+ = STRONG
 
-CRON: 0 */4 * * * python3 /path/to/oanda_orderbook_scraper.py --unraid
+OUTPUT: /mnt/user/appdata/trading-state/data/oanda-orderbook.json
+HISTORY: /mnt/user/appdata/trading-state/data/oanda-orderbook-history.json
+
+CRON (every 4h):
+    0 */4 * * * python3 /mnt/user/appdata/forex-command-centre/backend/scripts/oanda_orderbook_scraper.py --unraid >> /tmp/oanda-book.log 2>&1
 """
 
 import argparse, json, os, sys, time
@@ -20,18 +26,27 @@ try:
 except ImportError:
     sys.exit("requests not installed. Run: pip3 install requests")
 
-VERSION          = "2.0.0"
+VERSION          = "3.0.0"
 STRONG_THRESHOLD = 70
 SOFT_THRESHOLD   = 60
 MAX_ENTRIES      = 500
 
+GRAPHQL_URL = "https://labs-api.oanda.com/graphql"
+
 HEADERS = {
-    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept":          "application/json, text/plain, */*",
+    "Content-Type":  "application/json",
+    "Origin":        "https://www.oanda.com",
+    "Referer":       "https://www.oanda.com/bvi-en/cfds/tools/orderbook/",
+    "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept":        "application/json",
     "Accept-Language": "en-US,en;q=0.9",
-    "Referer":         "https://www.oanda.com/bvi-en/cfds/tools/orderbook/",
-    "Origin":          "https://www.oanda.com",
 }
+
+QUERY = """query($instrument:String!,$bookType:BookType!,$recentHours:Int){
+  orderPositionBook(instrument:$instrument,bookType:$bookType,recentHours:$recentHours){
+    buckets{price longCountPercent shortCountPercent}
+  }
+}"""
 
 INSTRUMENTS = {
     "EUR_USD": "EURUSD",
@@ -48,94 +63,54 @@ INSTRUMENTS = {
     "NZD_JPY": "NZDJPY",
 }
 
-API_CANDIDATES = [
-    "https://www.oanda.com/rates/api/v1/order_book.json?instrument={i}&period=1",
-    "https://www.oanda.com/cfds/api/orderbook?instrument={i}&period=1",
-    "https://www.oanda.com/labs/api/v1/orderbook?instrument={i}&period=1",
-    "https://fxlabs.oanda.com/v1/orderbook?instrument={i}&period=1",
-    "https://www.oanda.com/bvi-en/cfds/tools/orderbook/?instrument={i}",
-]
 
-
-def try_fetch(session, instrument, verbose=False):
-    for template in API_CANDIDATES:
-        url = template.format(i=instrument)
-        try:
-            r = session.get(url, headers=HEADERS, timeout=15)
+def fetch_book(session, instrument, book_type="POSITION", verbose=False):
+    payload = {
+        "query":     QUERY,
+        "variables": {"instrument": instrument, "bookType": book_type, "recentHours": 1},
+    }
+    try:
+        r = session.post(GRAPHQL_URL, headers=HEADERS, json=payload, timeout=15)
+        if r.status_code != 200:
             if verbose:
-                print(f"    {url} -> {r.status_code} ({len(r.content)} bytes)")
-            if r.status_code == 200 and r.content:
-                try:
-                    return r.json(), url
-                except Exception:
-                    if verbose:
-                        print(f"    Not JSON: {r.text[:100]}")
-        except Exception as e:
+                print(f"    HTTP {r.status_code}")
+            return None
+        data = r.json()
+        if "errors" in data:
             if verbose:
-                print(f"    Error: {e}")
-        time.sleep(0.3)
-    return None, None
-
-
-def extract_pcts(data, verbose=False):
-    if verbose:
-        print(f"    Parsing: {json.dumps(data)[:400]}")
-
-    # Direct keys
-    for lk, sk in [("longPercent","shortPercent"),("long_percent","short_percent"),
-                   ("percentLong","percentShort"),("buyPercent","sellPercent"),
-                   ("longOrderPercent","shortOrderPercent")]:
-        if lk in data and sk in data:
-            try:
-                return float(data[lk]), float(data[sk])
-            except Exception:
-                pass
-
-    # Nested data/orderbook
-    for key in ("data", "orderbook", "order_book"):
-        if key in data and isinstance(data[key], dict):
-            result = extract_pcts(data[key], verbose=False)
-            if result:
-                return result
-
-    # Buckets
-    buckets = None
-    for key in ("buckets", "data", "orders"):
-        if key in data and isinstance(data[key], list):
-            buckets = data[key]
-            break
-    if isinstance(data, list):
-        buckets = data
-
-    if buckets:
-        return aggregate(buckets)
-    return None
+                print(f"    GraphQL error: {data['errors']}")
+            return None
+        # Response: data.orderPositionBook is an array; take first element
+        books = (data.get("data") or {}).get("orderPositionBook") or []
+        if not books:
+            if verbose:
+                print(f"    No book data returned")
+            return None
+        return books[0].get("buckets", [])
+    except Exception as e:
+        if verbose:
+            print(f"    Exception: {e}")
+        return None
 
 
 def aggregate(buckets):
+    """Sum longCountPercent and shortCountPercent across all buckets, normalise to 100%."""
     tl = ts = 0.0
     for b in buckets:
-        if not isinstance(b, dict):
-            continue
-        lv = sv = None
-        for lk in ("longOrderPercent","longCountPercent","orderBuy","buyPercent","long","percentLong","orders_long"):
-            if lk in b:
-                try: lv = float(b[lk]); break
-                except: pass
-        for sk in ("shortOrderPercent","shortCountPercent","orderSell","sellPercent","short","percentShort","orders_short"):
-            if sk in b:
-                try: sv = float(b[sk]); break
-                except: pass
-        if lv is not None and sv is not None:
-            tl += lv; ts += sv
+        try:
+            tl += float(b.get("longCountPercent",  0))
+            ts += float(b.get("shortCountPercent", 0))
+        except (ValueError, TypeError):
+            pass
     total = tl + ts
     if total == 0:
         return None
-    return round(tl/total*100, 1), round(ts/total*100, 1)
+    return round(tl / total * 100, 1), round(ts / total * 100, 1)
 
 
-def signal(long_pct, short_pct):
-    dom = max(long_pct, short_pct)
+def calc_signal(long_pct, short_pct):
+    """Mirrors ig_sentiment_scraper.calculate_signal() exactly."""
+    dom   = max(long_pct, short_pct)
     crowd = "LONG" if long_pct >= short_pct else "SHORT"
     if dom >= STRONG_THRESHOLD:
         strength = "STRONG"
@@ -148,50 +123,61 @@ def signal(long_pct, short_pct):
 
 
 def run_scrape(verbose=False):
-    session = requests.Session()
-    ob_data = {}
-    failed  = []
-    fetched = 0
+    session  = requests.Session()
+    ob_data  = {}
+    failed   = []
+    fetched  = 0
 
     if verbose:
-        print(f"Oanda Order Book Scraper v{VERSION} (public web scrape)")
-        print(f"Fetching {len(INSTRUMENTS)} instruments...")
+        print(f"Oanda Order Book Scraper v{VERSION} (GraphQL, no auth)")
+        print(f"Endpoint: {GRAPHQL_URL}")
+        print(f"Fetching {len(INSTRUMENTS)} instruments (POSITION book)...")
 
     for oanda_id, fcc_name in INSTRUMENTS.items():
-        data, url = try_fetch(session, oanda_id, verbose)
+        buckets = fetch_book(session, oanda_id, book_type="POSITION", verbose=verbose)
         time.sleep(0.5)
-        if data is None:
+
+        if buckets is None:
             failed.append(oanda_id)
-            if verbose: print(f"  {oanda_id:12s} -> FAILED (no valid response)")
+            if verbose:
+                print(f"  {oanda_id:12s} -> FAILED")
             continue
-        result = extract_pcts(data, verbose)
+
+        result = aggregate(buckets)
         if result is None:
             failed.append(oanda_id)
-            if verbose: print(f"  {oanda_id:12s} -> FAILED (could not parse)")
+            if verbose:
+                print(f"  {oanda_id:12s} -> FAILED (empty buckets)")
             continue
+
         lp, sp = result
-        sig = signal(lp, sp)
+        sig    = calc_signal(lp, sp)
         fetched += 1
+
         ob_data[fcc_name] = {
-            "oanda_instrument": oanda_id,
-            "long_pct": lp, "short_pct": sp,
-            "crowd_direction": sig["crowd_direction"],
+            "oanda_instrument":  oanda_id,
+            "long_pct":          lp,
+            "short_pct":         sp,
+            "crowd_direction":   sig["crowd_direction"],
             "contrarian_signal": sig["contrarian_signal"],
-            "strength": sig["strength"],
-            "label": sig["label"],
+            "strength":          sig["strength"],
+            "label":             sig["label"],
         }
+
         if verbose:
-            print(f"  {oanda_id:12s} -> {lp:.0f}% L / {sp:.0f}% S  [{sig['label']}]  ({url})")
+            print(f"  {oanda_id:12s} -> {lp:.0f}% L / {sp:.0f}% S  [{sig['label']}]")
 
     now = datetime.now(timezone.utc).isoformat()
     return {
-        "last_updated": now, "version": VERSION, "order_book": ob_data,
+        "last_updated": now,
+        "version":      VERSION,
+        "order_book":   ob_data,
         "health": {
             "instruments_attempted": len(INSTRUMENTS),
-            "instruments_fetched": fetched,
-            "instruments_failed": len(failed),
-            "failed_instruments": failed,
-        }
+            "instruments_fetched":   fetched,
+            "instruments_failed":    len(failed),
+            "failed_instruments":    failed,
+        },
     }
 
 
@@ -210,15 +196,15 @@ def append_history(data, history_path):
         history = history[-MAX_ENTRIES:]
     os.makedirs(os.path.dirname(os.path.abspath(history_path)), exist_ok=True)
     with open(history_path, "w") as f:
-        json.dump(history, f, separators=(",",":"))
+        json.dump(history, f, separators=(",", ":"))
     return len(history)
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--unraid",  action="store_true")
-    parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
+    parser = argparse.ArgumentParser(description=f"Oanda Order Book Scraper v{VERSION}")
+    parser.add_argument("--unraid",  action="store_true", help="Use Unraid default paths")
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    parser.add_argument("--dry-run", action="store_true", help="Fetch but don't write files")
     args = parser.parse_args()
 
     if args.unraid:
@@ -232,17 +218,20 @@ def main():
     data = run_scrape(verbose=args.verbose)
 
     if args.dry_run:
-        print(json.dumps(data, indent=2)); return
+        print(json.dumps(data, indent=2))
+        return
 
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w") as f:
-        json.dump(data, f, separators=(",",":"))
+        json.dump(data, f, separators=(",", ":"))
 
     hc = append_history(data, hist)
     h  = data["health"]
-    print(f"[{data['last_updated']}] {h['instruments_fetched']}/{h['instruments_attempted']} fetched, {h['instruments_failed']} failed, history={hc}")
+    print(f"[{data['last_updated']}] {h['instruments_fetched']}/{h['instruments_attempted']} fetched, "
+          f"{h['instruments_failed']} failed, history={hc}")
     if h["failed_instruments"]:
         print(f"  Failed: {h['failed_instruments']}")
+
 
 if __name__ == "__main__":
     main()
