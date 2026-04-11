@@ -2,20 +2,19 @@
 """
 oanda_orderbook_scraper.py v3.0.0
 
-Fetches Oanda's public position book via their GraphQL API (no auth required).
+Fetches Oanda public order/position book via the GraphQL API used by
+https://www.oanda.com/bvi-en/cfds/tools/orderbook/ (no auth required).
+
 Endpoint: https://labs-api.oanda.com/graphql
 Query:    orderPositionBook(instrument, bookType:POSITION, recentHours:1)
 
-Signal logic (contrarian, mirrors ig_sentiment_scraper.py):
-  - Retail crowd 70%+ LONG  -> expect DOWN -> contrarian = BEARISH
-  - Retail crowd 70%+ SHORT -> expect UP   -> contrarian = BULLISH
+Signal logic (contrarian, same as ig_sentiment_scraper.py):
+  - Retail crowd 70%+ LONG  -> contrarian = BEARISH
+  - Retail crowd 70%+ SHORT -> contrarian = BULLISH
   - 60-70% = SOFT, 70%+ = STRONG
 
-OUTPUT: /mnt/user/appdata/trading-state/data/oanda-orderbook.json
-HISTORY: /mnt/user/appdata/trading-state/data/oanda-orderbook-history.json
-
-CRON (every 4h):
-    0 */4 * * * python3 /mnt/user/appdata/forex-command-centre/backend/scripts/oanda_orderbook_scraper.py --unraid >> /tmp/oanda-book.log 2>&1
+OUTPUT: oanda-orderbook.json + oanda-orderbook-history.json
+CRON:   0 */4 * * * python3 oanda_orderbook_scraper.py --unraid
 """
 
 import argparse, json, os, sys, time
@@ -35,18 +34,23 @@ GRAPHQL_URL = "https://labs-api.oanda.com/graphql"
 
 HEADERS = {
     "Content-Type":  "application/json",
-    "Origin":        "https://www.oanda.com",
     "Referer":       "https://www.oanda.com/bvi-en/cfds/tools/orderbook/",
+    "Origin":        "https://www.oanda.com",
     "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept":        "application/json",
-    "Accept-Language": "en-US,en;q=0.9",
 }
 
-QUERY = """query($instrument:String!,$bookType:BookType!,$recentHours:Int){
+QUERY = """
+query($instrument:String!,$bookType:BookType!,$recentHours:Int){
   orderPositionBook(instrument:$instrument,bookType:$bookType,recentHours:$recentHours){
-    buckets{price longCountPercent shortCountPercent}
+    buckets{
+      price
+      longCountPercent
+      shortCountPercent
+    }
   }
-}"""
+}
+"""
 
 INSTRUMENTS = {
     "EUR_USD": "EURUSD",
@@ -70,7 +74,7 @@ def fetch_book(session, instrument, book_type="POSITION", verbose=False):
         "variables": {"instrument": instrument, "bookType": book_type, "recentHours": 1},
     }
     try:
-        r = session.post(GRAPHQL_URL, headers=HEADERS, json=payload, timeout=15)
+        r = session.post(GRAPHQL_URL, headers=HEADERS, json=payload, timeout=20)
         if r.status_code != 200:
             if verbose:
                 print(f"    HTTP {r.status_code}")
@@ -80,12 +84,10 @@ def fetch_book(session, instrument, book_type="POSITION", verbose=False):
             if verbose:
                 print(f"    GraphQL error: {data['errors']}")
             return None
-        # Response: data.orderPositionBook is an array; take first element
-        books = (data.get("data") or {}).get("orderPositionBook") or []
+        books = data.get("data", {}).get("orderPositionBook", [])
         if not books:
-            if verbose:
-                print(f"    No book data returned")
             return None
+        # Returns array; use first element's buckets
         return books[0].get("buckets", [])
     except Exception as e:
         if verbose:
@@ -94,7 +96,7 @@ def fetch_book(session, instrument, book_type="POSITION", verbose=False):
 
 
 def aggregate(buckets):
-    """Sum longCountPercent and shortCountPercent across all buckets, normalise to 100%."""
+    """Sum all bucket percentages and normalise to 100%."""
     tl = ts = 0.0
     for b in buckets:
         try:
@@ -109,7 +111,6 @@ def aggregate(buckets):
 
 
 def calc_signal(long_pct, short_pct):
-    """Mirrors ig_sentiment_scraper.calculate_signal() exactly."""
     dom   = max(long_pct, short_pct)
     crowd = "LONG" if long_pct >= short_pct else "SHORT"
     if dom >= STRONG_THRESHOLD:
@@ -117,9 +118,11 @@ def calc_signal(long_pct, short_pct):
     elif dom >= SOFT_THRESHOLD:
         strength = "SOFT"
     else:
-        return {"crowd_direction":"NEUTRAL","contrarian_signal":"NEUTRAL","strength":"NEUTRAL","label":"NEUTRAL"}
+        return {"crowd_direction": "NEUTRAL", "contrarian_signal": "NEUTRAL",
+                "strength": "NEUTRAL", "label": "NEUTRAL"}
     contra = "BEARISH" if crowd == "LONG" else "BULLISH"
-    return {"crowd_direction":crowd,"contrarian_signal":contra,"strength":strength,"label":f"{strength} {contra}"}
+    return {"crowd_direction": crowd, "contrarian_signal": contra,
+            "strength": strength, "label": f"{strength} {contra}"}
 
 
 def run_scrape(verbose=False):
@@ -131,10 +134,10 @@ def run_scrape(verbose=False):
     if verbose:
         print(f"Oanda Order Book Scraper v{VERSION} (GraphQL, no auth)")
         print(f"Endpoint: {GRAPHQL_URL}")
-        print(f"Fetching {len(INSTRUMENTS)} instruments (POSITION book)...")
+        print(f"Fetching {len(INSTRUMENTS)} instruments...")
 
     for oanda_id, fcc_name in INSTRUMENTS.items():
-        buckets = fetch_book(session, oanda_id, book_type="POSITION", verbose=verbose)
+        buckets = fetch_book(session, oanda_id, verbose=verbose)
         time.sleep(0.5)
 
         if buckets is None:
@@ -201,10 +204,10 @@ def append_history(data, history_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=f"Oanda Order Book Scraper v{VERSION}")
-    parser.add_argument("--unraid",  action="store_true", help="Use Unraid default paths")
-    parser.add_argument("--verbose", action="store_true", help="Verbose output")
-    parser.add_argument("--dry-run", action="store_true", help="Fetch but don't write files")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--unraid",  action="store_true")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     if args.unraid:
@@ -231,7 +234,6 @@ def main():
           f"{h['instruments_failed']} failed, history={hc}")
     if h["failed_instruments"]:
         print(f"  Failed: {h['failed_instruments']}")
-
 
 if __name__ == "__main__":
     main()
