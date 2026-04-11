@@ -18,8 +18,9 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.11.0';
+const VERSION = '2.12.0';
 const CHANGES = [
+    '2.12.0 - Add ltfBreak field (ctx.ltf_break from TR_ARMED payloads); TR_ARMED bootstrap: structure=SUPPORT|RESISTANCE infers structExt=FRESH before FCC-SRL fires; remove legacy fields criteria/volBehaviour/structBars/riskMult from pair state and arm history (never populated by ultimate-utcc.pine); remove ctx.struct_ext read (server-derives from locGrade only).',
     '2.11.0 - Location score enrichment: FCC-SRL grade drives entry location pts (0-25) added server-side to base UTCC score (max 75). enrichedScore + locScore + locGrade + locTimestamp exposed on /state. structExt derived from locGrade (FRESH/EXTENDED). Fixes broken PRIME/STANDARD/DEGRADED tier grouping in armed panel.',
     '2.10.3 - /state now exposes armedAt field (fixes dismiss auto-restore); pure JSON path reads context.playbook fallback (fixes blank playbook on Ultimate UTCC cards)',
     '3.0.0 - Pure JSON parsing path for Ultimate UTCC alert() payloads; entry_zone + atr_pct field mapping fixed; playbook extraction added',
@@ -353,17 +354,14 @@ function appendArmEvent(alert, timestamp) {
 
             // ── Setup quality ─────────────────────────────────────
             score:        alert.score        || 0,
-            criteria:     alert.criteria     || 0,
             mtf:          alert.mtf          || 0,
             direction:    alert.direction    || '',
             entryZone:    alert.entryZone    || '',
 
             // ── Volatility context ────────────────────────────────
             volState:     alert.volState     || '',
-            volBehaviour: alert.volBehaviour || '',
             volLevel:     alert.volLevel     || 0,
             structExt:    alert.structExt    || '',
-            structBars:   alert.structBars   !== undefined ? alert.structBars : null,
 
             // ── Momentum ──────────────────────────────────────────
             rsi:          alert.rsi          || 0,
@@ -375,7 +373,6 @@ function appendArmEvent(alert, timestamp) {
 
             // ── Risk state at arm time ────────────────────────────
             riskState:    alert.riskState    || 'K-NORMAL',
-            riskMult:     alert.riskMult     || 1.0,
             maxRisk:      alert.maxRisk      || '1.0R',
             permission:   alert.permission   || 'FULL',
 
@@ -787,6 +784,13 @@ function parseNewAlert(body) {
         try {
             var jsonAlert = JSON.parse(headerLine);
             var jCtx = jsonAlert.context || {};
+            // v2.12.0: TR bootstrap — if price is confirmed at S/R by the alert gate,
+            // infer structExt=FRESH immediately (before FCC-SRL bar close fires).
+            var jStructExt = '';
+            if ((jsonAlert.type === 'TR_ARMED') &&
+                (jCtx.structure === 'SUPPORT' || jCtx.structure === 'RESISTANCE')) {
+                jStructExt = 'FRESH';
+            }
             return {
                 type:         jsonAlert.type || 'TF_ARMED',
                 pair:         jsonAlert.pair || '',
@@ -800,13 +804,10 @@ function parseNewAlert(body) {
                 direction:    jsonAlert.direction || '',
                 entryZone:    jCtx.entry_zone || '',
                 mtf:          parseInt(jCtx.mtf) || 0,
-                criteria:     0,
                 volState:     jCtx.vol_state || '',
-                volBehaviour: '',
                 volLevel:     jCtx.atr_pct !== undefined ? String(jCtx.atr_pct) : '',
-                structExt:    '',
-                structBars:   null,
-                riskMult:     1.0,
+                structExt:    jStructExt,
+                ltfBreak:     jCtx.ltf_break || '',
                 rsi:          parseInt(jCtx.rsi) || 0,
                 playbook:     jsonAlert.playbook || jCtx.playbook || ''
             };
@@ -865,13 +866,10 @@ function parseNewAlert(body) {
     var direction = '';
     var entryZone = '';
     var mtf = 0;
-    var criteria = 0;
     var volState = '';
-    var volBehaviour = '';
     var volLevel = '';
     var structExt = '';
-    var structBars = null;
-    var riskMult = 1.0;
+    var ltfBreak = '';
     var playbook = '';
     var rsi = 0;
 
@@ -895,15 +893,18 @@ function parseNewAlert(body) {
                 // Extract from context object
                 var ctx = json.context || {};
                 direction = ctx.direction || json.direction || '';
-                entryZone = ctx.entry_zone || ctx.entry || json.entry || ''; // Ultimate UTCC sends entry_zone
+                entryZone = ctx.entry_zone || ctx.entry || json.entry || '';
                 mtf = parseInt(ctx.mtf) || 0;
-                criteria = parseInt(ctx.criteria) || 0;
                 volState = ctx.vol_state || '';
-                volBehaviour = ctx.vol_behaviour || '';
-                volLevel = ctx.atr_pct !== undefined ? String(ctx.atr_pct) : (ctx.vol_level || ''); // Ultimate UTCC sends atr_pct
-                structExt = ctx.struct_ext || '';
-                structBars = ctx.struct_bars !== undefined ? ctx.struct_bars : null;
-                riskMult = parseFloat(ctx.risk_mult) || 1.0;
+                volLevel = ctx.atr_pct !== undefined ? String(ctx.atr_pct) : (ctx.vol_level || '');
+                ltfBreak = ctx.ltf_break || '';
+                // v2.12.0: structExt server-derived from locGrade (FCC-SRL enrichment).
+                // TR_ARMED bootstrap: gate already confirmed price at S/R — infer FRESH
+                // immediately so PRIME tier can fire before the next FCC-SRL bar close.
+                if (alertType === 'TR_ARMED' &&
+                    (ctx.structure === 'SUPPORT' || ctx.structure === 'RESISTANCE')) {
+                    structExt = 'FRESH';
+                }
                 rsi = parseInt(ctx.rsi) || 0;
                 playbook = json.playbook || ctx.playbook || '';
                 // Also extract top-level fields if header missed them
@@ -939,13 +940,10 @@ function parseNewAlert(body) {
         direction: direction,
         entryZone: entryZone,
         mtf: mtf,
-        criteria: criteria,
         volState: volState,
-        volBehaviour: volBehaviour,
         volLevel: volLevel,
         structExt: structExt,
-        structBars: structBars,
-        riskMult: riskMult,
+        ltfBreak: ltfBreak,
         rsi: rsi,
         playbook: playbook
     };
@@ -1083,13 +1081,10 @@ var server = http.createServer(function(req, res) {
                 direction: d.direction || '',
                 entryZone: d.entryZone || '',
                 mtf: d.mtf || 0,
-                criteria: d.criteria || 0,
                 volState: d.volState || '',
-                volBehaviour: d.volBehaviour || '',
                 volLevel: d.volLevel || '',
                 structExt: d.structExt || '',
-                structBars: d.structBars !== undefined ? d.structBars : null,
-                riskMult: d.riskMult || 1.0,
+                ltfBreak: d.ltfBreak || '',
                 rsi: d.rsi || 0,
                 playbook: d.playbook || '',
                 positionSize: d.positionSize || (d.alertType === 'TR_ARMED' ? '0.75R' : '1.5R'),
@@ -1170,13 +1165,10 @@ var server = http.createServer(function(req, res) {
                     direction: alert.direction || '',
                     entryZone: alert.entryZone || '',
                     mtf: alert.mtf || 0,
-                    criteria: alert.criteria || 0,
                     volState: alert.volState || '',
-                    volBehaviour: alert.volBehaviour || '',
                     volLevel: alert.volLevel || '',
                     structExt: alert.structExt || '',
-                    structBars: alert.structBars !== undefined ? alert.structBars : null,
-                    riskMult: alert.riskMult || 1.0,
+                    ltfBreak: alert.ltfBreak || '',
                     rsi: alert.rsi || 0,
                     playbook: alert.playbook || alert._playbook || ''
                 };
@@ -1184,7 +1176,7 @@ var server = http.createServer(function(req, res) {
                 appendArmEvent(alert, timestamp);
                 enrichArmedPair(alert.pair);
 
-                console.log('  -> ' + derivedType + ' ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | zone:' + (alert.entryZone || '-') + ' | mtf:' + (alert.mtf || '-') + ' | struct:' + (alert.structExt || 'NONE'));
+                console.log('  -> ' + derivedType + ' ' + alert.pair + ' | ' + alert.primary + ' | ' + alert.permission + ' | dir:' + (alert.direction || '-') + ' | struct:' + (alert.structExt || 'NONE') + ' | ltf:' + (alert.ltfBreak || '-'));
 
                 // Push notification — ARMED fires
                 pushArmed(alert);
@@ -1935,10 +1927,9 @@ var server = http.createServer(function(req, res) {
                 tally[e.pair] = {
                     total: 0, long: 0, short: 0,
                     sessions: {}, scores: [], zones: {},
-                    playbooks: {}, volStates: {}, volBehaviours: {},
+                    playbooks: {}, volStates: {},
                     days: {}, hours: [], rsiValues: [],
-                    riskMults: [], criteria4: 0, mtf3: 0,
-                    impaired: 0  // arms where riskMult < 1.0
+                    mtf3: 0
                 };
             }
             var t = tally[e.pair];
@@ -1967,8 +1958,7 @@ var server = http.createServer(function(req, res) {
             if (e.playbook) t.playbooks[e.playbook] = (t.playbooks[e.playbook] || 0) + 1;
 
             // Volatility
-            if (e.volState)     t.volStates[e.volState]         = (t.volStates[e.volState] || 0) + 1;
-            if (e.volBehaviour) t.volBehaviours[e.volBehaviour] = (t.volBehaviours[e.volBehaviour] || 0) + 1;
+            if (e.volState) t.volStates[e.volState] = (t.volStates[e.volState] || 0) + 1;
 
             // Day of week
             if (e.dayOfWeek) t.days[e.dayOfWeek] = (t.days[e.dayOfWeek] || 0) + 1;
@@ -1979,13 +1969,8 @@ var server = http.createServer(function(req, res) {
             // RSI
             if (e.rsi) t.rsiValues.push(e.rsi);
 
-            // Risk mult
-            if (e.riskMult !== undefined) t.riskMults.push(e.riskMult);
-
             // Quality flags
-            if (e.criteria >= 4) t.criteria4++;
-            if (e.mtf >= 3)      t.mtf3++;
-            if (e.riskMult < 1.0) t.impaired++;
+            if (e.mtf >= 3) t.mtf3++;
         });
 
         // Summarise per pair
@@ -2001,11 +1986,6 @@ var server = http.createServer(function(req, res) {
             t.avgRsi = t.rsiValues.length
                 ? Math.round(t.rsiValues.reduce(function(a,b){return a+b;},0) / t.rsiValues.length)
                 : 0;
-
-            // Avg risk mult
-            t.avgRiskMult = t.riskMults.length
-                ? Math.round((t.riskMults.reduce(function(a,b){return a+b;},0) / t.riskMults.length) * 100) / 100
-                : 1.0;
 
             // Peak hour (most common)
             var hourCounts = {};
@@ -2025,16 +2005,12 @@ var server = http.createServer(function(req, res) {
                 ? vsKeys.sort(function(a,b){ return t.volStates[b]-t.volStates[a]; })[0]
                 : '';
 
-            // Quality rate: criteria4 / total
-            t.qualityRate = t.total > 0 ? Math.round((t.criteria4 / t.total) * 100) : 0;
-
-            // Impaired rate
-            t.impairedRate = t.total > 0 ? Math.round((t.impaired / t.total) * 100) : 0;
+            // Quality rate: mtf3 / total
+            t.mtf3Rate = t.total > 0 ? Math.round((t.mtf3 / t.total) * 100) : 0;
 
             // Clean up raw arrays (keep data lean for transport)
             delete t.scores;
             delete t.rsiValues;
-            delete t.riskMults;
             delete t.hours;
         });
 

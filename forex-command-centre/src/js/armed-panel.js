@@ -1,4 +1,4 @@
-// armed-panel.js v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -188,7 +188,7 @@
         var locFresh = locGrade === 'PRIME' || locGrade === 'AT_ZONE' || locGrade === 'BREAKOUT_RETEST';
         var structRaw = locGrade
             ? (locFresh ? 'FRESH' : 'EXTENDED')
-            : (p.structExt || p.struct_ext || '').toUpperCase();
+            : (p.structExt || '').toUpperCase();
 
         var biasConf = null;
         if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
@@ -237,18 +237,6 @@
         if (confluence === 'ALIGNED')     return 'var(--color-pass)';
         if (confluence === 'CONFLICTING') return 'var(--color-fail)';
         return 'var(--text-muted)';
-    }
-
-    function atrColour(behaviour) {
-        if (!behaviour) return 'var(--text-muted)';
-        var b = behaviour.toUpperCase();
-        if (b === 'TREND')          return 'var(--color-pass)';
-        if (b === 'EXHAUSTED')      return 'var(--color-fail)';
-        if (b === 'SPIKE')          return '#f97316';
-        if (b === 'EXPANDING_FAST') return '#eab308';
-        if (b === 'EXPANDING_SLOW') return '#86efac';
-        if (b === 'CONTRACTING')    return 'var(--text-muted)';
-        return 'var(--text-secondary)';
     }
 
     function alertTypeBadge(p) {
@@ -364,7 +352,7 @@
         }
 
         // 3. Structure
-        var st = (p.structExt || p.struct_ext || '').toUpperCase();
+        var st = (p.structExt || '').toUpperCase();
         if (st === 'FRESH')    score += 1;
         if (st === 'EXTENDED') score -= 1;
 
@@ -459,9 +447,8 @@
             parts.push('<span class="intel-item intel-muted"><span class="intel-label">OB</span>loading</span>');
         }
 
-        // 4. ATR (moved from header row)
-        var atrBehav = (p.volBehaviour || '').toUpperCase();
-        var atrPct   = p.volLevel ? Math.round(Number(p.volLevel)) : null;
+        // 4. ATR
+        var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
         if (atrPct !== null) {
             var atrLbl, atrC;
             if (atrPct >= 80)      { atrLbl = 'EXHAUSTED'; atrC = 'var(--color-fail)'; }
@@ -469,18 +456,26 @@
             else if (atrPct >= 30) { atrLbl = 'NORMAL';    atrC = 'var(--color-pass)'; }
             else                   { atrLbl = 'IDEAL';     atrC = '#86efac'; }
             parts.push('<span class="intel-item"><span class="intel-label">ATR</span><span style="color:' + atrC + ';font-weight:700">' + atrLbl + '</span><span style="color:var(--text-muted);font-size:0.62rem"> ' + atrPct + '%ile</span></span>');
-        } else if (atrBehav) {
-            parts.push('<span class="intel-item"><span class="intel-label">ATR</span><span style="color:' + atrColour(atrBehav) + ';font-weight:700">' + atrBehav.replace('_', ' ') + '</span></span>');
         }
 
-        // 5. Structure (moved from header row)
-        var structRaw = (p.structExt || p.struct_ext || '').toUpperCase();
+        // 5. Structure
+        var structRaw = (p.structExt || '').toUpperCase();
         var stC, stL;
         if      (structRaw === 'FRESH')      { stC = '#4ade80';              stL = 'FRESH'; }
         else if (structRaw === 'DEVELOPING') { stC = '#eab308';              stL = 'DEV'; }
         else if (structRaw === 'EXTENDED')   { stC = 'var(--color-fail)';    stL = 'EXT'; }
         if (stL) {
             parts.push('<span class="intel-item"><span class="intel-label">Struct</span><span style="color:' + stC + ';font-weight:700">' + stL + '</span></span>');
+        }
+
+        // 6. LTF break confirmation (TR cards only)
+        var isTR = (p.alertType || '').toUpperCase() === 'TR_ARMED';
+        if (isTR) {
+            var ltf = (p.ltfBreak || '').toUpperCase().replace(/_/g, ' ');
+            var ltfHtml = ltf
+                ? '<span style="color:#a78bfa;font-weight:700">' + ltf + '</span>'
+                : '<span style="color:var(--text-muted)">LTF \u2014</span>';
+            parts.push('<span class="intel-item"><span class="intel-label">1H</span>' + ltfHtml + '</span>');
         }
 
         // Playbook label (right-aligned)

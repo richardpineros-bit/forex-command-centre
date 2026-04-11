@@ -1,3 +1,22 @@
+## [v5.12.0] - 2026-04-11
+### Fix + Cleanup: ltfBreak display, TR structExt bootstrap, legacy field removal
+
+**Alert Server (index.js v2.12.0):**
+- Add `ltfBreak` field: parsed from `ctx.ltf_break` in TR_ARMED payloads — stored on pair state, exposed on `/state`
+- Fix Issue 3 (structExt always empty for ultimate-utcc.pine): TR_ARMED alerts where `ctx.structure` is `SUPPORT` or `RESISTANCE` now bootstrap `structExt = 'FRESH'` immediately. The TR gate already confirms price is at S/R, so PRIME tier can fire before FCC-SRL bar close arrives
+- Remove `ctx.struct_ext` read from pipe parser (struct_ext is now server-derived from locGrade only — never sent by ultimate-utcc.pine)
+- Remove legacy fields from pair state and arm history: `criteria`, `volBehaviour`, `structBars`, `riskMult` — none populated by ultimate-utcc.pine, none consumed by armed-panel.js
+- Arm history aggregation cleaned: removed `volBehaviours`, `riskMults`, `criteria4`, `impaired` tallies; replaced `qualityRate`/`impairedRate` with `mtf3Rate`
+- Log line updated: now shows `struct` and `ltf` instead of `zone`/`mtf`
+
+**Armed Panel (armed-panel.js v1.8.0):**
+- Add `ltfBreak` display row in intelligence strip — TR cards only. Shows `1H HIGHER LOW` or `1H LOWER HIGH` in violet. Falls back to muted dash if field absent
+- Remove `p.struct_ext` snake_case fallback everywhere — `p.structExt` (camelCase) only
+- Remove `atrBehav`/`volBehaviour` dead fallback path from ATR display (never populated by ultimate-utcc.pine — `atrPct` from `volLevel` is always present)
+- Remove dead `atrColour()` helper function (was only called by the removed `atrBehav` path)
+
+---
+
 ## [v5.11.0] - 2026-04-09
 ### Fix: Ultimate UTCC v2.3.0 — TR System + Full Integration Audit
 
