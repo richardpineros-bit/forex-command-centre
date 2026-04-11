@@ -1627,7 +1627,7 @@ var server = http.createServer(function(req, res) {
     }
 
     // GET /location - Return location state. Usage: /location?pair=EURUSD or /location (all)
-    if (req.method === 'GET' && req.url.startsWith('/location')) {
+    if (req.method === 'GET' && (req.url === '/location' || req.url.startsWith('/location?'))) {
         var urlParts = req.url.split('?');
         var params   = {};
         (urlParts[1] || '').split('&').forEach(function(p) {
@@ -2121,6 +2121,29 @@ var server = http.createServer(function(req, res) {
         } catch (e) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: false, error: 'oanda-book read error: ' + e.message, stale: true }));
+        }
+        return;
+    }
+
+    // GET /oanda-book/history - Return Oanda order book history for Intelligence Hub
+    if (req.method === 'GET' && req.url.startsWith('/oanda-book/history')) {
+        try {
+            var OANDA_HIST_FILE = process.env.OANDA_BOOK_FILE
+                ? process.env.OANDA_BOOK_FILE.replace('oanda-orderbook.json', 'oanda-orderbook-history.json')
+                : '/data/oanda-orderbook-history.json';
+            if (!fs.existsSync(OANDA_HIST_FILE)) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, history: [], total: 0 }));
+                return;
+            }
+            var histRaw  = fs.readFileSync(OANDA_HIST_FILE, 'utf8');
+            var histData = JSON.parse(histRaw);
+            var history  = Array.isArray(histData) ? histData : [];
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, history: history, total: history.length }));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'oanda-book/history read error: ' + e.message }));
         }
         return;
     }

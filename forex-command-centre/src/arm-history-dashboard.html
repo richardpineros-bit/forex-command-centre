@@ -379,6 +379,7 @@ body {
     <div class="tab" onclick="showTab('tebriefing',this);loadTEBriefing()">&#x1F310; Macro</div>
     <div class="tab" onclick="showTab('igsentiment',this);loadIGSentiment()">&#x1F9ED; Sentiment</div>
     <div class="tab" onclick="showTab('loccalib',this);loadLocCalib()">&#x1F4CD; Location</div>
+    <div class="tab" onclick="showTab('obhistory',this);loadOBHistory()">&#x1F4D6; Order Book</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -1581,6 +1582,24 @@ function renderLocCalib() {
     document.getElementById('lc-raw-body').innerHTML = tbody || '<tr><td colspan="12" style="text-align:center;color:var(--text-muted)">No events</td></tr>';
 }
 
+<div class="page" id="tab-obhistory">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">&#x1F4D6; Oanda Order Book History</span>
+            <span class="card-meta" id="ob-meta">Loading...</span>
+        </div>
+        <div class="card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <select id="ob-pair" onchange="renderOBHistory()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Pairs</option>
+                </select>
+            </div>
+            <div id="ob-history-body"><div class="loading">&#x23F3; Loading...</div></div>
+        </div>
+    </div>
+</div>
+
+
 function loadIGSentiment() {
     if (_igSentimentData) { renderIGSentiment(); return; }
     fetch(API_BASE + '/ig-sentiment/latest')
@@ -1694,6 +1713,76 @@ function renderIGSentimentSummary(d) {
     html += '<p style="font-size:0.7rem;color:var(--text-muted);margin:10px 0 0;text-align:center">' + total + ' instruments tracked via IG Client Sentiment API</p>';
     document.getElementById('igs-summary-body').innerHTML = html;
 }
+// Oanda Order Book History
+var _obHistoryData = null;
+function loadOBHistory() {
+    if (_obHistoryData) { renderOBHistory(); return; }
+    fetch(API_BASE + '/oanda-book/history')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _obHistoryData = d;
+            populateOBPairFilter(d.history || []);
+            renderOBHistory();
+        })
+        .catch(function(e) {
+            document.getElementById('ob-history-body').innerHTML = '<p style="color:var(--color-fail)">Failed: ' + e.message + '</p>';
+        });
+}
+function populateOBPairFilter(history) {
+    var pairs = {};
+    history.forEach(function(run) {
+        Object.keys(run.order_book || {}).forEach(function(p) { pairs[p] = 1; });
+    });
+    var sel = document.getElementById('ob-pair');
+    Object.keys(pairs).sort().forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p; opt.textContent = p; sel.appendChild(opt);
+    });
+}
+function renderOBHistory() {
+    var d = _obHistoryData;
+    if (!d) return;
+    var history = d.history || [];
+    var pairF   = document.getElementById('ob-pair').value;
+    document.getElementById('ob-meta').textContent = history.length + ' snapshots stored';
+    var PAIRS = pairF ? [pairF] : ['EURUSD','USDJPY','GBPUSD','AUDUSD','NZDUSD','USDCAD','USDCHF','EURGBP','EURJPY','GBPJPY','AUDJPY'];
+    function sigCol(sig) {
+        if (!sig || sig === 'NEUTRAL') return 'var(--text-muted)';
+        return sig === 'BULLISH' ? 'var(--color-pass)' : sig === 'BEARISH' ? 'var(--color-fail)' : 'var(--text-secondary)';
+    }
+    var latest = history[history.length - 1];
+    var latestHtml = '';
+    if (latest && latest.order_book) {
+        var rows = '';
+        Object.keys(latest.order_book).sort().forEach(function(p) {
+            if (pairF && p !== pairF) return;
+            var e = latest.order_book[p];
+            rows += '<tr><td><strong>' + p + '</strong></td>' +
+                '<td style="font-size:0.7rem">' + Math.round(e.long_pct||0) + '% L / ' + Math.round(e.short_pct||0) + '% S</td>' +
+                '<td style="color:' + sigCol(e.contrarian_signal) + ';font-weight:700">' + (e.label||'NEUTRAL') + '</td></tr>';
+        });
+        latestHtml = '<div style="margin-bottom:16px"><strong style="font-size:0.75rem;color:var(--text-secondary)">LATEST SNAPSHOT</strong>' +
+            '<table class="data-table" style="margin-top:6px"><thead><tr><th>Pair</th><th>L/S Split</th><th>Signal</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+    var recent = history.slice(-20).reverse();
+    var timeHtml = '<div style="overflow-x:auto"><table class="data-table"><thead><tr><th>Time</th>';
+    PAIRS.forEach(function(p) { timeHtml += '<th style="font-size:0.62rem">' + p + '</th>'; });
+    timeHtml += '</tr></thead><tbody>';
+    recent.forEach(function(run) {
+        var dt = run.timestamp ? new Date(run.timestamp).toLocaleString('en-AU',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+        timeHtml += '<tr><td style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap">' + dt + '</td>';
+        PAIRS.forEach(function(p) {
+            var ob = (run.order_book||{})[p];
+            var lbl = ob ? (ob.strength !== 'NEUTRAL' ? ob.strength.charAt(0) + ' ' + ob.contrarian_signal : 'NEUT') : '\u2014';
+            var col = ob ? sigCol(ob.contrarian_signal) : 'var(--text-muted)';
+            timeHtml += '<td style="color:' + col + ';font-weight:700;font-size:0.62rem;white-space:nowrap">' + lbl + '</td>';
+        });
+        timeHtml += '</tr>';
+    });
+    timeHtml += '</tbody></table></div>';
+    document.getElementById('ob-history-body').innerHTML = latestHtml + timeHtml;
+}
+
 </script>
 </body>
 </html>
