@@ -651,6 +651,23 @@ body {
     </div>
 </div>
 
+<div class="page" id="tab-obhistory">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">&#x1F4D6; Oanda Order Book History</span>
+            <span class="card-meta" id="ob-meta">Loading...</span>
+        </div>
+        <div class="card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <select id="ob-pair" onchange="renderOBHistory()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Pairs</option>
+                </select>
+            </div>
+            <div id="ob-history-body"><div class="loading">&#x23F3; Loading...</div></div>
+        </div>
+    </div>
+</div>
+
 <script>
 var API_BASE    = 'https://api.pineros.club';
 var currentDays = 30;
@@ -1581,24 +1598,6 @@ function renderLocCalib() {
     });
     document.getElementById('lc-raw-body').innerHTML = tbody || '<tr><td colspan="12" style="text-align:center;color:var(--text-muted)">No events</td></tr>';
 }
-
-<div class="page" id="tab-obhistory">
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title">&#x1F4D6; Oanda Order Book History</span>
-            <span class="card-meta" id="ob-meta">Loading...</span>
-        </div>
-        <div class="card-body">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-                <select id="ob-pair" onchange="renderOBHistory()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
-                    <option value="">All Pairs</option>
-                </select>
-            </div>
-            <div id="ob-history-body"><div class="loading">&#x23F3; Loading...</div></div>
-        </div>
-    </div>
-</div>
-
 
 function loadIGSentiment() {
     if (_igSentimentData) { renderIGSentiment(); return; }
