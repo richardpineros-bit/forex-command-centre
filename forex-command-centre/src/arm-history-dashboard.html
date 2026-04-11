@@ -1089,7 +1089,7 @@ function renderTEFX(d) {
     var rows = PAIRS.map(function(pair) {
         var p = fx[pair];
         if (!p) return '';
-        var rate    = p.rate    || '\u2014';
+        var rate    = p.rate    || '--';
         var pct     = p.daily_pct || '\u2014';
         var status  = p.status || '';
         var ok      = status === 'OK';
