@@ -36,6 +36,7 @@ $allowedFiles = [
     'daily-context' => 'daily-context.json',
     'armed-exclude' => 'armed-exclude.json',
     'armed-dismissed' => 'armed-dismissed.json',
+    'armed-watchlist' => 'armed-watchlist.json',
     'dashboard-theme' => 'dashboard-theme.json',
     'armed-validation' => 'armed-validation.json',
     'scans' => 'scans.json',

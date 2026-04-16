@@ -1,4 +1,4 @@
-// armed-panel.js v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -21,6 +21,12 @@
     // Structure: { pair: { dismissedAt: ISO string } }
     var _dismissedPairs    = {};   // keyed by pair name
     var _dismissedExpanded = false;
+
+    // Watchlist state
+    // Structure: { pair: { watchedAt, expiresAt, snapshotScore, snapshotDirection, snapshotPlaybook, snapshotEntryZone } }
+    var _watchedPairs  = {};
+    var WATCH_TTL_MS   = 8 * 60 * 60 * 1000; // 8 hours
+
 
     async function fetchSentiment() {
         try {
@@ -101,6 +107,62 @@
             });
         } catch(e) {}
     }
+
+    // Watchlist helpers
+    async function loadWatchlist() {
+        try {
+            var r = await fetch(API_URL + '?file=armed-watchlist');
+            if (!r.ok) return;
+            var result = await r.json();
+            if (result.success && result.data && result.data.pairs && typeof result.data.pairs === 'object') {
+                _watchedPairs = result.data.pairs;
+            }
+        } catch(e) {}
+    }
+
+    async function saveWatchlist() {
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file: 'armed-watchlist', data: { pairs: _watchedPairs } })
+            });
+        } catch(e) {}
+    }
+
+    function isWatchExpired(rec) {
+        return rec && rec.expiresAt && Date.now() > new Date(rec.expiresAt).getTime();
+    }
+
+    function buildGhostWatchCard(pair) {
+        var rec = _watchedPairs[pair];
+        if (!rec) return '';
+        var msLeft    = new Date(rec.expiresAt).getTime() - Date.now();
+        var hLeft     = Math.max(0, Math.floor(msLeft / 3600000));
+        var mLeft     = Math.max(0, Math.floor((msLeft % 3600000) / 60000));
+        var countdown = hLeft + 'h ' + mLeft + 'm';
+        var dir       = (rec.snapshotDirection || '').toUpperCase();
+        var dirColour = dir === 'LONG' ? '#4ade80' : dir === 'SHORT' ? '#f87171' : 'var(--text-muted)';
+        var uAction   = 'event.stopPropagation();unwatchArmedPair(\'' + pair + '\');return false;';
+        return (
+            '<div class="armed-pair-wrapper" style="border-left:3px solid #f59e0b;opacity:0.85">' +
+            '<button class="armed-watch-btn" onclick="' + uAction + '" title="Remove from watchlist"' +
+            ' style="color:#fbbf24;background:none;border:none;cursor:pointer;font-size:1rem;padding:4px 6px">&#x2605;</button>' +
+            '<div class="armed-pair-row" style="background:rgba(245,158,11,0.04);display:flex;align-items:center;' +
+            'gap:8px;padding:6px 8px;flex-wrap:wrap">' +
+                '<span class="armed-emoji">&#x1F7E0;</span>' +
+                '<span class="armed-pair-name" style="font-weight:700">' + pair + '</span>' +
+                '<span style="color:#f59e0b;font-size:0.72rem;font-weight:700;padding:2px 6px;' +
+                'border:1px solid #f59e0b55;border-radius:3px">DISARMED</span>' +
+                '<span style="color:' + dirColour + ';font-size:0.72rem;font-weight:600">' + dir + '</span>' +
+                '<span style="color:var(--text-muted);font-size:0.7rem">Snap: ' + (rec.snapshotScore || '--') + '</span>' +
+                '<span style="color:var(--text-muted);font-size:0.65rem">' + (rec.snapshotPlaybook || '').replace(/_/g,' ') + '</span>' +
+                '<span style="color:var(--text-muted);font-size:0.63rem;margin-left:auto">Expires ' + countdown + '</span>' +
+            '</div>' +
+            '</div>'
+        );
+    }
+
 
     // Auto-restore: if a pair was dismissed but a newer ARMED has since arrived, clear the dismiss
     function reconcileDismissed(armedPairs) {
@@ -603,6 +665,18 @@
         var tvOnClick = 'openTV(\'' + (p.pair || '') + '\');return false;';
 
         var dismissBtn = '';
+        var watchBtn   = '';
+        if (tier) {
+            var isWatchingBtn = !!_watchedPairs[p.pair];
+            var wAction = isWatchingBtn
+                ? 'event.stopPropagation();unwatchArmedPair(\'' + (p.pair||'') + '\');return false;'
+                : 'event.stopPropagation();watchArmedPair(\'' + (p.pair||'') + '\');return false;';
+            var wIcon   = isWatchingBtn ? '&#x2605;' : '&#x2606;';
+            var wTip    = isWatchingBtn ? 'Remove from watchlist' : 'Watch \u2014 pin while hunting entry';
+            var wColour = isWatchingBtn ? '#fbbf24' : 'var(--text-muted)';
+            watchBtn = '<button class="armed-watch-btn" onclick="' + wAction + '" title="' + wTip + '"' +
+                ' style="color:' + wColour + ';background:none;border:none;cursor:pointer;font-size:1rem;padding:4px 4px">'+wIcon+'</button>';
+        }
         if (tier) {
             var hasOpenTrade = (window._armedOpenTrades || {})[p.pair || ''];
             if (hasOpenTrade) {
@@ -613,7 +687,9 @@
             }
         }
 
+        var isWatching = !!_watchedPairs[p.pair];
         var wrapperCls = 'armed-pair-wrapper' + (tier ? ' ' + tier : '');
+        var wrapperStyle = isWatching ? ' style="border-left:3px solid #fbbf24"' : '';
 
         // Direction + confidence badge (satellite-weighted verdict)
         var verdict = computeVerdictScore(p);
@@ -631,8 +707,9 @@
         var locationRowHtml  = buildLocationRow(p);
         var intelligenceHtml = buildIntelligenceStrip(p);
 
-        return '<div class="' + wrapperCls + '">' +
+        return '<div class="' + wrapperCls + '"' + wrapperStyle + '>' +
             dismissBtn +
+            watchBtn +
             '<a href="#" class="' + rowClass + ' armed-row-link" data-pair="' + (p.pair || '') + '" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
                 '<span class="armed-pair-name">' + alertTypeBadge(p) + ' ' + (p.pair || '') + '</span>' +
@@ -729,6 +806,23 @@
         // Reconcile dismissed: auto-restore if new ARMED arrived since dismiss
         reconcileDismissed(allActivePairs);
 
+        // Prune expired watches
+        var watchChanged = false;
+        Object.keys(_watchedPairs).forEach(function(pair) {
+            if (isWatchExpired(_watchedPairs[pair])) {
+                delete _watchedPairs[pair];
+                watchChanged = true;
+                console.log('[ArmedPanel] Watch expired and removed: ' + pair);
+            }
+        });
+        if (watchChanged) saveWatchlist();
+
+        // Ghost pairs: in _watchedPairs but no longer in the armed state (BLOCKED)
+        var armedPairNames = allActivePairs.map(function(p) { return p.pair; });
+        var ghostWatches   = Object.keys(_watchedPairs).filter(function(pair) {
+            return armedPairNames.indexOf(pair) === -1;
+        });
+
         // Separate dismissed from active
         var dismissedItems = allActivePairs.filter(function(p) { return !!_dismissedPairs[p.pair]; });
         var activePairs    = allActivePairs.filter(function(p) { return !_dismissedPairs[p.pair]; });
@@ -763,6 +857,18 @@
             '<span class="armed-section-count' + (activeArmedCount > 0 ? ' armed' : '') + '">' + activeArmedCount + '</span>' +
             summaryHtml +
         '</div>';
+
+        // Watched pairs section (ghost cards for BLOCKED pairs still within 8h watch)
+        if (ghostWatches.length > 0) {
+            html += '<div class="armed-section-header" style="color:#fbbf24;border-bottom:1px solid #fbbf2433">' +
+                '&#x2605; Watching ' +
+                '<span class="armed-section-count" style="background:#fbbf2422;color:#fbbf24">' + ghostWatches.length + '</span>' +
+                '<span style="font-size:0.65rem;color:var(--text-muted);margin-left:8px;font-weight:400">Setup disarmed \u2014 ghost expires in 8h</span>' +
+            '</div>';
+            for (var wgi = 0; wgi < ghostWatches.length; wgi++) {
+                html += buildGhostWatchCard(ghostWatches[wgi]);
+            }
+        }
 
         if (activePairs.length > 0) {
             // Compute quality tier
@@ -842,6 +948,7 @@
     // race condition where state renders before dismissed pairs are loaded
     (async function() {
         await loadDismissed();
+        await loadWatchlist();
         fetchArmedState();
         setInterval(fetchArmedState, REFRESH_INTERVAL);
         setInterval(fetchLocation, 5 * 60 * 1000);
@@ -851,10 +958,36 @@
     window.refreshArmedPanel = fetchArmedState;
     window.ArmedPanel = {
         toggleContextFilter: toggleContextFilter,
-        getDismissedPairs: function() { return _dismissedPairs; },
+        getDismissedPairs:   function() { return _dismissedPairs; },
+        getWatchedPairs:     function() { return _watchedPairs; },
         isExcluded: isExcluded
     };
     window.openTV = openTV;
+
+    window.watchArmedPair = function(pairName) {
+        var pairs = (window._lastArmedData && window._lastArmedData.pairs) || [];
+        var p = null;
+        for (var i = 0; i < pairs.length; i++) { if (pairs[i].pair === pairName) { p = pairs[i]; break; } }
+        var now = new Date();
+        _watchedPairs[pairName] = {
+            watchedAt:         now.toISOString(),
+            expiresAt:         new Date(now.getTime() + WATCH_TTL_MS).toISOString(),
+            snapshotScore:     p ? (p.enrichedScore !== null && p.enrichedScore !== undefined ? p.enrichedScore : (p.score || 0)) : 0,
+            snapshotDirection: p ? (p.direction || '') : '',
+            snapshotPlaybook:  p ? (p.playbook  || '') : '',
+            snapshotEntryZone: p ? (p.entryZone || '') : ''
+        };
+        saveWatchlist();
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
+        if (typeof showToast === 'function') showToast(pairName + ' added to watchlist (8h)', 'success');
+    };
+
+    window.unwatchArmedPair = function(pairName) {
+        delete _watchedPairs[pairName];
+        saveWatchlist();
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
+        if (typeof showToast === 'function') showToast(pairName + ' removed from watchlist', 'info');
+    };
 
     window.dismissArmedPair = function(pairName) {
         _dismissedPairs[pairName] = { dismissedAt: new Date().toISOString() };
