@@ -1,3 +1,26 @@
+## [v5.13.0] - 2026-04-17
+### Feature: Signal Frequency Badge + Watchlist Pin
+
+**Problem C -- Signal Frequency Badge (Alert Server v2.13.0 / v2.13.1 / armed-panel.js v1.9.0):**
+- `getPairSignalCounts()` reads `arm-history.json`, groups events into sessions (6h gap = new session), counts last 7 and 14 days per pair
+- `/state` exposes `weekSignalCount` and `twoWeekSignalCount` on every armed pair. Zero extra client API calls
+- Intelligence strip item 7: `Freq` badge. Colour tiers: grey (1st), blue (2-3x), amber (4-5x), gold (6x+). Hover shows 14-day count
+- Fix v2.13.1: Inflated counts (10x, 20x) caused by 4H re-affirmations counted individually. Fixed by 6h session deduplication
+
+**Problem B -- Watchlist Pin (armed-panel.js v1.10.0 / storage-api.php):**
+- Watch button (star) on every active armed card. Snapshots score, direction, playbook, entry zone at moment of decision
+- Gold border + filled star on watched cards. Pin survives BLOCKED for 8h
+- Ghost cards: BLOCKED pairs within 8h watch window shown in amber WATCHING section above tier groups with snapshot + expiry countdown
+- Watches auto-expire after 8h. Unwatch clears immediately
+- `armed-watchlist` key added to `storage-api.php` whitelist (both copies). Data in `armed-watchlist.json`
+
+**Problem A -- Entry Monitor:**
+- Superseded: TradingView-based approach (Pine Script) abandoned in favour of server-side implementation
+- Server-side monitor runs against Oanda API directly -- monitors all armed pairs automatically, no per-pair setup required
+- See v5.14.0 for implementation
+
+---
+
 ## [v5.12.0] - 2026-04-11
 ### Fix + Cleanup: ltfBreak display, TR structExt bootstrap, legacy field removal
 
