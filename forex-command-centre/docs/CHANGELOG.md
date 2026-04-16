@@ -1,3 +1,23 @@
+## [v5.14.0] - 2026-04-17
+### Feature: Server-side Entry Monitor (Problem A)
+
+**Alert Server v2.14.0 / armed-panel.js v1.11.0:**
+
+Architecture: Two autonomous jobs in index.js. No TradingView dependency. Monitors all armed pairs automatically.
+
+- `oandaGet()`: Node.js https wrapper for Oanda REST API v20 with 15s timeout
+- `computeEMA()` / `computeATR()`: pure JS EMA and ATR computation (no external libs)
+- `refreshPairEMA()`: fetches 60 x H4 candles per pair, computes EMA 9/21/50 + ATR14, stores in `_emaCache`. Triggered on new ARMED event (immediate) and every 4h (full refresh)
+- `checkEntryZones()`: fetches live bid/ask for all armed pairs from Oanda pricing endpoint every 5 min. Computes mid-price distance from fastEMA in ATR units. Grades: HOT (0.3 ATR), OPTIMAL (0.5 ATR), ACCEPTABLE (1.0 ATR). Checks correct pullback side. Push notification on zone entry. Clears state on zone exit
+- `_emaCache` cleared on BLOCKED -- no stale levels for re-armed pairs
+- Entry Monitor init inside `server.listen` callback: 15s delayed first run, then 4h EMA + 5min zone intervals. Disabled silently if env vars absent
+- `/state` exposes `entryZoneActive`, `entryZoneGrade`, `entryZoneDist`, `entryZoneTimestamp` per pair
+- `GET /entry-zones`: returns all pairs currently in an active entry zone
+- armed-panel.js: ZONE badge as item 0 in intelligence strip. Green=HOT, soft green=OPTIMAL, amber=ACCEPTABLE. Shows ATR distance
+- Requires Docker env vars: `OANDA_API_KEY` and `OANDA_ACCOUNT_ID` (and optionally `OANDA_ENV=practice`)
+
+---
+
 ## [v5.13.0] - 2026-04-17
 ### Feature: Signal Frequency Badge + Watchlist Pin
 

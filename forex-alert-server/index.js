@@ -1,4 +1,5 @@
-const http = require('http');
+const http  = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const webpush = require('web-push');
@@ -15,11 +16,17 @@ const OANDA_BOOK_FILE    = process.env.OANDA_BOOK_FILE    || '/data/oanda-orderb
 const LOCATION_FILE     = process.env.LOCATION_FILE     || '/data/location.json';
 const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-history.json';
 
+// Entry Monitor -- Oanda credentials (set as Docker env vars)
+const OANDA_API_KEY    = process.env.OANDA_API_KEY    || null;
+const OANDA_ACCOUNT_ID = process.env.OANDA_ACCOUNT_ID || null;
+const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
+
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.13.1';
+const VERSION = '2.14.0';
 const CHANGES = [
+    '2.14.0 - Server-side Entry Monitor: EMA 9/21/50 + ATR14 from Oanda 4H candles every 4h. Zone price check every 5 min. Push on entry/exit. entryZoneActive/Grade/Dist/Timestamp on /state. Fires on new ARMED. Requires OANDA_API_KEY + OANDA_ACCOUNT_ID env vars.',
     '2.13.1 - Fix signal frequency counts: getPairSignalCounts() now deduplicates arm-history events into distinct sessions (6h gap threshold). Fixes inflated counts caused by 4H re-affirmation pings logging as separate events.',
     '2.13.0 - Signal frequency: /state now exposes weekSignalCount and twoWeekSignalCount per pair, derived server-side from arm-history.json. Zero extra client API calls.',
     '2.12.0 - Add ltfBreak field (ctx.ltf_break from TR_ARMED payloads); TR_ARMED bootstrap: structure=SUPPORT|RESISTANCE infers structExt=FRESH before FCC-SRL fires; remove legacy fields criteria/volBehaviour/structBars/riskMult from pair state and arm history (never populated by ultimate-utcc.pine); remove ctx.struct_ext read (server-derives from locGrade only).',
@@ -53,7 +60,13 @@ const CONFIG = {
     UTCC_MAX_ALERTS_PER_PAIR: 10,   // Keep last 10 alerts per pair
     UTCC_CLEANUP_INTERVAL_MS: 300000, // Cleanup every 5 minutes
     STRUCTURE_TTL_HOURS: 4,         // Structure alerts expire after 4 hours
-    LOCATION_TTL_HOURS:  6          // Location grades expire after 6 hours
+    LOCATION_TTL_HOURS:  6,         // Location grades expire after 6 hours
+    EM_EMA_REFRESH_MS:   4 * 60 * 60 * 1000,
+    EM_ZONE_CHECK_MS:    5 * 60 * 1000,
+    EM_CANDLE_COUNT:     60,
+    EM_HOT_ATR:          0.3,
+    EM_OPTIMAL_ATR:      0.5,
+    EM_ACCEPTABLE_ATR:   1.0
 };
 
 // ============================================================================
@@ -270,6 +283,175 @@ function pushScraperError(payload) {
 // ============================================================================
 // STATE MANAGEMENT - ARMED PAIRS
 // ============================================================================
+
+// ============================================================================
+// ENTRY MONITOR -- Server-side EMA zone watcher
+// ============================================================================
+// In-memory caches (reset on container restart -- rebuilt from Oanda on startup)
+var _emaCache       = {};   // pair -> { fastEMA, midEMA, slowEMA, atrValue, direction, updatedAt }
+var _emBusy         = false; // prevent overlapping EMA refresh runs
+
+function toOandaInstrument(pair) {
+    pair = pair.toUpperCase().replace('/', '');
+    if (pair.length === 6) return pair.slice(0, 3) + '_' + pair.slice(3);
+    if (pair.length === 7) return pair.slice(0, 3) + '_' + pair.slice(3); // e.g. USD_JPY
+    return pair;
+}
+
+function oandaGet(path) {
+    return new Promise(function(resolve, reject) {
+        var host = OANDA_ENV === 'practice' ? 'api-fxpractice.oanda.com' : 'api-fxtrade.oanda.com';
+        var options = {
+            hostname: host,
+            path:     path,
+            method:   'GET',
+            headers:  {
+                'Authorization': 'Bearer ' + OANDA_API_KEY,
+                'Content-Type':  'application/json'
+            }
+        };
+        var req = https.request(options, function(res) {
+            var data = '';
+            res.on('data', function(c) { data += c; });
+            res.on('end', function() {
+                try { resolve(JSON.parse(data)); }
+                catch(e) { reject(new Error('JSON: ' + e.message + ' | ' + data.slice(0, 80))); }
+            });
+        });
+        req.on('error', reject);
+        req.setTimeout(15000, function() { req.destroy(new Error('Oanda request timeout')); });
+        req.end();
+    });
+}
+
+function computeEMA(closes, period) {
+    var k   = 2 / (period + 1);
+    var ema = closes[0];
+    for (var i = 1; i < closes.length; i++) {
+        ema = closes[i] * k + ema * (1 - k);
+    }
+    return ema;
+}
+
+function computeATR(candles, period) {
+    var trs = [];
+    for (var i = 1; i < candles.length; i++) {
+        var high      = parseFloat(candles[i].mid.h);
+        var low       = parseFloat(candles[i].mid.l);
+        var prevClose = parseFloat(candles[i - 1].mid.c);
+        trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+    }
+    if (trs.length < period) return null;
+    return trs.slice(-period).reduce(function(a, b) { return a + b; }, 0) / period;
+}
+
+async function refreshPairEMA(pair) {
+    if (!OANDA_API_KEY) return;
+    try {
+        var instrument = toOandaInstrument(pair);
+        var data       = await oandaGet('/v3/instruments/' + instrument + '/candles?granularity=H4&count=' + CONFIG.EM_CANDLE_COUNT + '&price=M');
+        var candles    = (data.candles || []).filter(function(c) { return c.complete; });
+        if (candles.length < 55) {
+            console.log('[EntryMonitor] Insufficient candles for ' + pair + ' (' + candles.length + ')');
+            return;
+        }
+        var closes    = candles.map(function(c) { return parseFloat(c.mid.c); });
+        var fast      = computeEMA(closes, 9);
+        var mid       = computeEMA(closes, 21);
+        var slow      = computeEMA(closes, 50);
+        var atr       = computeATR(candles, 14);
+        var direction = (fast > mid && mid > slow) ? 'LONG' : (fast < mid && mid < slow) ? 'SHORT' : 'FLAT';
+        _emaCache[pair] = { fastEMA: fast, midEMA: mid, slowEMA: slow, atrValue: atr, direction: direction, updatedAt: new Date().toISOString() };
+        console.log('[EntryMonitor] EMA: ' + pair + ' | ' + direction + ' | f=' + fast.toFixed(5) + ' m=' + mid.toFixed(5) + ' s=' + slow.toFixed(5) + ' atr=' + (atr ? atr.toFixed(5) : 'null'));
+    } catch (e) {
+        console.error('[EntryMonitor] EMA refresh failed ' + pair + ':', e.message);
+    }
+}
+
+async function refreshEMALevels() {
+    if (!OANDA_API_KEY || _emBusy) return;
+    _emBusy = true;
+    try {
+        var armedPairs = Object.keys(loadState().pairs);
+        console.log('[EntryMonitor] EMA refresh for ' + armedPairs.length + ' armed pair(s)');
+        for (var i = 0; i < armedPairs.length; i++) {
+            await refreshPairEMA(armedPairs[i]);
+        }
+    } finally {
+        _emBusy = false;
+    }
+}
+
+async function checkEntryZones() {
+    if (!OANDA_API_KEY || !OANDA_ACCOUNT_ID) return;
+    var state      = loadState();
+    var armedPairs = Object.keys(state.pairs);
+    if (armedPairs.length === 0) return;
+
+    var instruments = armedPairs.map(toOandaInstrument).join('%2C');
+    try {
+        var data   = await oandaGet('/v3/accounts/' + OANDA_ACCOUNT_ID + '/pricing?instruments=' + instruments);
+        var prices = {};
+        (data.prices || []).forEach(function(p) {
+            var pair  = p.instrument.replace('_', '');
+            var bid   = parseFloat((p.bids  && p.bids[0]  && p.bids[0].price)  || 0);
+            var ask   = parseFloat((p.asks  && p.asks[0]  && p.asks[0].price)  || 0);
+            if (bid > 0 && ask > 0) prices[pair] = (bid + ask) / 2;
+        });
+
+        var changed = false;
+        armedPairs.forEach(function(pair) {
+            var ema   = _emaCache[pair];
+            var price = prices[pair];
+            if (!ema || ema.direction === 'FLAT' || !ema.atrValue || !price) return;
+
+            var dist = Math.abs(price - ema.fastEMA) / ema.atrValue;
+
+            // Correct pullback side
+            var correctSide = false;
+            if (ema.direction === 'LONG')  correctSide = price <= ema.fastEMA + (CONFIG.EM_ACCEPTABLE_ATR * ema.atrValue);
+            if (ema.direction === 'SHORT') correctSide = price >= ema.fastEMA - (CONFIG.EM_ACCEPTABLE_ATR * ema.atrValue);
+
+            var inZone    = correctSide && dist <= CONFIG.EM_ACCEPTABLE_ATR;
+            var grade     = dist <= CONFIG.EM_HOT_ATR ? 'HOT' : dist <= CONFIG.EM_OPTIMAL_ATR ? 'OPTIMAL' : inZone ? 'ACCEPTABLE' : null;
+            var distRound = Math.round(dist * 100) / 100;
+            var wasActive = state.pairs[pair].entryZoneActive || false;
+
+            if (inZone && !wasActive) {
+                // Zone entered
+                state.pairs[pair].entryZoneActive    = true;
+                state.pairs[pair].entryZoneGrade     = grade;
+                state.pairs[pair].entryZoneDist      = distRound;
+                state.pairs[pair].entryZoneTimestamp = new Date().toISOString();
+                changed = true;
+                console.log('[EntryMonitor] ZONE ENTERED: ' + pair + ' | ' + ema.direction + ' | ' + grade + ' | dist=' + distRound);
+                sendPushToAll({
+                    title: 'ENTRY ZONE: ' + pair,
+                    body:  ema.direction + ' | ' + grade + ' | dist ' + distRound + ' ATR from ribbon',
+                    tag:   'entry-' + pair,
+                    data:  { type: 'ENTRY_ZONE', pair: pair, zone: grade }
+                }, 'armed');
+            } else if (!inZone && wasActive) {
+                // Zone lost
+                state.pairs[pair].entryZoneActive    = false;
+                state.pairs[pair].entryZoneGrade     = null;
+                state.pairs[pair].entryZoneDist      = null;
+                state.pairs[pair].entryZoneTimestamp = null;
+                changed = true;
+                console.log('[EntryMonitor] ZONE LOST: ' + pair);
+            } else if (inZone && wasActive) {
+                // Still in zone -- update grade/dist
+                state.pairs[pair].entryZoneGrade = grade;
+                state.pairs[pair].entryZoneDist  = distRound;
+                changed = true;
+            }
+        });
+
+        if (changed) saveState(state);
+    } catch (e) {
+        console.error('[EntryMonitor] Zone check error:', e.message);
+    }
+}
 
 function loadState() {
     try {
@@ -1139,7 +1321,12 @@ var server = http.createServer(function(req, res) {
                 locTimestamp:     d.locTimestamp  || null,
                 // v2.13.0: Signal frequency from arm-history
                 weekSignalCount:    counts.weekSignalCount,
-                twoWeekSignalCount: counts.twoWeekSignalCount
+                twoWeekSignalCount: counts.twoWeekSignalCount,
+                // v2.14.0: Entry Monitor zone state
+                entryZoneActive:    d.entryZoneActive    || false,
+                entryZoneGrade:     d.entryZoneGrade     || null,
+                entryZoneDist:      d.entryZoneDist      || null,
+                entryZoneTimestamp: d.entryZoneTimestamp || null
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
@@ -1151,6 +1338,25 @@ var server = http.createServer(function(req, res) {
             pairs: pairs,
             lastUpdate: state.lastUpdate
         }));
+        return;
+    }
+
+    // GET /entry-zones - Return all pairs currently in an entry zone
+    if (req.method === 'GET' && req.url === '/entry-zones') {
+        var state  = loadState();
+        var zones  = Object.keys(state.pairs)
+            .filter(function(p) { return state.pairs[p].entryZoneActive; })
+            .map(function(p) {
+                return {
+                    pair:      p,
+                    grade:     state.pairs[p].entryZoneGrade,
+                    dist:      state.pairs[p].entryZoneDist,
+                    direction: state.pairs[p].direction || '',
+                    timestamp: state.pairs[p].entryZoneTimestamp
+                };
+            });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ count: zones.length, zones: zones }));
         return;
     }
 
@@ -1228,6 +1434,9 @@ var server = http.createServer(function(req, res) {
                 // Push notification — ARMED fires
                 pushArmed(alert);
 
+                // Entry Monitor -- compute EMA for newly armed pair
+                if (OANDA_API_KEY) { refreshPairEMA(alert.pair); }
+
                 // FOMO gate — push again after 1 hour
                 if (fomoTimers[alert.pair]) {
                     clearTimeout(fomoTimers[alert.pair]);
@@ -1246,6 +1455,8 @@ var server = http.createServer(function(req, res) {
                     delete state.pairs[alert.pair];
                     saveState(state);
                 }
+                // Entry Monitor -- clear EMA cache for disarmed pair
+                delete _emaCache[alert.pair];
 
 
                 // Cancel FOMO timer if pair was waiting
@@ -1621,3 +1832,608 @@ var server = http.createServer(function(req, res) {
 
 
     // POST /webhook/location - Receive location grade from FCC-LOC Pine indicator
+    // Fired every 4H bar close per pair. Stores grade, zone, cloud position, breakout.
+    if (req.method === 'POST' && req.url === '/webhook/location') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var payload = JSON.parse(body);
+                if (!payload.pair || !payload.grade) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required fields: pair, grade' }));
+                    return;
+                }
+                var data = loadLocation();
+                var now  = new Date();
+                data.pairs[payload.pair] = {
+                    pair:           payload.pair,
+                    direction:      payload.direction      || 'NEUTRAL',
+                    grade:          payload.grade,
+                    zone:           payload.zone           || 'NONE',
+                    zone_dist_atr:  payload.zone_dist_atr  || 'na',
+                    cloud_pos:      payload.cloud_pos      || 'CLEAR',
+                    cloud_dist_atr: payload.cloud_dist_atr || 'na',
+                    breakout:       payload.breakout       || 'NONE',
+                    supp_name:      payload.supp_name      || 'NONE',
+                    supp_dist_atr:  payload.supp_dist_atr  || 'na',
+                    res_name:       payload.res_name       || 'NONE',
+                    res_dist_atr:   payload.res_dist_atr   || 'na',
+                    timestamp:      now.toISOString()
+                };
+                saveLocation(data);
+                appendLocHistory(payload);
+                enrichArmedPair(payload.pair);
+                console.log('[Location] ' + payload.pair + ' | ' + (payload.direction||'?') + ' | ' + payload.grade + ' | zone=' + (payload.zone||'NONE') + ' | cloud=' + (payload.cloud_pos||'?') + ' | brk=' + (payload.breakout||'NONE'));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, pair: payload.pair, grade: payload.grade }));
+            } catch (e) {
+                console.error('[Location] Parse error:', e.message);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON: ' + e.message }));
+            }
+        });
+        return;
+    }
+
+    // GET /location - Return location state. Usage: /location?pair=EURUSD or /location (all)
+    if (req.method === 'GET' && (req.url === '/location' || req.url.startsWith('/location?'))) {
+        var urlParts = req.url.split('?');
+        var params   = {};
+        (urlParts[1] || '').split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+        var data  = loadLocation();
+        var now   = Date.now();
+        var ttlMs = CONFIG.LOCATION_TTL_HOURS * 60 * 60 * 1000;
+        if (params.pair) {
+            var entry = data.pairs[params.pair];
+            if (!entry) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ found: false, pair: params.pair, grade: 'NO_DATA' }));
+                return;
+            }
+            var age = now - new Date(entry.timestamp).getTime();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(Object.assign({}, entry, {
+                found:      age <= ttlMs,
+                grade:      age > ttlMs ? 'STALE' : entry.grade,
+                ageMinutes: Math.floor(age / 60000),
+                expired:    age > ttlMs
+            })));
+        } else {
+            var active = [];
+            for (var p in data.pairs) {
+                var e   = data.pairs[p];
+                var age = now - new Date(e.timestamp).getTime();
+                if (age <= ttlMs) active.push(Object.assign({}, e, { ageMinutes: Math.floor(age / 60000) }));
+            }
+            active.sort(function(a, b) { return a.pair.localeCompare(b.pair); });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ count: active.length, pairs: active, lastUpdate: data.lastUpdate }));
+        }
+        return;
+    }
+
+    // GET /location-history - Return location history for calibration analysis
+    // Usage: /location-history?pair=EURUSD&grade=PRIME&limit=200&asset_class=FX
+    if (req.method === 'GET' && req.url.startsWith('/location-history')) {
+        var urlParts = req.url.split('?');
+        var params   = {};
+        (urlParts[1] || '').split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+        var data   = loadLocHistory();
+        var events = data.events || [];
+
+        // Filters
+        if (params.pair)        events = events.filter(function(e) { return e.pair === params.pair; });
+        if (params.grade)       events = events.filter(function(e) { return e.grade === params.grade; });
+        if (params.asset_class) events = events.filter(function(e) { return e.asset_class === params.asset_class; });
+        if (params.direction)   events = events.filter(function(e) { return e.direction === params.direction; });
+
+        var limit = parseInt(params.limit) || 500;
+        if (events.length > limit) events = events.slice(-limit);
+
+        // Summary stats for calibration
+        var grades = {};
+        var cloudDists = [];
+        var suppDists  = [];
+        var resDists   = [];
+
+        events.forEach(function(e) {
+            grades[e.grade] = (grades[e.grade] || 0) + 1;
+            if (e.cloud_dist_atr !== null) cloudDists.push(e.cloud_dist_atr);
+            if (e.supp_dist_atr  !== null) suppDists.push(e.supp_dist_atr);
+            if (e.res_dist_atr   !== null) resDists.push(e.res_dist_atr);
+        });
+
+        function avg(arr) {
+            if (!arr.length) return null;
+            return Math.round((arr.reduce(function(a,b){return a+b;},0) / arr.length) * 100) / 100;
+        }
+        function pct(n, total) { return total ? Math.round(n / total * 1000) / 10 : 0; }
+
+        var total = events.length;
+        var gradeSummary = Object.keys(grades).map(function(g) {
+            return { grade: g, count: grades[g], pct: pct(grades[g], total) };
+        }).sort(function(a,b) { return b.count - a.count; });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            total:          data.total,
+            filtered:       total,
+            last_updated:   data.last_updated,
+            grade_summary:  gradeSummary,
+            avg_cloud_dist: avg(cloudDists),
+            avg_supp_dist:  avg(suppDists),
+            avg_res_dist:   avg(resDists),
+            events:         events
+        }));
+        return;
+    }
+
+    // ========================================================================
+    // GET /bias-history - Return news bias history (scraper output)
+    // Usage: /bias-history?days=30&pair=AUDUSD&currency=AUD
+    if (req.method === 'GET' && req.url.startsWith('/bias-history')) {
+        var urlParts = req.url.split('?');
+        var queryStr = urlParts[1] || '';
+        var params = {};
+        queryStr.split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+
+        var history = loadBiasHistory();
+        var runs = history.runs || [];
+
+        // Filter by days
+        var days = parseInt(params.days) || 0;
+        if (days > 0) {
+            var cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+            runs = runs.filter(function(r) {
+                return new Date(r.timestamp).getTime() >= cutoff;
+            });
+        }
+
+        // Build response - include full runs + summary
+        var summary = {
+            total_runs:      runs.length,
+            last_updated:    history.last_updated,
+            schema_version:  history.schema_version
+        };
+
+        // Latest pair verdicts and currency bias (most useful for FCC frontend)
+        var latestVerdicts  = getCurrentPairVerdicts();
+        var latestBias      = getCurrentCurrencyBias();
+
+        // If pair filter - extract relevant verdict
+        if (params.pair) {
+            latestVerdicts = {};
+            var pd = getCurrentPairVerdicts();
+            if (pd[params.pair]) latestVerdicts[params.pair] = pd[params.pair];
+        }
+
+        // If currency filter - extract relevant bias
+        if (params.currency) {
+            latestBias = {};
+            var cb = getCurrentCurrencyBias();
+            if (cb[params.currency]) latestBias[params.currency] = cb[params.currency];
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            summary:         summary,
+            latest_verdicts: latestVerdicts,
+            latest_bias:     latestBias,
+            runs:            runs
+        }));
+        return;
+    }
+
+    // GET /bias-history/latest - Return only current bias (lightweight, for FCC armed panel)
+    if (req.method === 'GET' && req.url === '/bias-history/latest') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            pair_verdicts:  getCurrentPairVerdicts(),
+            currency_bias:  getCurrentCurrencyBias(),
+            last_updated:   loadBiasHistory().last_updated
+        }));
+        return;
+    }
+
+    // PUSH NOTIFICATION ENDPOINTS (v2.5.0)
+    // ========================================================================
+
+    // POST /push/subscribe - Save a push subscription from the browser
+    if (req.method === 'POST' && req.url === '/push/subscribe') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var subscription = JSON.parse(body);
+                if (!subscription.endpoint) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'Missing endpoint' }));
+                    return;
+                }
+                addOrUpdateSubscription(subscription);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
+    // POST /push/notify - FCC frontend triggers news/circuit-breaker notifications
+    // Body: { type: 'NEWS_WARNING' | 'CIRCUIT_BREAKER', payload: {...} }
+    if (req.method === 'POST' && req.url === '/push/notify') {
+        var body = '';
+        req.on('data', function(chunk) { body += chunk; });
+        req.on('end', function() {
+            try {
+                var data = JSON.parse(body);
+                var type = data.type || '';
+                var payload = data.payload || {};
+                if (type === 'NEWS_WARNING') {
+                    pushNewsWarning(payload);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true }));
+                } else if (type === 'CIRCUIT_BREAKER') {
+                    pushCircuitBreaker(payload);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true }));
+                } else if (type === 'SCRAPER_ERROR') {
+                    pushScraperError(payload);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: true }));
+                } else {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ ok: false, error: 'Unknown type: ' + type }));
+                }
+            } catch (e) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
+    // ========================================================================
+    // TE SNAPSHOT ENDPOINT (v2.6.0)
+    // ========================================================================
+
+    // GET /te-snapshot - Return Trading Economics macro briefing snapshot
+    // Reads te-snapshot.json written by te_scraper.py (every 6h)
+    // Returns: { last_updated, summary, today_events, bond_auctions, fx_snapshot, health, stale }
+    if (req.method === 'GET' && req.url === '/te-snapshot') {
+        var teFile = process.env.TE_SNAPSHOT_FILE || '/data/te-snapshot.json';
+        var STALE_HOURS = 8; // warn if older than 8h (scraper runs every 6h, allow 2h margin)
+        try {
+            if (!fs.existsSync(teFile)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: false,
+                    error: 'te-snapshot.json not found. Run te_scraper.py --unraid first.',
+                    last_updated: null,
+                    stale: true
+                }));
+                return;
+            }
+            var teRaw = fs.readFileSync(teFile, 'utf8');
+            var teData = JSON.parse(teRaw);
+            // Staleness check
+            var isStale = true;
+            if (teData.last_updated) {
+                var ageMs = Date.now() - new Date(teData.last_updated).getTime();
+                isStale = ageMs > (STALE_HOURS * 60 * 60 * 1000);
+            }
+            teData.stale = isStale;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(teData));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'te-snapshot read error: ' + e.message, stale: true }));
+        }
+        return;
+    }
+
+    // ========================================================================
+    // ARM HISTORY ENDPOINT (v2.3.0)
+    // ========================================================================
+
+    // GET /arm-history - Return full arm event log (optionally filtered)
+    // Usage: /arm-history?days=30&pair=CADJPY
+    if (req.method === 'GET' && req.url.startsWith('/arm-history')) {
+        var urlParts = req.url.split('?');
+        var queryStr = urlParts[1] || '';
+        var params = {};
+        queryStr.split('&').forEach(function(p) {
+            var kv = p.split('=');
+            if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+
+        var data = loadArmHistory();
+        var events = data.events || [];
+
+        // Filter by days
+        var days = parseInt(params.days) || 0;
+        if (days > 0) {
+            var cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+            events = events.filter(function(e) {
+                return new Date(e.timestamp).getTime() >= cutoff;
+            });
+        }
+
+        // Filter by pair
+        if (params.pair) {
+            events = events.filter(function(e) {
+                return e.pair === params.pair;
+            });
+        }
+
+        // Build frequency tally
+        var tally = {};
+        events.forEach(function(e) {
+            if (!tally[e.pair]) {
+                tally[e.pair] = {
+                    total: 0, long: 0, short: 0,
+                    sessions: {}, scores: [], zones: {},
+                    playbooks: {}, volStates: {},
+                    days: {}, hours: [], rsiValues: [],
+                    mtf3: 0
+                };
+            }
+            var t = tally[e.pair];
+            t.total++;
+
+            // Direction
+            var dir = (e.direction || '').toUpperCase();
+            if (dir === 'LONG' || dir === 'BULL') t.long++;
+            if (dir === 'SHORT' || dir === 'BEAR') t.short++;
+
+            // Score
+            if (e.score) t.scores.push(e.score);
+
+            // Session (normalise to 3 buckets)
+            var SESSION_NORM = {'Tokyo':'TOKYO','Asian':'TOKYO','Off-Hours':'TOKYO',
+                'London':'LONDON','London/EU':'LONDON','EU/London':'LONDON',
+                'NY':'NY','US Session':'NY','US Prime':'NY','US Pre-NYMEX':'NY',
+                'NYMEX Prime':'NY','Cash Session':'NY'};
+            var normSess = e.session ? (SESSION_NORM[e.session] || e.session) : '';
+            if (normSess) t.sessions[normSess] = (t.sessions[normSess] || 0) + 1;
+
+            // Entry zone
+            if (e.entryZone) t.zones[e.entryZone] = (t.zones[e.entryZone] || 0) + 1;
+
+            // Playbook
+            if (e.playbook) t.playbooks[e.playbook] = (t.playbooks[e.playbook] || 0) + 1;
+
+            // Volatility
+            if (e.volState) t.volStates[e.volState] = (t.volStates[e.volState] || 0) + 1;
+
+            // Day of week
+            if (e.dayOfWeek) t.days[e.dayOfWeek] = (t.days[e.dayOfWeek] || 0) + 1;
+
+            // Hour distribution
+            if (e.hourUTC !== undefined) t.hours.push(e.hourUTC);
+
+            // RSI
+            if (e.rsi) t.rsiValues.push(e.rsi);
+
+            // Quality flags
+            if (e.mtf >= 3) t.mtf3++;
+        });
+
+        // Summarise per pair
+        Object.keys(tally).forEach(function(pair) {
+            var t = tally[pair];
+
+            // Avg score
+            t.avgScore = t.scores.length
+                ? Math.round(t.scores.reduce(function(a,b){return a+b;},0) / t.scores.length)
+                : 0;
+
+            // Avg RSI
+            t.avgRsi = t.rsiValues.length
+                ? Math.round(t.rsiValues.reduce(function(a,b){return a+b;},0) / t.rsiValues.length)
+                : 0;
+
+            // Peak hour (most common)
+            var hourCounts = {};
+            t.hours.forEach(function(h) { hourCounts[h] = (hourCounts[h] || 0) + 1; });
+            var peakHour = Object.keys(hourCounts).sort(function(a,b){ return hourCounts[b]-hourCounts[a]; })[0];
+            t.peakHourUTC = peakHour !== undefined ? parseInt(peakHour) : null;
+
+            // Top playbook
+            var pbKeys = Object.keys(t.playbooks);
+            t.topPlaybook = pbKeys.length
+                ? pbKeys.sort(function(a,b){ return t.playbooks[b]-t.playbooks[a]; })[0]
+                : '';
+
+            // Top vol state
+            var vsKeys = Object.keys(t.volStates);
+            t.topVolState = vsKeys.length
+                ? vsKeys.sort(function(a,b){ return t.volStates[b]-t.volStates[a]; })[0]
+                : '';
+
+            // Quality rate: mtf3 / total
+            t.mtf3Rate = t.total > 0 ? Math.round((t.mtf3 / t.total) * 100) : 0;
+
+            // Clean up raw arrays (keep data lean for transport)
+            delete t.scores;
+            delete t.rsiValues;
+            delete t.hours;
+        });
+
+        // Sort tally by total descending
+        var tallyArr = Object.keys(tally).map(function(p) {
+            return Object.assign({ pair: p }, tally[p]);
+        }).sort(function(a, b) { return b.total - a.total; });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            totalEvents: events.length,
+            daysFilter: days || 'all',
+            pairFilter: params.pair || 'all',
+            tally: tallyArr,
+            events: events,
+            lastUpdate: data.lastUpdate
+        }));
+        return;
+    }
+
+    // ========================================================================
+    // IG CLIENT SENTIMENT ENDPOINT (v2.7.0)
+    // ========================================================================
+
+    // GET /ig-sentiment/latest - Return IG retail sentiment per instrument
+    // Reads ig-sentiment.json written by ig_sentiment_scraper.py (every 4h)
+    if (req.method === 'GET' && req.url === '/ig-sentiment/latest') {
+        var STALE_HOURS_IG = 6;
+        try {
+            if (!fs.existsSync(IG_SENTIMENT_FILE)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: false,
+                    error: 'ig-sentiment.json not found. Run ig_sentiment_scraper.py --unraid first.',
+                    last_updated: null,
+                    stale: true
+                }));
+                return;
+            }
+            var igRaw = fs.readFileSync(IG_SENTIMENT_FILE, 'utf8');
+            var igData = JSON.parse(igRaw);
+            var isStale = true;
+            if (igData.last_updated) {
+                var ageMsIG = Date.now() - new Date(igData.last_updated).getTime();
+                isStale = ageMsIG > (STALE_HOURS_IG * 60 * 60 * 1000);
+            }
+            igData.stale = isStale;
+            igData.ok = true;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(igData));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'ig-sentiment read error: ' + e.message, stale: true }));
+        }
+        return;
+    }
+
+    // GET /oanda-book/latest - Return Oanda position book contrarian signals per instrument
+    // Reads oanda-orderbook.json written by oanda_orderbook_scraper.py (every 4h)
+    if (req.method === 'GET' && req.url === '/oanda-book/latest') {
+        var STALE_HOURS_OB = 6;
+        try {
+            if (!fs.existsSync(OANDA_BOOK_FILE)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: false,
+                    error: 'oanda-orderbook.json not found. Run oanda_orderbook_scraper.py first.',
+                    last_updated: null,
+                    stale: true
+                }));
+                return;
+            }
+            var obRaw  = fs.readFileSync(OANDA_BOOK_FILE, 'utf8');
+            var obData = JSON.parse(obRaw);
+            var isStale = true;
+            if (obData.last_updated) {
+                var ageMsOB = Date.now() - new Date(obData.last_updated).getTime();
+                isStale = ageMsOB > (STALE_HOURS_OB * 60 * 60 * 1000);
+            }
+            obData.stale = isStale;
+            obData.ok    = true;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(obData));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'oanda-book read error: ' + e.message, stale: true }));
+        }
+        return;
+    }
+
+    // GET /oanda-book/history - Return Oanda order book history for Intelligence Hub
+    if (req.method === 'GET' && req.url.startsWith('/oanda-book/history')) {
+        try {
+            var OANDA_HIST_FILE = process.env.OANDA_BOOK_FILE
+                ? process.env.OANDA_BOOK_FILE.replace('oanda-orderbook.json', 'oanda-orderbook-history.json')
+                : '/data/oanda-orderbook-history.json';
+            if (!fs.existsSync(OANDA_HIST_FILE)) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, history: [], total: 0 }));
+                return;
+            }
+            var histRaw  = fs.readFileSync(OANDA_HIST_FILE, 'utf8');
+            var histData = JSON.parse(histRaw);
+            var history  = Array.isArray(histData) ? histData : [];
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, history: history, total: history.length }));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'oanda-book/history read error: ' + e.message }));
+        }
+        return;
+    }
+
+    // 404
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+});
+
+server.listen(PORT, function() {
+    console.log('='.repeat(60));
+    console.log('Trading State Receiver v' + VERSION);
+    console.log('='.repeat(60));
+    console.log('Port:           ' + PORT);
+    console.log('State file:     ' + STATE_FILE);
+    console.log('UTCC file:      ' + UTCC_FILE);
+    console.log('Structure file: ' + STRUCTURE_FILE);
+    console.log('Arm history:    ' + ARM_HISTORY_FILE);
+    console.log('Alert TTL:      ' + CONFIG.UTCC_ALERT_TTL_HOURS + ' hours');
+    console.log('Structure TTL:  ' + CONFIG.STRUCTURE_TTL_HOURS + ' hours');
+    console.log('');
+    console.log('Armed Pairs Endpoints:');
+    console.log('  POST /webhook       - Receive alerts (old + new format)');
+    console.log('  GET  /state         - Get armed state');
+    console.log('');
+    console.log('UTCC Alert Queue Endpoints:');
+    console.log('  POST /webhook/utcc  - Receive UTCC alert data');
+    console.log('  GET  /utcc/alerts   - Get alerts (?pair=X&unmatched=true)');
+    console.log('  GET  /utcc/find     - Find matching alert (?pair=X&direction=Y)');
+    console.log('  POST /utcc/match    - Mark alert as matched');
+    console.log('  GET  /utcc/stats    - Get queue statistics');
+    console.log('');
+    console.log('Structure Gate Endpoints (v2.2.0):');
+    console.log('  POST /webhook/structure - Receive ProZones proximity alerts');
+    console.log('  GET  /structure         - Get structure state (?pair=X)');
+    console.log('');
+    console.log('Arm History Endpoints (v2.3.0):');
+    console.log('  GET  /arm-history       - Get arm event log (?days=30&pair=X)');
+    console.log('');
+    console.log('Entry Monitor (v2.14.0):');
+    console.log('  GET  /entry-zones       - Pairs currently in entry zone');
+    console.log('  Status: ' + (OANDA_API_KEY ? 'ACTIVE -- ' + OANDA_ENV : 'DISABLED -- set OANDA_API_KEY + OANDA_ACCOUNT_ID env vars'));
+    console.log('');
+    console.log('Utility:');
+    console.log('  GET  /health        - Health check');
+    console.log('');
+    console.log('Format: Institutional (v1.4.0) + Legacy backward compat');
+    console.log('='.repeat(60));
+
+    // Entry Monitor -- start jobs if credentials are configured
+    if (OANDA_API_KEY && OANDA_ACCOUNT_ID) {
+        console.log('[EntryMonitor] Starting -- EMA refresh every 4h, zone check every 5 min');
+        setTimeout(refreshEMALevels, 15000);  // initial run after 15s (let server settle)
+        setInterval(refreshEMALevels, CONFIG.EM_EMA_REFRESH_MS);
+        setInterval(checkEntryZones, CONFIG.EM_ZONE_CHECK_MS);
+    } else {
+        console.log('[EntryMonitor] Disabled -- OANDA_API_KEY / OANDA_ACCOUNT_ID not set');
+    }
+});
