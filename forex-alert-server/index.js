@@ -18,8 +18,9 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.13.0';
+const VERSION = '2.13.1';
 const CHANGES = [
+    '2.13.1 - Fix signal frequency counts: getPairSignalCounts() now deduplicates arm-history events into distinct sessions (6h gap threshold). Fixes inflated counts caused by 4H re-affirmation pings logging as separate events.',
     '2.13.0 - Signal frequency: /state now exposes weekSignalCount and twoWeekSignalCount per pair, derived server-side from arm-history.json. Zero extra client API calls.',
     '2.12.0 - Add ltfBreak field (ctx.ltf_break from TR_ARMED payloads); TR_ARMED bootstrap: structure=SUPPORT|RESISTANCE infers structExt=FRESH before FCC-SRL fires; remove legacy fields criteria/volBehaviour/structBars/riskMult from pair state and arm history (never populated by ultimate-utcc.pine); remove ctx.struct_ext read (server-derives from locGrade only).',
     '2.11.0 - Location score enrichment: FCC-SRL grade drives entry location pts (0-25) added server-side to base UTCC score (max 75). enrichedScore + locScore + locGrade + locTimestamp exposed on /state. structExt derived from locGrade (FRESH/EXTENDED). Fixes broken PRIME/STANDARD/DEGRADED tier grouping in armed panel.',
@@ -302,24 +303,41 @@ function loadArmHistory() {
     return { events: [], lastUpdate: null };
 }
 
-// Returns how many times a pair has been armed in the last 7 / 14 days from arm-history.
-// Used by /state to expose weekSignalCount and twoWeekSignalCount on each pair.
+// Returns distinct arm SESSIONS for a pair in the last 7 / 14 days.
+// arm-history logs every 4H re-affirmation, not just new arms.
+// Events within 6h of each other = same session; only first counts.
 function getPairSignalCounts(pair) {
     try {
-        var data    = loadArmHistory();
-        var events  = data.events || [];
-        var now     = Date.now();
-        var ms7     = 7  * 24 * 60 * 60 * 1000;
-        var ms14    = 14 * 24 * 60 * 60 * 1000;
-        var week    = 0;
-        var twoWeek = 0;
+        var data       = loadArmHistory();
+        var events     = data.events || [];
+        var now        = Date.now();
+        var ms7        = 7  * 24 * 60 * 60 * 1000;
+        var ms14       = 14 * 24 * 60 * 60 * 1000;
+        var SESSION_GAP = 6 * 60 * 60 * 1000; // 6h gap = distinct new arm session
+
+        // Filter to this pair within 14 days, sort chronologically
+        var relevant = [];
         for (var i = 0; i < events.length; i++) {
             var e = events[i];
             if ((e.pair || '').toUpperCase() !== pair.toUpperCase()) continue;
-            var age = now - new Date(e.timestamp).getTime();
-            if (age <= ms14) twoWeek++;
-            if (age <= ms7)  week++;
+            var ts = new Date(e.timestamp).getTime();
+            if (now - ts <= ms14) relevant.push(ts);
         }
+        relevant.sort(function(a, b) { return a - b; });
+
+        // Deduplicate: only count the first event of each session
+        var sessions = [];
+        var lastTs   = null;
+        for (var j = 0; j < relevant.length; j++) {
+            if (lastTs === null || (relevant[j] - lastTs) >= SESSION_GAP) {
+                sessions.push(relevant[j]);
+                lastTs = relevant[j];
+            }
+        }
+
+        var week    = sessions.filter(function(ts) { return now - ts <= ms7;  }).length;
+        var twoWeek = sessions.length;
+
         return { weekSignalCount: week, twoWeekSignalCount: twoWeek };
     } catch (err) {
         return { weekSignalCount: 0, twoWeekSignalCount: 0 };
