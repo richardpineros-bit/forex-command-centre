@@ -1,4 +1,4 @@
-// armed-panel.js v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -476,6 +476,27 @@
                 ? '<span style="color:#a78bfa;font-weight:700">' + ltf + '</span>'
                 : '<span style="color:var(--text-muted)">LTF \u2014</span>';
             parts.push('<span class="intel-item"><span class="intel-label">1H</span>' + ltfHtml + '</span>');
+        }
+
+        // 7. Signal frequency badge (from arm-history via /state)
+        var wkCount = p.weekSignalCount;
+        if (wkCount !== null && wkCount !== undefined) {
+            var freqLbl, freqColour;
+            if (wkCount === 0 || wkCount === 1) {
+                freqLbl    = '1st';
+                freqColour = 'var(--text-muted)';
+            } else if (wkCount <= 3) {
+                freqLbl    = wkCount + '\u00d7 wk';
+                freqColour = '#60a5fa';
+            } else if (wkCount <= 5) {
+                freqLbl    = wkCount + '\u00d7 wk';
+                freqColour = '#f59e0b';
+            } else {
+                freqLbl    = wkCount + '\u00d7 wk';
+                freqColour = '#fbbf24';
+            }
+            var freqTitle = (p.twoWeekSignalCount || 0) + ' signals in past 14 days';
+            parts.push('<span class="intel-item" title="' + freqTitle + '"><span class="intel-label">Freq</span><span style="color:' + freqColour + ';font-weight:700">' + freqLbl + '</span></span>');
         }
 
         // Playbook label (right-aligned)

@@ -18,8 +18,9 @@ const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-histo
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.12.0';
+const VERSION = '2.13.0';
 const CHANGES = [
+    '2.13.0 - Signal frequency: /state now exposes weekSignalCount and twoWeekSignalCount per pair, derived server-side from arm-history.json. Zero extra client API calls.',
     '2.12.0 - Add ltfBreak field (ctx.ltf_break from TR_ARMED payloads); TR_ARMED bootstrap: structure=SUPPORT|RESISTANCE infers structExt=FRESH before FCC-SRL fires; remove legacy fields criteria/volBehaviour/structBars/riskMult from pair state and arm history (never populated by ultimate-utcc.pine); remove ctx.struct_ext read (server-derives from locGrade only).',
     '2.11.0 - Location score enrichment: FCC-SRL grade drives entry location pts (0-25) added server-side to base UTCC score (max 75). enrichedScore + locScore + locGrade + locTimestamp exposed on /state. structExt derived from locGrade (FRESH/EXTENDED). Fixes broken PRIME/STANDARD/DEGRADED tier grouping in armed panel.',
     '2.10.3 - /state now exposes armedAt field (fixes dismiss auto-restore); pure JSON path reads context.playbook fallback (fixes blank playbook on Ultimate UTCC cards)',
@@ -299,6 +300,30 @@ function loadArmHistory() {
         console.error('Error loading arm history:', e.message);
     }
     return { events: [], lastUpdate: null };
+}
+
+// Returns how many times a pair has been armed in the last 7 / 14 days from arm-history.
+// Used by /state to expose weekSignalCount and twoWeekSignalCount on each pair.
+function getPairSignalCounts(pair) {
+    try {
+        var data    = loadArmHistory();
+        var events  = data.events || [];
+        var now     = Date.now();
+        var ms7     = 7  * 24 * 60 * 60 * 1000;
+        var ms14    = 14 * 24 * 60 * 60 * 1000;
+        var week    = 0;
+        var twoWeek = 0;
+        for (var i = 0; i < events.length; i++) {
+            var e = events[i];
+            if ((e.pair || '').toUpperCase() !== pair.toUpperCase()) continue;
+            var age = now - new Date(e.timestamp).getTime();
+            if (age <= ms14) twoWeek++;
+            if (age <= ms7)  week++;
+        }
+        return { weekSignalCount: week, twoWeekSignalCount: twoWeek };
+    } catch (err) {
+        return { weekSignalCount: 0, twoWeekSignalCount: 0 };
+    }
 }
 
 function loadBiasHistory() {
@@ -1065,7 +1090,8 @@ var server = http.createServer(function(req, res) {
 
         // Build armed pairs response (new format)
         var pairs = Object.keys(state.pairs).map(function(pair) {
-            var d = state.pairs[pair];
+            var d      = state.pairs[pair];
+            var counts = getPairSignalCounts(pair);
             return {
                 pair: pair,
                 alertType: d.alertType || 'TF_ARMED',
@@ -1088,11 +1114,14 @@ var server = http.createServer(function(req, res) {
                 rsi: d.rsi || 0,
                 playbook: d.playbook || '',
                 positionSize: d.positionSize || (d.alertType === 'TR_ARMED' ? '0.75R' : '1.5R'),
-                armedAt:       d.armedAt || null,
-                locScore:      d.locScore      !== undefined ? d.locScore      : null,
-                enrichedScore: d.enrichedScore !== undefined ? d.enrichedScore : null,
-                locGrade:      d.locGrade      || null,
-                locTimestamp:  d.locTimestamp  || null
+                armedAt:          d.armedAt || null,
+                locScore:         d.locScore      !== undefined ? d.locScore      : null,
+                enrichedScore:    d.enrichedScore !== undefined ? d.enrichedScore : null,
+                locGrade:         d.locGrade      || null,
+                locTimestamp:     d.locTimestamp  || null,
+                // v2.13.0: Signal frequency from arm-history
+                weekSignalCount:    counts.weekSignalCount,
+                twoWeekSignalCount: counts.twoWeekSignalCount
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
