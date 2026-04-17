@@ -65,7 +65,7 @@
 
 .armed-pair-row {
     display: grid;
-    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px 56px 90px;
+    grid-template-columns: 28px 72px 1fr 70px 52px 36px 80px minmax(95px, auto);
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);

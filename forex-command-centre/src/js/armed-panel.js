@@ -1,4 +1,4 @@
-// armed-panel.js v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -558,13 +558,13 @@
                 freqLbl    = '1st';
                 freqColour = 'var(--text-muted)';
             } else if (wkCount <= 3) {
-                freqLbl    = wkCount + '\u00d7 wk';
+                freqLbl    = wkCount + '/wk';
                 freqColour = '#60a5fa';
             } else if (wkCount <= 5) {
-                freqLbl    = wkCount + '\u00d7 wk';
+                freqLbl    = wkCount + '/wk';
                 freqColour = '#f59e0b';
             } else {
-                freqLbl    = wkCount + '\u00d7 wk';
+                freqLbl    = wkCount + '/wk';
                 freqColour = '#fbbf24';
             }
             var freqTitle = (p.twoWeekSignalCount || 0) + ' signals in past 14 days';
