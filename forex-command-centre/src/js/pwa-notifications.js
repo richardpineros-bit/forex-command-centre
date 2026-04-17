@@ -306,10 +306,11 @@
                     armed: true,
                     fomoCleared: true,
                     newsWarning: true,
-                    circuitBreaker: true
+                    circuitBreaker: true,
+                    entryZone: true
                 };
             } catch (e) {
-                return { armed: true, fomoCleared: true, newsWarning: true, circuitBreaker: true };
+                return { armed: true, fomoCleared: true, newsWarning: true, circuitBreaker: true, entryZone: true };
             }
         },
 
@@ -318,7 +319,8 @@
                 armed:          document.getElementById('push-pref-armed')   ? document.getElementById('push-pref-armed').checked   : true,
                 fomoCleared:    document.getElementById('push-pref-fomo')    ? document.getElementById('push-pref-fomo').checked    : true,
                 newsWarning:    document.getElementById('push-pref-news')    ? document.getElementById('push-pref-news').checked    : true,
-                circuitBreaker: document.getElementById('push-pref-circuit') ? document.getElementById('push-pref-circuit').checked : true
+                circuitBreaker: document.getElementById('push-pref-circuit')   ? document.getElementById('push-pref-circuit').checked   : true,
+                entryZone:      document.getElementById('push-pref-entryzone') ? document.getElementById('push-pref-entryzone').checked : true
             };
             try {
                 localStorage.setItem(this.STORAGE_KEY, JSON.stringify(prefs));
@@ -341,7 +343,8 @@
             el = document.getElementById('push-pref-armed');   if (el) el.checked = prefs.armed         !== false;
             el = document.getElementById('push-pref-fomo');    if (el) el.checked = prefs.fomoCleared   !== false;
             el = document.getElementById('push-pref-news');    if (el) el.checked = prefs.newsWarning   !== false;
-            el = document.getElementById('push-pref-circuit'); if (el) el.checked = prefs.circuitBreaker!== false;
+            el = document.getElementById('push-pref-circuit');   if (el) el.checked = prefs.circuitBreaker !== false;
+            el = document.getElementById('push-pref-entryzone'); if (el) el.checked = prefs.entryZone      !== false;
         },
 
         updateSettingsUI: function() {

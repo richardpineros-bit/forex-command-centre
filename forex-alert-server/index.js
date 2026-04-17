@@ -24,8 +24,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.14.1';
+const VERSION = '2.14.2';
 const CHANGES = [
+    '2.14.2 - Entry zone push now uses entryZone pref key (was armed). Allows independent toggle in settings.',
     '2.14.1 - Signal frequency: SESSION_GAP 6h->12h (one count per half-day max). weekSignalCount now counts from Monday 00:00 UTC (current trading week) not rolling 7 days. twoWeekSignalCount covers current + previous Mon-Sun week.',
     '2.14.0 - Server-side Entry Monitor: EMA 9/21/50 + ATR14 from Oanda 4H candles every 4h. Zone price check every 5 min. Push on entry/exit. entryZoneActive/Grade/Dist/Timestamp on /state. Fires on new ARMED. Requires OANDA_API_KEY + OANDA_ACCOUNT_ID env vars.',
     '2.13.1 - Fix signal frequency counts: getPairSignalCounts() now deduplicates arm-history events into distinct sessions (6h gap threshold). Fixes inflated counts caused by 4H re-affirmation pings logging as separate events.',
@@ -431,7 +432,7 @@ async function checkEntryZones() {
                     body:  ema.direction + ' | ' + grade + ' | dist ' + distRound + ' ATR from ribbon',
                     tag:   'entry-' + pair,
                     data:  { type: 'ENTRY_ZONE', pair: pair, zone: grade }
-                }, 'armed');
+                }, 'entryZone');
             } else if (!inZone && wasActive) {
                 // Zone lost
                 state.pairs[pair].entryZoneActive    = false;
