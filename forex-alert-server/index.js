@@ -24,8 +24,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.14.0';
+const VERSION = '2.14.1';
 const CHANGES = [
+    '2.14.1 - Signal frequency: SESSION_GAP 6h->12h (one count per half-day max). weekSignalCount now counts from Monday 00:00 UTC (current trading week) not rolling 7 days. twoWeekSignalCount covers current + previous Mon-Sun week.',
     '2.14.0 - Server-side Entry Monitor: EMA 9/21/50 + ATR14 from Oanda 4H candles every 4h. Zone price check every 5 min. Push on entry/exit. entryZoneActive/Grade/Dist/Timestamp on /state. Fires on new ARMED. Requires OANDA_API_KEY + OANDA_ACCOUNT_ID env vars.',
     '2.13.1 - Fix signal frequency counts: getPairSignalCounts() now deduplicates arm-history events into distinct sessions (6h gap threshold). Fixes inflated counts caused by 4H re-affirmation pings logging as separate events.',
     '2.13.0 - Signal frequency: /state now exposes weekSignalCount and twoWeekSignalCount per pair, derived server-side from arm-history.json. Zero extra client API calls.',
@@ -485,29 +486,35 @@ function loadArmHistory() {
     return { events: [], lastUpdate: null };
 }
 
-// Returns distinct arm SESSIONS for a pair in the last 7 / 14 days.
-// arm-history logs every 4H re-affirmation, not just new arms.
-// Events within 6h of each other = same session; only first counts.
+// Returns distinct arm SESSIONS for a pair.
+// weekSignalCount  = sessions since Monday 00:00 UTC (current trading week)
+// twoWeekSignalCount = sessions in current + previous trading week
+// SESSION_GAP = 12h: arms within 12h of each other = same session (one count per half-day max)
 function getPairSignalCounts(pair) {
     try {
-        var data       = loadArmHistory();
-        var events     = data.events || [];
-        var now        = Date.now();
-        var ms7        = 7  * 24 * 60 * 60 * 1000;
-        var ms14       = 14 * 24 * 60 * 60 * 1000;
-        var SESSION_GAP = 6 * 60 * 60 * 1000; // 6h gap = distinct new arm session
+        var data        = loadArmHistory();
+        var events      = data.events || [];
+        var now         = new Date();
+        var nowMs       = now.getTime();
+        var SESSION_GAP = 12 * 60 * 60 * 1000; // 12h gap = distinct session
 
-        // Filter to this pair within 14 days, sort chronologically
+        // Monday 00:00 UTC of the current week
+        var dayOfWeek    = now.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat
+        var daysSinceMon = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
+        var weekStart    = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysSinceMon));
+        var prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        // Filter to this pair since start of previous week, sort chronologically
         var relevant = [];
         for (var i = 0; i < events.length; i++) {
             var e = events[i];
             if ((e.pair || '').toUpperCase() !== pair.toUpperCase()) continue;
             var ts = new Date(e.timestamp).getTime();
-            if (now - ts <= ms14) relevant.push(ts);
+            if (ts >= prevWeekStart.getTime()) relevant.push(ts);
         }
         relevant.sort(function(a, b) { return a - b; });
 
-        // Deduplicate: only count the first event of each session
+        // Deduplicate: only count first event of each 12h session
         var sessions = [];
         var lastTs   = null;
         for (var j = 0; j < relevant.length; j++) {
@@ -517,8 +524,9 @@ function getPairSignalCounts(pair) {
             }
         }
 
-        var week    = sessions.filter(function(ts) { return now - ts <= ms7;  }).length;
-        var twoWeek = sessions.length;
+        var weekStartMs  = weekStart.getTime();
+        var week         = sessions.filter(function(ts) { return ts >= weekStartMs; }).length;
+        var twoWeek      = sessions.length;
 
         return { weekSignalCount: week, twoWeekSignalCount: twoWeek };
     } catch (err) {
