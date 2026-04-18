@@ -568,7 +568,7 @@
                 freqColour = '#fbbf24';
             }
             var freqTitle = (p.twoWeekSignalCount || 0) + ' signals in past 14 days';
-            parts.push('<span class="intel-item" title="' + freqTitle + '"><span class="intel-label">Freq</span><span style="color:' + freqColour + ';font-weight:700">' + freqLbl + '</span></span>');
+            parts.push('<span class="intel-item" title="' + freqTitle + '"><span style="color:' + freqColour + ';font-weight:600;font-size:0.7rem">freq per wk = ' + (wkCount === 0 ? '0' : wkCount === 1 ? '1 (1st)' : String(wkCount)) + '</span></span>');
         }
 
         // Playbook label (right-aligned)

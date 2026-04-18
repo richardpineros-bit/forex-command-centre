@@ -3,7 +3,7 @@
 // Handles: push notifications, app shell caching, offline resilience
 // ============================================================================
 
-const CACHE_NAME = 'fcc-v7';
+const CACHE_NAME = 'fcc-v8';
 
 // App shell — critical files to cache for offline use
 const SHELL_URLS = [
