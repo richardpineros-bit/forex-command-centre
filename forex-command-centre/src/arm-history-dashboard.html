@@ -380,6 +380,7 @@ body {
     <div class="tab" onclick="showTab('igsentiment',this);loadIGSentiment()">&#x1F9ED; Sentiment</div>
     <div class="tab" onclick="showTab('loccalib',this);loadLocCalib()">&#x1F4CD; Location</div>
     <div class="tab" onclick="showTab('obhistory',this);loadOBHistory()">&#x1F4D6; Order Book</div>
+                <div class="tab" onclick="showTab('pushlog',this);loadPushLog()">&#x1F514; Push Log</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -664,6 +665,33 @@ body {
                 </select>
             </div>
             <div id="ob-history-body"><div class="loading">&#x23F3; Loading...</div></div>
+        </div>
+    </div>
+</div>
+
+<div class="page" id="tab-pushlog">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">&#x1F514; Push Notification Audit Log</span>
+            <span class="card-meta" id="pushlog-meta">Loading...</span>
+        </div>
+        <div class="card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+                <select id="pl-type" onchange="renderPushLog()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Types</option>
+                    <option value="ARMED">ARMED</option>
+                    <option value="FOMO_CLEARED">FOMO Cleared</option>
+                    <option value="ENTRY_ZONE">Entry Zone</option>
+                    <option value="NEWS_WARNING">News Warning</option>
+                    <option value="CIRCUIT_BREAKER">Circuit Breaker</option>
+                    <option value="BLOCKED">Blocked</option>
+                </select>
+                <select id="pl-pair" onchange="renderPushLog()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                    <option value="">All Pairs</option>
+                </select>
+                <button onclick="loadPushLog()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-secondary);padding:4px 10px;border-radius:4px;font-size:0.75rem;cursor:pointer;">&#x21BB; Refresh</button>
+            </div>
+            <div id="pushlog-body"><div class="loading">&#x23F3; Loading...</div></div>
         </div>
     </div>
 </div>
@@ -1780,6 +1808,69 @@ function renderOBHistory() {
     });
     timeHtml += '</tbody></table></div>';
     document.getElementById('ob-history-body').innerHTML = latestHtml + timeHtml;
+}
+
+
+// PUSH LOG
+var _pushLogData = null;
+
+function loadPushLog() {
+    document.getElementById('pushlog-body').innerHTML = '<div class="loading">&#x23F3; Loading...</div>';
+    fetch(API_BASE + '/push-log?limit=200')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _pushLogData = d;
+            document.getElementById('pushlog-meta').textContent = d.total + ' total events';
+            var pairs = [];
+            (d.events||[]).forEach(function(e){ if(e.pair && pairs.indexOf(e.pair)<0) pairs.push(e.pair); });
+            pairs.sort();
+            var sel = document.getElementById('pl-pair');
+            sel.innerHTML = '<option value="">All Pairs</option>';
+            pairs.forEach(function(p){ sel.innerHTML += '<option>' + p + '</option>'; });
+            renderPushLog();
+        })
+        .catch(function(e) { document.getElementById('pushlog-body').innerHTML = '<div class="error">Failed: ' + e.message + '</div>'; });
+}
+
+function renderPushLog() {
+    if (!_pushLogData) return;
+    var typeFilter = document.getElementById('pl-type').value;
+    var pairFilter = document.getElementById('pl-pair').value;
+    var events = (_pushLogData.events || []).filter(function(e) {
+        if (typeFilter && e.type !== typeFilter) return false;
+        if (pairFilter && e.pair !== pairFilter) return false;
+        return true;
+    });
+    if (!events.length) {
+        document.getElementById('pushlog-body').innerHTML = '<div class="empty">No events match filter</div>';
+        return;
+    }
+    var typeColour = { ARMED:'#4ade80', ENTRY_ZONE:'#86efac', FOMO_CLEARED:'#60a5fa', NEWS_WARNING:'#f59e0b', CIRCUIT_BREAKER:'#f87171', BLOCKED:'#9ca3af' };
+    var rows = events.map(function(e) {
+        var tc = typeColour[e.type] || '#9ca3af';
+        var deliveryColour = e.sent > 0 ? '#4ade80' : '#f87171';
+        var dl = e.sent + ' sent';
+        if (e.dead    > 0) dl += ' / ' + e.dead    + ' dead';
+        if (e.skipped > 0) dl += ' / ' + e.skipped + ' skipped';
+        return '<tr>'
+            + '<td style="color:var(--text-muted);font-size:0.72rem;white-space:nowrap">' + fmtTime(e.timestamp) + '</td>'
+            + '<td><span style="color:' + tc + ';font-weight:700;font-size:0.72rem">' + e.type + '</span></td>'
+            + '<td style="font-weight:600;font-size:0.78rem">' + (e.pair || '--') + '</td>'
+            + '<td style="font-size:0.72rem;color:var(--text-secondary)">' + (e.zone || '--') + '</td>'
+            + '<td style="font-size:0.7rem;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (e.body||'') + '">' + (e.body || '--') + '</td>'
+            + '<td style="color:' + deliveryColour + ';font-size:0.7rem;font-weight:600">' + dl + '</td>'
+            + '</tr>';
+    }).join('');
+    document.getElementById('pushlog-body').innerHTML = ''
+        + '<table style="width:100%;border-collapse:collapse;font-size:0.8rem">'
+        + '<thead><tr style="color:var(--text-muted);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em">'
+        + '<th style="text-align:left;padding:4px 8px">Time</th>'
+        + '<th style="text-align:left;padding:4px 8px">Type</th>'
+        + '<th style="text-align:left;padding:4px 8px">Pair</th>'
+        + '<th style="text-align:left;padding:4px 8px">Zone</th>'
+        + '<th style="text-align:left;padding:4px 8px">Message</th>'
+        + '<th style="text-align:left;padding:4px 8px">Delivery</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 </script>

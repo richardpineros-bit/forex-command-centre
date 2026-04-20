@@ -15,6 +15,7 @@ const IG_SENTIMENT_FILE  = process.env.IG_SENTIMENT_FILE  || '/data/ig-sentiment
 const OANDA_BOOK_FILE    = process.env.OANDA_BOOK_FILE    || '/data/oanda-orderbook.json';
 const LOCATION_FILE     = process.env.LOCATION_FILE     || '/data/location.json';
 const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-history.json';
+const PUSH_LOG_FILE     = process.env.PUSH_LOG_FILE     || '/data/push-log.json';
 
 // Entry Monitor -- Oanda credentials (set as Docker env vars)
 const OANDA_API_KEY    = process.env.OANDA_API_KEY    || null;
@@ -24,8 +25,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.14.2';
+const VERSION = '2.14.3';
 const CHANGES = [
+    '2.14.3 - Push audit log: every push event appended to push-log.json with pair, type, zone, grade, timestamp, endpoint count. GET /push-log endpoint with ?limit=N&type=X&pair=X filters.',
     '2.14.2 - Entry zone push now uses entryZone pref key (was armed). Allows independent toggle in settings.',
     '2.14.1 - Signal frequency: SESSION_GAP 6h->12h (one count per half-day max). weekSignalCount now counts from Monday 00:00 UTC (current trading week) not rolling 7 days. twoWeekSignalCount covers current + previous Mon-Sun week.',
     '2.14.0 - Server-side Entry Monitor: EMA 9/21/50 + ATR14 from Oanda 4H candles every 4h. Zone price check every 5 min. Push on entry/exit. entryZoneActive/Grade/Dist/Timestamp on /state. Fires on new ARMED. Requires OANDA_API_KEY + OANDA_ACCOUNT_ID env vars.',
@@ -129,10 +131,47 @@ function addOrUpdateSubscription(subscription) {
 // ============================================================================
 // SEND PUSH NOTIFICATIONS
 // ============================================================================
+// ============================================================================
+// PUSH AUDIT LOG
+// ============================================================================
+function loadPushLog() {
+    try {
+        if (fs.existsSync(PUSH_LOG_FILE)) return JSON.parse(fs.readFileSync(PUSH_LOG_FILE, 'utf8'));
+    } catch(e) { console.error('[PushLog] Load error:', e.message); }
+    return { events: [], last_updated: null };
+}
+
+function appendPushLog(entry) {
+    try {
+        var data = loadPushLog();
+        data.events.push(entry);
+        // Keep last 500 events
+        if (data.events.length > 500) data.events = data.events.slice(-500);
+        data.last_updated = entry.timestamp;
+        fs.writeFileSync(PUSH_LOG_FILE, JSON.stringify(data, null, 2), 'utf8');
+    } catch(e) { console.error('[PushLog] Append error:', e.message); }
+}
+
 function sendPushToAll(payload, prefKey) {
     var data = loadSubscriptions();
+    var logEntry = {
+        timestamp:     new Date().toISOString(),
+        type:          (payload.data && payload.data.type) || prefKey || 'UNKNOWN',
+        pair:          (payload.data && payload.data.pair) || (payload.tag || '').replace(/^[a-z]+-/,'') || null,
+        zone:          (payload.data && payload.data.zone) || null,
+        title:         payload.title || '',
+        body:          payload.body  || '',
+        prefKey:       prefKey || null,
+        totalSubs:     data.subscriptions.length,
+        sent:          0,
+        skipped:       0,
+        dead:          0
+    };
+
     if (!data.subscriptions.length) {
         console.log('[PUSH] No subscriptions registered');
+        logEntry.skipped = 0;
+        appendPushLog(logEntry);
         return;
     }
 
@@ -140,22 +179,27 @@ function sendPushToAll(payload, prefKey) {
     var payloadStr = JSON.stringify(payload);
 
     data.subscriptions.forEach(function(sub) {
-        // Check per-subscription pref if a key is provided
         if (prefKey && sub.prefs && sub.prefs[prefKey] === false) {
             console.log('[PUSH] Skipping (pref disabled):', prefKey, sub.endpoint.slice(-20));
+            logEntry.skipped++;
             return;
         }
         webpush.sendNotification(sub, payloadStr)
             .then(function() {
                 console.log('[PUSH] Sent:', (payload.data && payload.data.type) || '?');
+                logEntry.sent++;
+                if (logEntry.sent + logEntry.skipped + logEntry.dead >= logEntry.totalSubs) appendPushLog(logEntry);
             })
             .catch(function(err) {
                 if (err.statusCode === 410 || err.statusCode === 404) {
                     deadEndpoints.push(sub.endpoint);
+                    logEntry.dead++;
                     console.log('[PUSH] Dead subscription removed');
                 } else {
                     console.error('[PUSH] Send error:', err.statusCode, err.message);
+                    logEntry.skipped++;
                 }
+                if (logEntry.sent + logEntry.skipped + logEntry.dead >= logEntry.totalSubs) appendPushLog(logEntry);
             });
     });
 
@@ -1369,6 +1413,25 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
+    // GET /push-log - Return push notification audit log
+    // Usage: /push-log?limit=50&type=ENTRY_ZONE&pair=CADJPY
+    if (req.method === 'GET' && req.url.startsWith('/push-log')) {
+        var urlParts = req.url.split('?');
+        var params   = {};
+        (urlParts[1] || '').split('&').forEach(function(p) {
+            var kv = p.split('='); if (kv[0]) params[kv[0]] = decodeURIComponent(kv[1] || '');
+        });
+        var data   = loadPushLog();
+        var events = data.events || [];
+        if (params.type)  events = events.filter(function(e) { return e.type  === params.type; });
+        if (params.pair)  events = events.filter(function(e) { return e.pair  === params.pair; });
+        var limit  = parseInt(params.limit) || 100;
+        events = events.slice(-limit).reverse(); // most recent first
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ count: events.length, total: (data.events||[]).length, events: events, last_updated: data.last_updated }));
+        return;
+    }
+
     // GET /health - Health check
     if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2428,6 +2491,7 @@ server.listen(PORT, function() {
     console.log('');
     console.log('Entry Monitor (v2.14.0):');
     console.log('  GET  /entry-zones       - Pairs currently in entry zone');
+    console.log('  GET  /push-log          - Push notification audit log (?limit=N&type=X&pair=X)');
     console.log('  Status: ' + (OANDA_API_KEY ? 'ACTIVE -- ' + OANDA_ENV : 'DISABLED -- set OANDA_API_KEY + OANDA_ACCOUNT_ID env vars'));
     console.log('');
     console.log('Utility:');
