@@ -388,16 +388,6 @@
         }
         var score = 0;
 
-        // 0. Entry Zone badge (server-side Entry Monitor)
-        if (p.entryZoneActive) {
-            var zg  = (p.entryZoneGrade || 'ZONE').toUpperCase();
-            var zc  = zg === 'HOT' ? '#4ade80' : zg === 'OPTIMAL' ? '#86efac' : '#fbbf24';
-            var zdStr = p.entryZoneDist ? ' ' + p.entryZoneDist + 'R' : '';
-            parts.push('<span class="intel-item" style="background:rgba(74,222,128,0.07);border:1px solid ' + zc + '44;border-radius:3px;padding:1px 6px" title="Price in ' + zg + ' entry zone">'
-                + '<span class="intel-label" style="color:' + zc + '">ZONE</span>'
-                + '<span style="color:' + zc + ';font-weight:700">' + zg + zdStr + '</span></span>');
-        }
-
         // 1. News bias
         if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
             var bv = window.NewsBiasEngine.getVerdict(
@@ -456,6 +446,16 @@
         var dir   = (p.direction || '').toUpperCase();
         var pair  = (p.pair || '').toUpperCase().replace('/', '');
         var parts = [];
+
+        // 0. Entry Zone badge (server-side Entry Monitor)
+        if (p.entryZoneActive) {
+            var zg  = (p.entryZoneGrade || 'ZONE').toUpperCase();
+            var zc  = zg === 'HOT' ? '#4ade80' : zg === 'OPTIMAL' ? '#86efac' : '#fbbf24';
+            var zdStr = p.entryZoneDist ? ' ' + p.entryZoneDist + 'R' : '';
+            parts.push('<span class="intel-item" style="background:rgba(74,222,128,0.07);border:1px solid ' + zc + '44;border-radius:3px;padding:1px 6px" title="Price in ' + zg + ' entry zone">'
+                + '<span class="intel-label" style="color:' + zc + '">ZONE</span>'
+                + '<span style="color:' + zc + ';font-weight:700">' + zg + zdStr + '</span></span>');
+        }
 
         // 1. News bias
         if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
