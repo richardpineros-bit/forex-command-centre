@@ -451,6 +451,98 @@ them nightly.
 
 ---
 
+## 🟡 Priority 12 — Intel Hub OB Tier 2: trapped-crowd analysis
+
+**Trigger:** When Tier 1 (live in Intel Hub OB tab from 2026-04-22, commit
+`df5ef1e`) has been observed for a few weeks and the raw bonus fields
+(position counts, volumes, average entry prices) are confirming their
+value. Or sooner if an armed setup suggests trapped-crowd context would
+have materially changed the trade decision.
+
+**What Tier 2 adds (on top of the already-shipped Tier 1):**
+- **Status column** in Latest Snapshot: `TRAPPED SHORT` / `TRAPPED LONG` /
+  `IN PROFIT` / `MIXED`
+- Colour-coded — trapped side = contrarian confirmation (stronger signal
+  than crowd % alone), profitable side = caution (crowd has momentum)
+- Computed client-side in `arm-history-dashboard.html` from the three
+  data points per pair: `avg_long_price`, `avg_short_price`, and
+  **current market price** (new dependency — see below)
+
+**Required new dependency: current price per pair**
+Myfxbook exposes avg entry prices but not live market price. Three
+options were scoped; recommended path is **Option C**:
+
+- **Option A (rejected):** Oanda `/v3/pricing` called directly from
+  browser JS. Requires exposing Oanda API key in the frontend —
+  security issue. Hard no.
+- **Option B (future upgrade):** New `/pricing/latest?pairs=...`
+  endpoint on the alert server, proxies Oanda. Most robust long-term
+  but adds backend work + new deploy step.
+- **Option C (recommended):** Scraper bumps from `v1.0.1` to `v1.1.0`
+  (MINOR — new feature). After Myfxbook fetch, pull current prices
+  from Oanda `/v3/pricing` for all 33 pairs using existing
+  `oanda-proxy.php` pattern. Add `"current_prices": {pair: price, ...}`
+  block to the output JSON. Price is up to 4h stale (refreshes with
+  cron), which is fine for "is the crowd trapped?" — trapped crowds
+  do not un-trap in minutes. Smallest change, lowest risk.
+
+**Scope (assuming Option C):**
+
+1. `myfxbook_sentiment_scraper_v1.0.1.py` → `v1.1.0`:
+   - New `fetch_current_prices()` function using Oanda REST credentials
+     from existing `oanda-proxy` config pattern
+   - Call after Myfxbook outlook fetch, before writing output
+   - Add `"current_prices": {PAIR: midPrice, ...}` to output JSON
+   - Graceful failure: if Oanda call fails or times out, scraper still
+     writes sentiment data without prices (fail-open on non-critical
+     enrichment data — the sentiment signal itself is the primary value)
+   - History file entries also carry `current_prices` for back-testing
+     trapped-crowd → price-move correlation later
+2. `arm-history-dashboard.html`:
+   - Read `current_prices` from the fetched JSON
+   - Compute per-pair trapped status using tolerance window (e.g. price
+     must be >0.1 ATR away from avg to count as trapped/profit)
+   - New **Status** column in Latest Snapshot table, positioned after
+     Signal, before Positions L/S
+   - Colour coding consistent with existing contrarian convention
+     (trapped = amber/orange; profit = muted; mixed = grey)
+3. No change to alert server, armed panel, or any live trading gate.
+
+**Known gotchas to handle on implementation:**
+- Define "trapped" precisely — proposed rule:
+  - SHORT side trapped if: current price > avg_short_price + tolerance
+  - LONG side trapped if: current price < avg_long_price - tolerance
+  - Tolerance = max(0.1% of price, something asset-class-appropriate)
+- Handle zero/missing avg prices (the THIN_SAMPLE pairs — WTICOUSD /
+  BCOUSD often have one side at 0). Thin-sample pairs should display
+  `—` for Status, not a computed trapped flag.
+- Decimal precision for price comparison — avg prices come in as
+  floats, small rounding error could flip the flag in borderline
+  cases. Use a minimum tolerance band to absorb that.
+
+**Known limitations of Option C approach:**
+- 4-hour staleness means Status reflects the crowd at the last cron
+  run, not right now. Acceptable for Intel Hub (historical view) but
+  not suitable for live armed-panel integration (which would need
+  Option B).
+- If Tier 2 data proves genuinely useful, a follow-up Tier 2.5 could
+  migrate to Option B and expose trapped status in the armed panel OB
+  satellite — but that is a separate scoping exercise.
+
+**Dependencies:**
+- Tier 1 (Priority 11+ in historical sense — already shipped
+  `df5ef1e` on 2026-04-22) — done
+- Oanda account REST access — already proven (works in
+  `oanda-proxy.php`, `/v3/pricing` confirmed working on AU account)
+- Priority 1 (Scraper Health) — soft dependency. Ideally Tier 2 ships
+  after the health monitoring catches a Myfxbook failure mode before
+  we start layering more on top of that scraper.
+
+**Estimated effort:** 30–45 min implementation + testing. Genuinely
+small change if scoped as Option C.
+
+---
+
 ## Closed — for audit trail
 
 ### 2026-04-21 — Stale calendar.json in nginx webroot
