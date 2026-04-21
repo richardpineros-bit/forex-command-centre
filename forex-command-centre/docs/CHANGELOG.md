@@ -1,3 +1,37 @@
+## [v5.15.0 / MDI Phase 1] - 2026-04-21
+### Feature: Macro Dominance Index (MDI) -- 4th Satellite
+
+**Scraper + Alert Server v2.15.0:**
+
+Institutional-grade macro dominance scoring. Core principle: "When one leg of a cross is in a strong macro regime, news on the other leg usually gets absorbed."
+
+- `macro_dominance_scraper_v1.0.0.py`: scrapes 10Y bond yields and central bank policy rates from Trading Economics for 8 G8 currencies (USD, EUR, GBP, JPY, AUD, NZD, CAD, CHF). Scores each currency -100 to +100 across 4 factors:
+  - Yield level vs peer average (+/- 30 pts)
+  - 20-day yield momentum (+/- 25 pts)
+  - Real rate vs peer average (+/- 25 pts)
+  - Policy stance / last CB change (+/- 20 pts)
+- Per-pair scoring for 28 cross pairs: `gap = |base_score - quote_score|`
+  - Gap >= 60: DOMINANT (absorption likely)
+  - Gap 30-59: LEANING (partial absorption)
+  - Gap < 30: BALANCED (full news impact)
+- Alert server v2.15.0: adds `GET /macro-dominance/latest` and `GET /macro-dominance/history?pair=X&limit=N` endpoints
+- Cron: every 4 hours via Unraid User Scripts
+- Historical logging to `macro-dominance-history.json` (last 500 snapshots) for edge-discovery validation
+
+**Design principles (institutional):**
+- **SOFT gate authority** -- v1.0.0 is display-only. News gate is NOT modified by MDI. Historical storage enables hit-rate validation before any promotion to MEDIUM authority (v1.x.x review phase after 60-90 days of data).
+- **Fail-closed** -- missing scrape data per currency causes that currency to be omitted from scoring rather than default-passed. Silent failures would violate Risk Committee design rules.
+- **Separable + inspectable** -- MDI logic runs independent of existing gates. No coupling. Can be disabled without affecting any other system component.
+
+**Phase 1 scope: backend only.** No UI changes. Phase 2 (next release) will add armed panel integration, news impact module cross-reference, and Intelligence Hub history tab.
+
+**Rationale for SOFT over MEDIUM authority:**
+Institutional risk engineering follows one rule: new signals earn their weight through evidence, not assumption. MDI is an observed rule of thumb that requires validation. Granting it authority to downgrade proven news gates before statistical hit-rate review would violate "no silent spec drift" and couple two previously-separable risk controls. The Intelligence Hub exists specifically to answer the question: "is this edge real?"
+
+**Known limitation:** `yield_20d_ago` extraction relies on TE's embedded chart series data. If TE changes chart embedding, momentum defaults to 0 (fail-closed). If consistently null after 24h, Phase 1.1 will switch to local history accumulation.
+
+---
+
 ## [v5.14.0] - 2026-04-17
 ### Feature: Server-side Entry Monitor (Problem A)
 
