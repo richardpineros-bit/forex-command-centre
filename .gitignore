@@ -7,6 +7,7 @@
 # Credentials - NEVER commit
 forex-command-centre/config/broker-config.json
 forex-command-centre/data/broker-config.json
+forex-command-centre/backend/scripts/myfxbook-config.json
 
 # Runtime data files
 forex-command-centre/data/trades.json
