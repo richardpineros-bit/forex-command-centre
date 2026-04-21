@@ -1,3 +1,41 @@
+## [v5.15.1 / MDI Phase 1 patch] - 2026-04-21
+### Fix: policy rate parser (MDI scraper v1.0.0 -> v1.0.1)
+
+**Issue observed on first production run:**
+Yields parsed successfully (8/8) but all 8 policy rate scrapes returned
+`PARSE_FAIL: no policy rate found`. Root cause: TE interest-rate pages
+do not reliably expose the `TEChartsMeta "last"` JSON or the
+`data-symbol` table row that the yield pages use. Policy rate is
+surfaced as prose in the summary H2 and headline paragraph.
+
+**Fix (v1.0.1):**
+Rewrote `parse_policy_page()` with a 5-tier priority cascade:
+
+1. PRIMARY: `"last recorded at X.XX percent"` prose match -- present
+   on every TE interest-rate page, robust across all G8 currencies.
+   Handles negative rates (Japan historical).
+2. Fed-style target ranges: `"3.5%-3.75% target range"` or
+   `"target range at 3.5%-3.75%"`. Takes upper bound as effective
+   ceiling. Handles both ASCII hyphens and en/em-dashes.
+3. Headline H2 patterns: `"steady at X.XX percent"`,
+   `"raised to X.XX percent"`, `"interest rate... X.XX percent"`.
+4. Legacy TEChartsMeta fallback (rare on policy pages, kept for safety).
+5. Legacy data-symbol row fallback.
+
+Also rewrote HIKE/CUT/HOLD detection to use summary prose patterns
+with word-gap tolerance for phrases like `"raised the bank rate"`,
+`"cut the cash rate"`. HOLD takes precedence over HIKE/CUT when both
+match (handles `"left steady after raising last month"` correctly).
+
+**Unit tests:** 6/6 pass against observed TE prose samples (US Fed
+range format, BoJ steady, BoE hike, ECB cut, SNB hold, Fed range-only
+edge case).
+
+**Deployment:** v1.0.0 and v1.0.1 both retained in repo per versioning
+rule. Update cron to call v1.0.1 after verifying it scrapes cleanly.
+
+---
+
 ## [v5.15.0 / MDI Phase 1] - 2026-04-21
 ### Feature: Macro Dominance Index (MDI) -- 4th Satellite
 
