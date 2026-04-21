@@ -1,3 +1,38 @@
+## [v5.15.2 / MDI Phase 1 patch 2] - 2026-04-21
+### Fix: HIKE/CUT/HOLD detection (MDI scraper v1.0.1 -> v1.0.2)
+
+**Issue observed on first v1.0.1 production run:**
+Policy rates now parse correctly for all 8/8 G8 currencies (v1.0.1 fix
+confirmed working), but `last_change` returned `None` for every
+currency -- effectively silencing the policy_stance scoring component
+(+/- 20 pts per currency).
+
+Root cause: v1.0.1 searched `html[:8000]` for CB action prose ("left
+steady at", "raised the rate"). TE's nav/header boilerplate pushes
+the summary H2 past position ~17,000 chars, so the 8K window missed
+the prose entirely on every page.
+
+**Fix (v1.0.2):**
+Search full HTML for CB action patterns. The patterns ("left ... steady
+at", "raised ... rate", "cut ... rate") are specific enough that they
+do not false-match on nav/CSS/footer content.
+
+**Unit tests:** 7/7 pass, including new regression test `USD_NOISY`
+that simulates the exact v1.0.1 failure mode (20K boilerplate chars
+prepended before prose).
+
+**Note on impact:** Between v1.0.0 / v1.0.1 / v1.0.2, MDI has never
+shipped degraded data into the system -- fail-closed design meant
+missing components scored 0 rather than being defaulted. Policy stance
+was silent on all currencies during v1.0.1 but yield level, yield
+momentum, and real-rate components were scoring correctly. Effective
+signal was ~60% of design target; now full.
+
+**Deployment:** Update cron from v1.0.1 -> v1.0.2 after verifying
+clean scrape. v1.0.0 and v1.0.1 retained in repo per versioning rule.
+
+---
+
 ## [v5.15.1 / MDI Phase 1 patch] - 2026-04-21
 ### Fix: policy rate parser (MDI scraper v1.0.0 -> v1.0.1)
 
