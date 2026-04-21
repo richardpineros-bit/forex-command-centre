@@ -379,7 +379,7 @@ body {
     <div class="tab" onclick="showTab('tebriefing',this);loadTEBriefing()">&#x1F310; Macro</div>
     <div class="tab" onclick="showTab('igsentiment',this);loadIGSentiment()">&#x1F9ED; Sentiment</div>
     <div class="tab" onclick="showTab('loccalib',this);loadLocCalib()">&#x1F4CD; Location</div>
-    <div class="tab" onclick="showTab('obhistory',this);loadOBHistory()">&#x1F4D6; Order Book</div>
+    <div class="tab" onclick="showTab('obhistory',this);loadOBHistory()">&#x1F4D6; Retail OB</div>
                 <div class="tab" onclick="showTab('pushlog',this);loadPushLog()">&#x1F514; Push Log</div>
     <div class="tab" onclick="showTab('mdi',this);loadMDI()">&#x1F310; Macro Dominance</div>
 </div>
@@ -656,7 +656,7 @@ body {
 <div class="page" id="tab-obhistory">
     <div class="card">
         <div class="card-header">
-            <span class="card-title">&#x1F4D6; Oanda Order Book History</span>
+            <span class="card-title">&#x1F4D6; Retail Order Book History <span style="font-size:0.7rem;font-weight:500;color:var(--text-muted);margin-left:6px">(Myfxbook Community Outlook)</span></span>
             <span class="card-meta" id="ob-meta">Loading...</span>
         </div>
         <div class="card-body">
@@ -1798,7 +1798,7 @@ function renderIGSentimentSummary(d) {
     html += '<p style="font-size:0.7rem;color:var(--text-muted);margin:10px 0 0;text-align:center">' + total + ' instruments tracked via IG Client Sentiment API</p>';
     document.getElementById('igs-summary-body').innerHTML = html;
 }
-// Oanda Order Book History
+// Retail Order Book History (Myfxbook)
 var _obHistoryData = null;
 function loadOBHistory() {
     if (_obHistoryData) { renderOBHistory(); return; }
@@ -1830,10 +1830,35 @@ function renderOBHistory() {
     var history = d.history || [];
     var pairF   = document.getElementById('ob-pair').value;
     document.getElementById('ob-meta').textContent = history.length + ' snapshots stored';
-    var PAIRS = pairF ? [pairF] : ['EURUSD','USDJPY','GBPUSD','AUDUSD','NZDUSD','USDCAD','USDCHF','EURGBP','EURJPY','GBPJPY','AUDJPY'];
+    // Full UTCC scanner universe — matches myfxbook_sentiment_scraper_v1.0.1.py UTCC_PAIRS
+    var PAIRS = pairF ? [pairF] : [
+        'EURUSD','GBPUSD','USDJPY','AUDUSD','NZDUSD','USDCAD','USDCHF',
+        'EURGBP','EURJPY','GBPJPY','AUDJPY','NZDJPY','CADJPY','CHFJPY',
+        'EURAUD','EURCAD','EURCHF','EURNZD',
+        'GBPAUD','GBPCAD','GBPCHF','GBPNZD',
+        'AUDCAD','AUDCHF','AUDNZD',
+        'NZDCAD','NZDCHF','CADCHF',
+        'XAUUSD','XAGUSD',
+        'WTICOUSD','BCOUSD','BTCUSD'
+    ];
+    // Thin-sample threshold: below this, the signal is unreliable
+    // (e.g. WTICOUSD often shows 1-3 positions total — label means nothing)
+    var THIN_SAMPLE = 100;
     function sigCol(sig) {
         if (!sig || sig === 'NEUTRAL') return 'var(--text-muted)';
         return sig === 'BULLISH' ? 'var(--color-pass)' : sig === 'BEARISH' ? 'var(--color-fail)' : 'var(--text-secondary)';
+    }
+    function fmtNum(n) {
+        if (n === null || n === undefined || isNaN(n)) return '\u2014';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+        return Math.round(n).toString();
+    }
+    function fmtPrice(n) {
+        if (n === null || n === undefined || isNaN(n) || n === 0) return '\u2014';
+        // Auto-scale decimals: BTCUSD ~86000, XAUUSD ~4700, AUDUSD ~0.69
+        if (n >= 1000) return n.toFixed(0);
+        if (n >= 10)   return n.toFixed(2);
+        return n.toFixed(4);
     }
     var latest = history[history.length - 1];
     var latestHtml = '';
@@ -1842,12 +1867,58 @@ function renderOBHistory() {
         Object.keys(latest.order_book).sort().forEach(function(p) {
             if (pairF && p !== pairF) return;
             var e = latest.order_book[p];
-            rows += '<tr><td><strong>' + p + '</strong></td>' +
-                '<td style="font-size:0.7rem">' + Math.round(e.long_pct||0) + '% L / ' + Math.round(e.short_pct||0) + '% S</td>' +
-                '<td style="color:' + sigCol(e.contrarian_signal) + ';font-weight:700">' + (e.label||'NEUTRAL') + '</td></tr>';
+            var totalPos = (e.long_positions || 0) + (e.short_positions || 0);
+            var isThin   = totalPos > 0 && totalPos < THIN_SAMPLE;
+            var rowOpacity = isThin ? '0.55' : '1';
+            var thinTag   = isThin
+                ? ' <span title="Fewer than ' + THIN_SAMPLE + ' positions total — signal unreliable" style="color:var(--color-warning);font-size:0.62rem;font-weight:700;margin-left:4px">&#x26A0; THIN</span>'
+                : '';
+            var sigColour = isThin ? 'var(--color-warning)' : sigCol(e.contrarian_signal);
+            var labelTxt  = isThin ? 'THIN SAMPLE' : (e.label || 'NEUTRAL');
+
+            rows += '<tr style="opacity:' + rowOpacity + '">' +
+                '<td><strong>' + p + '</strong>' +
+                    (e.myfxbook_symbol && e.myfxbook_symbol !== p
+                        ? '<span style="font-size:0.6rem;color:var(--text-muted);margin-left:4px">via ' + e.myfxbook_symbol + '</span>'
+                        : '') +
+                '</td>' +
+                '<td style="font-size:0.7rem;white-space:nowrap">' +
+                    '<span style="color:#4ade80;font-weight:600">' + Math.round(e.long_pct||0) + '%</span>' +
+                    ' / ' +
+                    '<span style="color:#f87171;font-weight:600">' + Math.round(e.short_pct||0) + '%</span>' +
+                '</td>' +
+                '<td style="color:' + sigColour + ';font-weight:700;font-size:0.7rem;white-space:nowrap">' + labelTxt + thinTag + '</td>' +
+                '<td style="font-size:0.68rem;white-space:nowrap;color:var(--text-secondary)">' +
+                    fmtNum(e.long_positions) + ' / ' + fmtNum(e.short_positions) +
+                '</td>' +
+                '<td style="font-size:0.68rem;white-space:nowrap;color:var(--text-secondary)">' +
+                    fmtNum(e.long_volume) + ' / ' + fmtNum(e.short_volume) +
+                '</td>' +
+                '<td style="font-size:0.68rem;white-space:nowrap;color:var(--text-secondary);font-family:ui-monospace,monospace">' +
+                    fmtPrice(e.avg_long_price) + ' / ' + fmtPrice(e.avg_short_price) +
+                '</td>' +
+                '</tr>';
         });
-        latestHtml = '<div style="margin-bottom:16px"><strong style="font-size:0.75rem;color:var(--text-secondary)">LATEST SNAPSHOT</strong>' +
-            '<table class="data-table" style="margin-top:6px"><thead><tr><th>Pair</th><th>L/S Split</th><th>Signal</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        latestHtml =
+            '<div style="margin-bottom:16px">' +
+                '<strong style="font-size:0.75rem;color:var(--text-secondary)">LATEST SNAPSHOT</strong>' +
+                '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;margin-bottom:6px">' +
+                    'Contrarian signal (fade the crowd). ' +
+                    '<span style="color:var(--color-warning)">&#x26A0;</span> = thin sample (<' + THIN_SAMPLE + ' positions) &mdash; ignore signal.' +
+                '</div>' +
+                '<div style="overflow-x:auto">' +
+                '<table class="data-table" style="margin-top:6px">' +
+                    '<thead><tr>' +
+                        '<th>Pair</th>' +
+                        '<th>L/S Split</th>' +
+                        '<th>Signal</th>' +
+                        '<th title="Number of open long/short positions — sample size indicator">Positions L/S</th>' +
+                        '<th title="Total volume (lots) on long/short side">Volume L/S</th>' +
+                        '<th title="Average entry price of long/short positions — reference for trapped-crowd analysis">Avg Price L/S</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                '</table></div>' +
+            '</div>';
     }
     var recent = history.slice(-20).reverse();
     var timeHtml = '<div style="overflow-x:auto"><table class="data-table"><thead><tr><th>Time</th>';
@@ -1858,8 +1929,24 @@ function renderOBHistory() {
         timeHtml += '<tr><td style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap">' + dt + '</td>';
         PAIRS.forEach(function(p) {
             var ob = (run.order_book||{})[p];
-            var lbl = ob ? (ob.strength !== 'NEUTRAL' ? ob.strength.charAt(0) + ' ' + ob.contrarian_signal : 'NEUT') : '\u2014';
-            var col = ob ? sigCol(ob.contrarian_signal) : 'var(--text-muted)';
+            var lbl, col;
+            if (!ob) {
+                lbl = '\u2014';
+                col = 'var(--text-muted)';
+            } else {
+                var totalPos = (ob.long_positions || 0) + (ob.short_positions || 0);
+                var isThin = totalPos > 0 && totalPos < THIN_SAMPLE;
+                if (isThin) {
+                    lbl = 'THIN';
+                    col = 'var(--color-warning)';
+                } else if (ob.strength === 'NEUTRAL') {
+                    lbl = 'NEUT';
+                    col = 'var(--text-muted)';
+                } else {
+                    lbl = ob.strength.charAt(0) + ' ' + ob.contrarian_signal;
+                    col = sigCol(ob.contrarian_signal);
+                }
+            }
             timeHtml += '<td style="color:' + col + ';font-weight:700;font-size:0.62rem;white-space:nowrap">' + lbl + '</td>';
         });
         timeHtml += '</tr>';
