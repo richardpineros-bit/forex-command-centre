@@ -1,3 +1,79 @@
+## [v5.17.1 / MDI Phase 3 path patch] - 2026-04-21
+### Fix: matcher calendar path (v1.0.0 -> v1.0.1)
+
+**Issue observed on first production run:**
+Matcher cron was firing every minute correctly but every run logged:
+  WARNING: calendar file empty or missing at
+  /mnt/user/appdata/trading-state/data/calendar.json
+Capture phase ran but never found events (zero captured over 30+ runs).
+
+**Root cause investigation uncovered two separate problems:**
+
+1. **Matcher path wrong (this fix)**
+   Phase 3 build assumed calendar.json would live in the shared
+   trading-state/data directory alongside MDI, IG sentiment, OB data.
+   Actual reality: the FF calendar scraper writes to
+     /mnt/user/appdata/forex-command-centre/src/calendar.json
+   (DEFAULT_OUT constant in forex_calendar_scraper.py). This was a
+   pre-existing pattern predating my Phase 3 assumption.
+
+2. **Nginx webroot calendar was 70 days stale (fixed separately)**
+   A completely unrelated issue surfaced during investigation:
+     /mnt/user/appdata/nginx/www/calendar.json last modified 2026-02-11
+   The FF scraper wrote fresh data every 6h to src/calendar.json but
+   nothing copied that output into the nginx webroot. The PWA's
+   isNewsSafeToTrade() function reads ./calendar.json through nginx,
+   meaning the live news gate had been operating on 70-day-old data.
+   User's manual news-awareness discipline had been silently
+   compensating.
+
+   Fix (applied directly on Unraid, not via git):
+     a. One-off: cp src/calendar.json to nginx/www/calendar.json
+     b. Permanent: appended cp line to forex-calendar-update User
+        Script so every 6h scrape refreshes the webroot copy.
+
+**Changes in this commit (matcher path fix):**
+
+macro_event_matcher_v1.0.1.py (NEW, 793 lines, v1.0.0 retained):
+  - CALENDAR_FILE constant changed:
+      FROM: /mnt/user/appdata/trading-state/data/calendar.json (missing)
+      TO:   /mnt/user/appdata/forex-command-centre/src/calendar.json
+  - No other logic changes. All classification, scoring, Oanda
+    integration, fail-closed handling preserved intact.
+
+  Unit tests: all 4 classification outcomes still pass (tests do
+  not touch the file-read path so path change is a no-op for them;
+  path correctness verified by assertion on the constant itself).
+
+**Deployment on Unraid after git pull:**
+
+  1. Verify v1.0.1 lands:
+     ls forex-command-centre/backend/scripts/macro_event_matcher_v1.0.1.py
+  2. Dry-run test:
+     # env vars from trading-state container
+     OANDA_API_KEY=$(docker exec trading-state printenv OANDA_API_KEY)
+     OANDA_ACCOUNT_ID=$(docker exec trading-state printenv OANDA_ACCOUNT_ID)
+     export OANDA_API_KEY OANDA_ACCOUNT_ID
+     python3 forex-command-centre/backend/scripts/macro_event_matcher_v1.0.1.py --print
+     # Expect: NO "calendar file empty or missing" warning
+     # Expect: "Phase 1 (capture): N event(s) eligible" where N may be 0
+     unset OANDA_API_KEY OANDA_ACCOUNT_ID
+  3. Update User Script to point at v1.0.1:
+     /boot/config/plugins/user.scripts/scripts/mdi_event_matcher/script
+       ...macro_event_matcher_v1.0.0.py... -> ...macro_event_matcher_v1.0.1.py...
+  4. Re-enable the schedule if previously disabled:
+     echo "* * * * *" > /boot/config/plugins/user.scripts/scripts/mdi_event_matcher/schedule
+     /etc/rc.d/rc.crond restart
+  5. Tail the log and wait for the next High-impact event in window:
+     tail -f /mnt/user/appdata/trading-state/data/event-matcher-cron.log
+
+**Institutional note:**
+v1.0.0 and v1.0.1 both retained in repo per versioning rule. Ops
+history is intact: we can see exactly what assumption was wrong in
+v1.0.0, why, and how v1.0.1 differs. No silent overwrites.
+
+---
+
 ## [v5.17.0 / MDI Phase 3 backend] - 2026-04-21
 ### Feature: Event matcher + outcome classification (backend of 2)
 
