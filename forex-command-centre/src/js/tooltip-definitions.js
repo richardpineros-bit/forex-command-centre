@@ -41,7 +41,12 @@ const TOOLTIP_DEFS = {
     // UTCC State
     'armed': 'UTCC conditions met. Permission to search for entry. NOT a trade signal.',
     'blocked': 'Conditions failed. UTCC revoked permission. No trading until conditions improve.',
-    'disarmed': 'Previously armed pair lost conditions. Context changed. Cancel pending plans.'
+    'disarmed': 'Previously armed pair lost conditions. Context changed. Cancel pending plans.',
+
+    // Macro Dominance Index (MDI) - SOFT satellite, display only
+    'mdi': 'Macro Dominance Index. Scores each currency -100 to +100 using bond yields, central bank policy, and yield momentum. Compares both legs of a pair to show which side is driving the big macro flow. Display only - does NOT affect pair confidence score or any trading gate.',
+    'mdi-gap': 'Gap between the two legs of a pair. Gap 60+ = one side clearly dominant. Gap 30-59 = leaning but not decisive. Gap under 30 = balanced, both sides equally weighted. Larger gap means bigger imbalance in macro forces.',
+    'mdi-absorption': 'When one side of a pair is dominant, news on the other (weaker) side tends to cause a brief reaction then the trend resumes. Informational only - this does NOT weaken, bypass, or modify the news gate. You still sit out news events as normal.'
 };
 
 // Initialize tooltips on elements with data-tooltip

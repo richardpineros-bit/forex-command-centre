@@ -1,3 +1,51 @@
+## [v5.16.0 / MDI Phase 2 checkpoint 1] - 2026-04-21
+### Feature: MDI on armed panel + tooltips + CSS (surfaces 1-3 of 3)
+
+First of two commits for MDI Phase 2. Surfaces news-impact annotation and
+Intel Hub history tab to follow in checkpoint 2.
+
+**Changes in this commit:**
+
+`tooltip-definitions.js` - 3 new definitions:
+  - `mdi` - what the Macro Dominance Index is
+  - `mdi-gap` - threshold meaning (60+/30-59/<30)
+  - `mdi-absorption` - "brief reaction, trend likely resumes" explanation.
+    Explicitly states this does NOT weaken or bypass the news gate.
+
+`css/mdi-module.css` (NEW, 126 lines) - Styling for MDI badge (inherits
+from existing .intel-item base), disclaimer box, Intel Hub banner/table.
+Reuses existing CSS variables - no new colours introduced. Mobile
+responsive breakpoint at 640px.
+
+`index.html` - 1-line CSS link added (mdi-module.css?v=8).
+
+`armed-panel.js v1.12.0 -> v1.13.0`:
+  - MDI_URL constant + MACRO_REFRESH_INTERVAL (30min - backend updates every 4h)
+  - _macroData / _macroStale cache vars (mirrors IG/OB pattern)
+  - fetchMacro() function + initial call + setInterval
+  - New row 3.5 in buildIntelligenceStrip() between OB and ATR:
+    * DOMINANT (gap >=60): amber badge "JPY-weak dom (g87)"
+    * LEANING (gap 30-59): muted blue "lean JPY (g45)"
+    * BALANCED (gap <30): grey italic "balanced (g15)"
+    * Missing data: row HIDDEN entirely (fail-closed)
+    * Stale data: "(stale)" tag appended
+  - Tooltip on badge includes full SOFT-authority disclaimer
+
+**Institutional guardrails enforced:**
+- MDI does NOT feed the pair confidence score
+- MDI does NOT modify any gate (news, regime, circuit breaker)
+- Every visible MDI element carries SOFT-authority messaging
+- Fail-closed: missing scrape data hides the display entirely, never defaults
+- Separable: deleting mdi-module.css or the row 3.5 block removes MDI
+  without affecting any other system component
+
+**Pending in checkpoint 2 (next commit):**
+- news-impact.js: getMacroCrossReference() annotation function (no gate change)
+- arm-history-dashboard.html: new Macro Dominance tab with 28-pair table,
+  validation banner (N>=30 counter), timeline chart
+
+---
+
 ## [v5.15.2 / MDI Phase 1 patch 2] - 2026-04-21
 ### Fix: HIKE/CUT/HOLD detection (MDI scraper v1.0.1 -> v1.0.2)
 
