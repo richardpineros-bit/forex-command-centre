@@ -1,3 +1,113 @@
+## [v5.17.0 / MDI Phase 3 backend] - 2026-04-21
+### Feature: Event matcher + outcome classification (backend of 2)
+
+Turns MDI from display-only theory into an evidence-based signal.
+The Intel Hub counter starts accumulating toward its N>=30 unlock.
+
+**Risk Committee principle at stake:**
+> "New signals earn their weight through evidence, not assumption."
+
+Without Phase 3, MDI is a permanent curiosity. With Phase 3, in 60-90
+days of data collection you can decide whether to promote MDI from
+SOFT to MEDIUM authority - or retire it if the edge is not real.
+
+**Changes:**
+
+`macro_event_matcher_v1.0.0.py` (NEW, 777 lines):
+
+  Two-phase pipeline, both run every minute via cron:
+
+  Phase 1 (capture):
+    When a High/Critical calendar event is exactly 15min ahead
+    (+/- 90sec tolerance), captures a record containing:
+      * Event metadata
+      * MDI snapshot for every pair affected by the news currency
+      * Oanda baseline price for each affected pair
+      * Oanda ATR14 on H4 for each affected pair
+    Record saved with status: PENDING.
+
+  Phase 2 (outcome):
+    For each PENDING event, while T <= now <= T+60min, polls Oanda
+    prices and tracks max deviation per pair. At T+4h, records final
+    prices and classifies outcome per pair:
+      * REACTED_AND_RESUMED - reaction >= 0.5 ATR AND final <= 0.3 ATR
+                              (MDI hypothesis held)
+      * SUSTAINED_REACTION  - final > 0.5 ATR
+                              (news dominated, MDI wrong)
+      * MIXED               - reaction >= 0.5 ATR, final 0.3-0.5 ATR
+                              (partial absorption)
+      * NO_REACTION         - reaction < 0.5 ATR
+                              (non-event, excluded from hit rate)
+      * INSUFFICIENT_DATA   - missing baseline/atr/final
+                              (fail-closed)
+
+  Classification thresholds are pre-committed constants:
+    REACTION_THRESHOLD_ATR  = 0.5
+    RESUMED_THRESHOLD_ATR   = 0.3
+    SUSTAINED_THRESHOLD_ATR = 0.5
+  If tuning is needed later, bump to v1.1.0 and re-classify history
+  transparently in a new column - do NOT silently overwrite.
+
+  Fail-closed across the board:
+    - Missing OANDA_API_KEY / OANDA_ACCOUNT_ID -> exit 0 (do nothing)
+    - Missing calendar.json -> capture skipped, outcomes proceed
+    - Missing macro-dominance.json -> event captured with null MDI
+    - Oanda API error -> pair skipped this run, retry next run
+    - Clock drift: events captured >T-10min flagged LATE
+    - Missing ATR at finalize time -> INSUFFICIENT_DATA
+
+  Unit tests: 10/10 passing
+    find_captureable_events filter + dedupe
+    pairs_for_currency coverage
+    build_event_id determinism
+    All 4 classification outcomes + INSUFFICIENT_DATA edge case
+    finalize_event waits correctly for T+4h
+
+`apply_mdi_phase3_alert_server_patch_v1.0.0.py` (NEW, 312 lines):
+  Byte-safe idempotent patcher for alert server. Same pattern as
+  Phase 1 patcher. Includes mojibake detection, backup/restore,
+  and marker-based idempotency check.
+
+`forex-alert-server/index.js v2.15.0 -> v2.16.0`:
+  Adds GET /macro-dominance/events endpoint with filters:
+    ?status=COMPLETE|PENDING|ERROR
+    ?threshold=DOMINANT|LEANING|BALANCED
+    ?pair=CADJPY
+    ?limit=N  (max 500, default 100)
+  Returns events plus a stats block for Intel Hub unlock counter:
+    stats.dominant_complete - drives the N/30 progress bar
+    stats.complete / pending - total events captured
+  Stale at 24h (matcher should run every minute - 24h silence is
+  a concerning anomaly worth alerting on).
+
+**Institutional guardrails preserved:**
+  - MDI still SOFT authority: matcher does not modify pair score or
+    any gate
+  - Matcher is separable: can be killed/deleted without affecting
+    anything else (scraper + alert server + UI all function without it)
+  - Classification is deterministic and pre-committed: can't
+    retroactively tune to make MDI look better
+  - Three-state outcome (NO_REACTION excluded) prevents false
+    validation when the news event was a non-event anyway
+
+**Pending in Phase 3 UI (next commit, separate session):**
+  - Intel Hub MDI tab analysis section unlocks at N>=30 dominant events
+  - Hit rate breakdown: DOMINANT vs LEANING vs BALANCED
+  - Recent events table (visible at all times for transparency)
+
+**Deployment on Unraid (when ready):**
+  1. git pull
+  2. cp alert-server/index.js -> trading-state/index.js; docker restart
+  3. curl localhost:3847/health  (verify v2.16.0)
+  4. curl localhost:3847/macro-dominance/events
+     (expect {ok:true, entries:[], note:'No events captured yet...'})
+  5. Test matcher manually: python3 macro_event_matcher_v1.0.0.py --print
+  6. Add cron: * * * * *  (every minute)
+  7. Monitor first event captures. Expected cadence: ~5-15
+     High-impact events per week during normal calendar.
+
+---
+
 ## [v5.16.1 / MDI Phase 2 checkpoint 2] - 2026-04-21
 ### Feature: MDI news annotation + Intel Hub history tab (surfaces 4-6 of 6)
 

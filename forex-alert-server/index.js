@@ -15,6 +15,7 @@ const IG_SENTIMENT_FILE  = process.env.IG_SENTIMENT_FILE  || '/data/ig-sentiment
 const OANDA_BOOK_FILE    = process.env.OANDA_BOOK_FILE    || '/data/oanda-orderbook.json';
 const MACRO_DOMINANCE_FILE      = process.env.MACRO_DOMINANCE_FILE      || '/data/macro-dominance.json';
 const MACRO_DOMINANCE_HIST_FILE = process.env.MACRO_DOMINANCE_HIST_FILE || '/data/macro-dominance-history.json';
+const MACRO_EVENTS_FILE         = process.env.MACRO_EVENTS_FILE         || '/data/macro-dominance-events.json';
 const LOCATION_FILE     = process.env.LOCATION_FILE     || '/data/location.json';
 const LOC_HISTORY_FILE  = process.env.LOC_HISTORY_FILE  || '/data/location-history.json';
 const PUSH_LOG_FILE     = process.env.PUSH_LOG_FILE     || '/data/push-log.json';
@@ -27,8 +28,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.15.0';
+const VERSION = '2.16.0';
 const CHANGES = [
+    '2.16.0 - MDI Phase 3: /macro-dominance/events endpoint. Reads macro-dominance-events.json written by macro_event_matcher_v1.0.0.py. Returns matched news events with MDI snapshots and ATR-scaled outcome classifications. Supports ?status, ?pair, ?threshold, ?limit query filters. SOFT authority maintained - display only, no gate modification.',
     '2.15.0 - MDI Phase 1: /macro-dominance/latest and /macro-dominance/history endpoints. Reads macro-dominance.json written by macro_dominance_scraper_v1.0.0.py (every 4h). SOFT gate authority -- display only. Scores G8 currencies and 28 cross pairs.',
     '2.14.3 - Push audit log: every push event appended to push-log.json with pair, type, zone, grade, timestamp, endpoint count. GET /push-log endpoint with ?limit=N&type=X&pair=X filters.',
     '2.14.2 - Entry zone push now uses entryZone pref key (was armed). Allows independent toggle in settings.',
@@ -2551,6 +2553,156 @@ var server = http.createServer(function(req, res) {
         } catch (e) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: false, error: 'macro-dominance/history read error: ' + e.message }));
+        }
+        return;
+    }
+
+    // ========================================================================
+    // MDI PHASE 3 - EVENT MATCHER ENDPOINT (v2.16.0)
+    // ========================================================================
+
+    // GET /macro-dominance/events - Return matched news events with outcomes.
+    // Reads macro-dominance-events.json written by macro_event_matcher_v1.0.0.py.
+    // Query params (all optional):
+    //   ?status=COMPLETE|PENDING|ERROR
+    //   ?threshold=DOMINANT|LEANING|BALANCED  (filters pairs inside each event)
+    //   ?pair=CADJPY  (filters events to those affecting this pair)
+    //   ?limit=N  (most recent N events, max 500, default 100)
+    // SOFT authority: this endpoint is read-only, display-only.
+    if (req.method === 'GET' && req.url.startsWith('/macro-dominance/events')) {
+        var STALE_HOURS_EVENTS = 24; // matcher runs every min; 24h quiet = concerning
+        try {
+            if (!fs.existsSync(MACRO_EVENTS_FILE)) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    ok: true,
+                    entries: [],
+                    total: 0,
+                    returned: 0,
+                    note: 'No events captured yet. Run macro_event_matcher_v1.0.0.py --unraid via cron.'
+                }));
+                return;
+            }
+
+            var raw  = fs.readFileSync(MACRO_EVENTS_FILE, 'utf8');
+            var data = JSON.parse(raw);
+
+            var allEvents = (data && Array.isArray(data.events)) ? data.events : [];
+            var lastUpdated = data && data.last_updated ? data.last_updated : null;
+            var stale = true;
+            if (lastUpdated) {
+                var ageMs = Date.now() - new Date(lastUpdated).getTime();
+                stale = ageMs > (STALE_HOURS_EVENTS * 60 * 60 * 1000);
+            }
+
+            // Parse query filters
+            var urlParts = req.url.split('?');
+            var statusFilter    = null;
+            var thresholdFilter = null;
+            var pairFilter      = null;
+            var limit = 100;
+
+            if (urlParts.length > 1) {
+                var params = urlParts[1].split('&');
+                for (var i = 0; i < params.length; i++) {
+                    var kv = params[i].split('=');
+                    var key = kv[0];
+                    var val = kv[1] ? decodeURIComponent(kv[1]) : '';
+                    if (key === 'status'    && val) statusFilter    = val.toUpperCase();
+                    if (key === 'threshold' && val) thresholdFilter = val.toUpperCase();
+                    if (key === 'pair'      && val) pairFilter      = val.toUpperCase();
+                    if (key === 'limit' && val) {
+                        var n = parseInt(val, 10);
+                        if (!isNaN(n) && n > 0 && n <= 500) limit = n;
+                    }
+                }
+            }
+
+            // Apply filters
+            var filtered = allEvents;
+
+            if (statusFilter) {
+                filtered = filtered.filter(function(e) {
+                    return e && e.outcome && e.outcome.status === statusFilter;
+                });
+            }
+
+            if (pairFilter) {
+                filtered = filtered.filter(function(e) {
+                    return e && e.pairs && e.pairs[pairFilter];
+                });
+            }
+
+            if (thresholdFilter) {
+                // Filter events where AT LEAST ONE pair matches the threshold.
+                // Useful for counting DOMINANT-flagged events toward the 30-event unlock.
+                filtered = filtered.filter(function(e) {
+                    if (!e || !e.pairs) return false;
+                    for (var pk in e.pairs) {
+                        if (e.pairs.hasOwnProperty(pk)) {
+                            if (e.pairs[pk] && e.pairs[pk].mdi_threshold === thresholdFilter) {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                });
+            }
+
+            // Stats for the Intel Hub unlock counter
+            var stats = {
+                total: allEvents.length,
+                complete: 0,
+                pending: 0,
+                dominant_complete: 0,
+                leaning_complete: 0,
+                balanced_complete: 0
+            };
+            for (var j = 0; j < allEvents.length; j++) {
+                var ev = allEvents[j];
+                if (!ev || !ev.outcome) continue;
+                if (ev.outcome.status === 'COMPLETE') {
+                    stats.complete++;
+                    if (ev.pairs) {
+                        var hasDom = false, hasLean = false, hasBal = false;
+                        for (var pk2 in ev.pairs) {
+                            if (!ev.pairs.hasOwnProperty(pk2)) continue;
+                            var t = ev.pairs[pk2] && ev.pairs[pk2].mdi_threshold;
+                            if (t === 'DOMINANT') hasDom = true;
+                            else if (t === 'LEANING') hasLean = true;
+                            else if (t === 'BALANCED') hasBal = true;
+                        }
+                        if (hasDom) stats.dominant_complete++;
+                        if (hasLean) stats.leaning_complete++;
+                        if (hasBal) stats.balanced_complete++;
+                    }
+                } else if (ev.outcome.status === 'PENDING') {
+                    stats.pending++;
+                }
+            }
+
+            // Take most recent N (events are appended in order, so tail is newest)
+            var sliced = filtered.slice(-limit);
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                ok: true,
+                last_updated: lastUpdated,
+                stale: stale,
+                entries: sliced,
+                total: filtered.length,
+                returned: sliced.length,
+                stats: stats,
+                filter: {
+                    status: statusFilter,
+                    threshold: thresholdFilter,
+                    pair: pairFilter,
+                    limit: limit
+                }
+            }));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'events read error: ' + e.message }));
         }
         return;
     }
