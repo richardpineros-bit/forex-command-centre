@@ -119,7 +119,109 @@ verification window.
 
 ---
 
-## 🟡 Priority 3 — MDI scraper v1.0.3 (quality fixes)
+## 🔴 Priority 3 — Authority Promotion Framework (SOFT → MEDIUM decision path)
+
+**Trigger:** When MDI has N≥30 DOMINANT-flagged COMPLETE events captured
+AND the hit-rate analysis shows meaningful separation between tiers
+(e.g., DOMINANT REACTED_AND_RESUMED % is materially higher than BALANCED).
+
+**Why this is a priority:** MDI exists to eventually answer the question
+"should this signal have authority to modify gates?" Without a written
+framework for how promotion happens, we're at risk of either:
+  (a) Casually promoting based on gut feeling and a chart that looks good
+      (exactly the kind of spec drift the Risk Committee warns against), OR
+  (b) Never promoting because no process exists, making MDI a permanent
+      display-only curiosity regardless of how good the data is.
+
+Either failure mode is bad. A framework forces the decision to be
+deliberate and evidence-based.
+
+**Scope:**
+- Document the tiers explicitly:
+    SOFT     - display only (current MDI state)
+    MEDIUM   - can adjust risk sizing / add warnings, CANNOT block trades
+    STRONG   - can block trades (gate authority)
+- Per-tier promotion criteria (proposed starting point):
+    * Minimum sample size (N≥30 for MEDIUM, N≥100 for STRONG)
+    * Statistical test: hit rate significantly above baseline
+      (e.g., DOMINANT tier's REACTED_AND_RESUMED % > BALANCED tier's
+      by >15% with p<0.05)
+    * Out-of-sample validation (at least 30 days of new data after
+      initial promotion criteria are met, to guard against overfitting)
+    * No single-tier dominance in dataset (e.g., can't promote if 80%
+      of captured events were the same currency/event type)
+- Demotion criteria (if promoted signal later underperforms):
+    * Rolling 30-day hit rate drops below promotion threshold
+    * Automatic demotion back to SOFT, logged with reason
+- Audit trail requirements:
+    * Every promotion decision recorded in a file (who, when, based
+      on what data snapshot, what criteria met)
+    * Cannot be modified retroactively
+- Explicit ban on:
+    * Retroactive threshold tuning to hit promotion criteria
+    * Mid-session overrides of authority level
+    * Promotion without documented criteria being met
+
+**Dependencies:**
+- Priority 6 (Phase 3 UI analysis section) must be built first (it's
+  the mechanism that shows whether criteria are met)
+- Priority 1 (Scraper Health) should be in place (can't trust data that
+  might be silently broken)
+
+**Risk of no framework:** Every satellite built from here on will face
+the same promotion question. Without a template, we'll either invent
+it ad-hoc each time (silent drift) or never confront it at all.
+
+---
+
+## 🟡 Priority 4 — News Bias ↔ MDI coupling decision
+
+**Trigger:** After Priority 3 (Authority Promotion Framework) is defined.
+Do not touch coupling until the promotion framework exists, because
+coupling decisions are a form of promotion.
+
+**Context:** The FCC has two satellites that measure overlapping but
+different things:
+- **News Bias** (ForexFactory scraper): cumulative fundamentals direction
+  over weeks, based on actual vs forecast prints
+- **MDI** (this project): current macro dominance based on yields +
+  policy + momentum
+
+These two signals MIGHT reinforce each other in useful ways:
+- A CAD News Bias BEARISH that aligns with CAD being the weak leg in MDI
+  is double-confirmation of CAD-weakness
+- A CAD News Bias BULLISH that contradicts CAD being MDI-weak raises a
+  question worth surfacing
+
+**Scope of the decision:**
+- Is the coupling worth building? Or does it introduce too much
+  spec drift risk?
+- If built: where does the coupling live? (Alert server? Frontend?
+  Neither - just visual co-display?)
+- Can the coupling be one-way (News Bias informs MDI interpretation)
+  rather than bidirectional?
+- Does coupling count as authority promotion for either signal?
+  (Almost certainly yes - if MDI display changes based on News Bias
+  input, MDI has effectively granted News Bias authority.)
+
+**Proposed default decision (for discussion):** Keep them separate.
+Show both signals side-by-side in the Intel Hub. Let the trader
+mentally combine them. Avoid coupling in code.
+
+**Why defer:** During MDI Phase 3 build, the user asked about this
+specifically and I recommended deferring to avoid coupling risk.
+That recommendation needs to be either formalised (built into a
+written design doc) or revisited. It's currently just a verbal
+decision from chat.
+
+**Dependencies:**
+- Priority 3 (Authority Promotion Framework)
+- Priority 1 (Scraper Health) - must trust both scrapers' outputs
+  before coupling anything
+
+---
+
+## 🟡 Priority 5 — MDI scraper v1.0.3 (quality fixes)
 
 **Trigger:** After ~1 week of MDI scraper runs confirms the AUD HIKE
 pattern is persistent (not a one-off).
@@ -145,7 +247,7 @@ alongside v1.0.3. Do not silently rewrite history.
 
 ---
 
-## 🟡 Priority 4 — MDI Phase 3 UI analysis section
+## 🟡 Priority 6 — MDI Phase 3 UI analysis section
 
 **Trigger:** `stats.dominant_complete` ≥ 30 in `/macro-dominance/events`
 response. Until then the counter in the Intel Hub MDI tab should keep
@@ -177,7 +279,132 @@ bundle promotion with unlock.
 
 ---
 
-## 🟢 Priority 5 — Calendar path consolidation
+## 🟡 Priority 7 — ATR threshold tuning mechanism (for event matcher)
+
+**Trigger:** When MDI Phase 3 UI analysis (Priority 6) shows hit rates
+that suggest the current ATR thresholds may not be optimal, OR when
+data shows per-asset-class variability (e.g., JPY crosses need
+different thresholds than metals).
+
+**Current state (v1.0.0 hardcoded):**
+In `macro_event_matcher_v1.0.1.py`:
+```
+REACTION_THRESHOLD_ATR   = 0.5   # min reaction to count as "something happened"
+RESUMED_THRESHOLD_ATR    = 0.3   # max final deviation to count as "resumed"
+SUSTAINED_THRESHOLD_ATR  = 0.5   # final deviation beyond = sustained reaction
+```
+
+These are pre-committed constants specifically to prevent the
+"retroactively tune to make MDI look better" failure mode.
+
+**Scope:**
+- Decide on a tuning mechanism that preserves audit integrity:
+    Option A: Config file (JSON) — simple but can be edited silently.
+    Option B: Code constants + version bump — v1.0.1 → v1.1.0 requires
+      a commit, preserves history, re-classifies transparently in a
+      NEW outcome column (never overwrite).
+    Option C: Per-asset-class profiles — FX, Metals, Crypto, Indices
+      each get their own triplet. Matches the pattern ProZones uses.
+
+**The non-negotiable constraint:** Any tuning mechanism MUST preserve
+the original outcome classification alongside the new one. Never
+silently re-classify history. The audit trail is the whole point.
+
+**Proposed default:** Option B (version bump). Simplest, most rigorous,
+matches versioning rules already in place.
+
+**Dependencies:**
+- Priority 6 (Phase 3 UI) — need data to know if tuning is warranted
+
+**Risk if deferred indefinitely:** None. The v1.0.0 thresholds might
+turn out to be fine. Only build this if data says otherwise.
+
+---
+
+## 🟡 Priority 8 — Oanda API rate limit monitoring
+
+**Trigger:** If the event matcher cron log shows repeated Oanda HTTP
+429 (rate limit) errors, OR during a high-volume news event (e.g., NFP
++ FOMC in the same day) when many pairs could be simultaneously in
+outcome-tracking windows.
+
+**Context flagged during Phase 3 build:**
+The matcher calls Oanda every minute for each pair with a pending
+event. Usually that's 0-3 pairs. But a big calendar day could have
+10+ pairs with pending outcomes being polled for 4 hours each
+= ~2,400 calls/day. Oanda's documented limit is 120 requests/sec, so
+we're orders of magnitude below, but:
+
+- This assumes the matcher is the ONLY consumer of Oanda REST. Actually
+  the Entry Monitor in the alert server also calls Oanda for ATR
+  refresh, and the trade capture module pulls pricing.
+- If all three compete during a news spike, we could hit burst limits
+  even while staying under the hourly rate.
+
+**Scope:**
+- Centralise Oanda rate-limit awareness (single token-bucket tracker
+  shared across all Oanda-calling code)
+- Log every Oanda call with timestamp + caller + endpoint for audit
+- Alert (push notification) if HTTP 429 count exceeds threshold in
+  any rolling 5-minute window
+- Fallback behaviour for each caller:
+    * Entry Monitor: skip this refresh cycle, retry next
+    * Event matcher: skip this pair this minute, retry next
+    * Trade capture: block trade submission (CRITICAL — we do not
+      want to place an order during rate-limit degradation)
+
+**Dependencies:**
+- Priority 1 (Scraper Health) — natural home for this monitoring
+
+**Risk if deferred:** Low under normal conditions. High during news
+spikes, when worst-case timing is exactly when Oanda calls matter most.
+
+---
+
+## 🟡 Priority 9 — Tier 3 silent corruption detection (for all scrapers)
+
+**Trigger:** Fold into Priority 1 (Scraper Health) build. Do NOT build
+separately — it's cheaper to add sanity checks once while building
+the health monitor than to retrofit later.
+
+**Context flagged during Phase 1 build:**
+Staleness + fetch errors are easy to detect (Tier 1 monitoring).
+Silent corruption is harder:
+- Parse succeeds but returns garbage (e.g., regex matches wrong
+  paragraph, outputs USD policy rate as 0.50% when real value is 3.75%)
+- Scraper produces valid JSON but one currency's yield is missing
+  while every other field looks correct
+- Legitimate extreme value (bond crisis) looks identical to a parse
+  bug from monitoring's perspective
+
+**Scope:**
+- Sanity checks on scraped values:
+    * Policy rate change >1% since last run → flag (CBs don't move
+      that fast between meetings — this is either a real surprise
+      worth seeing OR a parse bug)
+    * Yield change >100bp in 4h → flag (bond crisis OR parse error)
+    * Currency score magnitude >80 → flag (extreme readings deserve
+      human review)
+    * Sentiment/IG percentages outside [0,100] → flag (impossible value)
+- Flags surface in Intel Hub as "anomaly review required" list
+- NOT hard blocks on scraper output — this is about *visibility*,
+  not rejection
+- Scraper still writes its output, but the flagged values are
+  highlighted in the UI until manually dismissed
+- Dismissal is logged with timestamp + user choice (accept as real vs
+  reject as garbage)
+
+**Dependencies:**
+- Priority 1 (Scraper Health Monitor) — this is a sub-feature of it
+
+**Why it's a priority:** Silent corruption is the single most dangerous
+data quality failure. It doesn't trigger alerts (data looks present),
+doesn't fail fast (scraper exits 0), and only shows up when you make
+a bad decision based on bad data. Anomaly flags are the cheap insurance.
+
+---
+
+## 🟢 Priority 10 — Calendar path consolidation
 
 **Trigger:** Low-risk cleanup session. Not urgent.
 
@@ -201,7 +428,7 @@ as part of Priority 1 work.
 
 ---
 
-## 🟢 Priority 6 — Cron / User Script backup & version control
+## 🟢 Priority 11 — Cron / User Script backup & version control
 
 **Trigger:** Next time we touch any User Script.
 
