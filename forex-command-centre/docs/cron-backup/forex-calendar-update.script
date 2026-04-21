@@ -1,0 +1,6 @@
+#!/bin/bash
+/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/forex_calendar_scraper.py --unraid --all-sites
+sleep 120
+/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/te_scraper.py --unraid
+# Copy fresh calendar to nginx webroot so PWA's news gate reads current data
+cp /mnt/user/appdata/forex-command-centre/src/calendar.json /mnt/user/appdata/nginx/www/calendar.json
