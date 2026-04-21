@@ -1,3 +1,87 @@
+## [v5.16.1 / MDI Phase 2 checkpoint 2] - 2026-04-21
+### Feature: MDI news annotation + Intel Hub history tab (surfaces 4-6 of 6)
+
+Second and final commit for MDI Phase 2. Completes the Phase 2 scope
+defined in checkpoint 1.
+
+**Changes in this commit:**
+
+`news-impact.js` (+177 lines, 973 -> 1150):
+  Added MDI cross-reference helpers. The critical institutional
+  property: existing isNewsSafeToTrade() is NOT modified. New functions
+  live alongside as pure read helpers.
+
+  - fetchMDISnapshot() + 30-min refresh interval
+  - MDI_DISCLAIMER constant: verbatim SOFT-authority text included
+    in every annotation return so UI consumers cannot strip it
+  - getMacroCrossReference(pair, newsCurrency):
+      Pure lookup. Returns annotation object with:
+        threshold, gap, verdict, newsLeg, dominantLeg,
+        newsOnDominantSide, annotation (Option D phrasing:
+        "brief reaction, trend likely resumes"), stale, disclaimer
+      Handles 3 scenarios:
+        * News on weaker leg + dominance: "brief reaction, trend resumes"
+        * News on stronger leg + dominance: "aligns with dominant flow"
+        * Balanced: "news will have full impact"
+  - getNewsImpactWithMDI(pair, hoursAhead):
+      Wraps isNewsSafeToTrade() and decorates the return with a
+      .macro field. The .safe field is UNTOUCHED - callers MUST
+      use that as the authoritative gate. The .macro field is
+      additive display-only context.
+  - window.MDI global exposing the helpers + DISCLAIMER
+
+`arm-history-dashboard.html` (+299 lines, 1879 -> 2178):
+  New "Macro Dominance" tab in Intel Hub.
+
+  Banner: SOFT-authority disclaimer (amber, prominent) explicitly
+  stating MDI does NOT affect pair score or modify any gate.
+
+  Validation counter: "Hit-rate validation locked. Analysis
+  activates at N >= 30 matched news events." Currently shows 0/30.
+  Counter will advance as news events are captured alongside MDI
+  snapshots (the mechanism for that is Phase 3, not this commit).
+
+  Current Snapshot card:
+    - 28-pair sortable table
+    - Columns: Pair, Base score, Quote score, Gap (default sort),
+      Tier (DOMINANT/LEANING/BALANCED), Verdict text
+    - Colour-coded tier column, +/- coloured score cells
+    - Fetches /macro-dominance/latest
+
+  Gap Timeline card:
+    - Per-pair selector (populated from snapshot)
+    - Pure SVG line chart of gap over time, scaled 0-100
+    - Horizontal reference lines at 30 (LEANING) and 60 (DOMINANT)
+    - Dot markers colour-coded by threshold, with tooltip on hover
+    - Legend for threshold colours
+    - Fetches /macro-dominance/history?pair=X&limit=200
+
+Institutional guardrails preserved:
+  - isNewsSafeToTrade() UNCHANGED (verified by file diff)
+  - MDI helpers are pure read operations, no side effects
+  - SOFT-authority disclaimer in tab banner, annotation return,
+    window.MDI.DISCLAIMER, and inline wherever data is surfaced
+  - Fail-closed: missing MDI data -> annotation returns "unavailable"
+    rather than a defaulted neutral value
+  - Sample-size gate on analysis: 0/30 counter is locked until
+    enough matched events accumulate
+  - Separable: removing the MDI helpers, the CSS file, or the
+    Intel Hub tab leaves the rest of the system functioning
+    identically
+
+**Phase 2 complete.** All 6 surfaces delivered across 2 commits.
+Next work on MDI = Phase 3 (news-event to MDI-snapshot matcher that
+populates the history with actual outcome data, enabling the N >= 30
+validation) OR the unified Scraper Health Monitor (deferred item
+from earlier).
+
+Known observation flagged for v1.0.3:
+  AUD scoring HIKE when RBA has been cutting. Prose parser may be
+  catching past-tense 'raised' references in historical commentary.
+  Will revisit after a few more scrape cycles to confirm pattern.
+
+---
+
 ## [v5.16.0 / MDI Phase 2 checkpoint 1] - 2026-04-21
 ### Feature: MDI on armed panel + tooltips + CSS (surfaces 1-3 of 3)
 

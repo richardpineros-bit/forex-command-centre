@@ -302,6 +302,184 @@ function isNewsSafeToTrade(pair, hoursAhead = 4) {
 // ============================================
 
 // ============================================
+// MDI (MACRO DOMINANCE INDEX) CROSS-REFERENCE (v1.0.0)
+// SOFT satellite - display only, no gate authority.
+// DOES NOT modify isNewsSafeToTrade() or any existing gate.
+// ============================================
+
+// Cache for MDI snapshot. Populated by fetchMDISnapshot().
+// Mirrors armed-panel.js _macroData pattern but scoped to this module.
+var _mdiData  = null;
+var _mdiStale = true;
+const MDI_URL = 'https://api.pineros.club/macro-dominance/latest';
+const MDI_REFRESH_MS = 30 * 60 * 1000; // 30 min (backend updates every 4h)
+
+// Standard SOFT-authority disclaimer. Included verbatim in every annotation
+// return so any UI consumer cannot accidentally strip it.
+const MDI_DISCLAIMER = 'Informational only. MDI is a SOFT satellite under review. ' +
+    'The news impact gate is NOT modified by MDI. This flag indicates statistical ' +
+    'tendency observed in historical data once sample size allows validation ' +
+    '(60-90 days minimum).';
+
+async function fetchMDISnapshot() {
+    try {
+        var r = await fetch(MDI_URL, { cache: 'no-cache' });
+        if (!r.ok) return;
+        var d = await r.json();
+        if (d && d.ok && d.pairs) {
+            _mdiData  = d;
+            _mdiStale = d.stale || false;
+        }
+    } catch(e) {}
+}
+
+// Kick off initial fetch + refresh interval.
+// Fail-closed: if fetch fails, _mdiData stays null and all helpers below
+// return their "no MDI data" variant.
+fetchMDISnapshot();
+setInterval(fetchMDISnapshot, MDI_REFRESH_MS);
+
+/**
+ * getMacroCrossReference(pair, newsCurrency)
+ *
+ * Look up the MDI verdict for a pair and determine whether news on
+ * `newsCurrency` targets the DOMINANT or WEAKER leg.
+ *
+ * This is a PURE LOOKUP. It does not trigger any side effects and
+ * does not modify the news gate. Callers must still honour
+ * isNewsSafeToTrade() as the authoritative signal.
+ *
+ * @param {string} pair - e.g. "CADJPY"
+ * @param {string} newsCurrency - e.g. "CAD"
+ * @returns {object|null} Annotation object or null if no MDI data.
+ *   {
+ *     available: true,
+ *     threshold: 'DOMINANT' | 'LEANING' | 'BALANCED',
+ *     gap: number,
+ *     verdict: string,              // full MDI verdict text
+ *     newsLeg: 'base' | 'quote',    // which leg the news targets
+ *     dominantLeg: 'base' | 'quote' | null,
+ *     newsOnDominantSide: boolean,  // is news on the DOMINANT leg?
+ *     annotation: string,           // plain-English summary for UI
+ *     stale: boolean,
+ *     disclaimer: string            // SOFT-authority text (always present)
+ *   }
+ */
+function getMacroCrossReference(pair, newsCurrency) {
+    if (!pair || pair.length < 6 || !newsCurrency) return null;
+    if (!_mdiData || !_mdiData.pairs) return null;
+
+    pair = pair.toUpperCase().replace('/', '');
+    newsCurrency = newsCurrency.toUpperCase();
+
+    var mdi = _mdiData.pairs[pair];
+    if (!mdi) return null;
+
+    var base  = pair.substring(0, 3);
+    var quote = pair.substring(3, 6);
+
+    var newsLeg;
+    if      (newsCurrency === base)  newsLeg = 'base';
+    else if (newsCurrency === quote) newsLeg = 'quote';
+    else return null; // news currency not part of this pair
+
+    var dominantLeg = mdi.dominant_leg;
+    var threshold   = mdi.threshold || 'BALANCED';
+    var gap         = mdi.gap != null ? Math.round(mdi.gap) : 0;
+
+    // Is the news hitting the dominant side, or the weaker side?
+    var newsOnDominantSide = (dominantLeg && newsLeg === dominantLeg);
+
+    // Build plain-English annotation (Option D phrasing: "brief reaction,
+    // trend likely resumes"). Fails safe to neutral wording when unclear.
+    var annotation;
+    if (threshold === 'BALANCED') {
+        annotation = 'Macro balanced (gap ' + gap + '). News will have full impact.';
+    } else if (newsOnDominantSide) {
+        // News is on the SAME side as macro dominance.
+        // Reaction may be amplified rather than absorbed.
+        annotation = 'Macro ' + (threshold === 'DOMINANT' ? 'dominant' : 'leaning') +
+            ' on ' + newsCurrency + ' side (gap ' + gap + '). ' +
+            'News aligns with dominant flow.';
+    } else {
+        // News is on the WEAKER side - the "absorbed" case.
+        // Option D phrasing per user preference.
+        var dominantCcy = dominantLeg === 'base' ? base : quote;
+        annotation = 'Macro ' + (threshold === 'DOMINANT' ? 'dominant' : 'leaning') +
+            ' on ' + dominantCcy + ' side (gap ' + gap + '). ' +
+            'Brief reaction, trend likely resumes.';
+    }
+
+    return {
+        available:          true,
+        threshold:          threshold,
+        gap:                gap,
+        verdict:            mdi.verdict || '',
+        newsLeg:            newsLeg,
+        dominantLeg:        dominantLeg,
+        newsOnDominantSide: newsOnDominantSide,
+        annotation:         annotation,
+        stale:              _mdiStale,
+        disclaimer:         MDI_DISCLAIMER
+    };
+}
+
+/**
+ * getNewsImpactWithMDI(pair)
+ *
+ * Wraps existing isNewsSafeToTrade() WITHOUT modifying it, and decorates
+ * the return value with an MDI cross-reference annotation for the next
+ * scheduled news event.
+ *
+ * The `.safe` field remains exactly as computed by isNewsSafeToTrade().
+ * The `.macro` field is additive. UI consumers MUST use `.safe` as the
+ * gate decision and may optionally display `.macro.annotation` alongside.
+ *
+ * @param {string} pair - e.g. "CADJPY"
+ * @param {number} hoursAhead - passed through to isNewsSafeToTrade
+ * @returns {object} Same shape as isNewsSafeToTrade() plus { macro: ... }
+ */
+function getNewsImpactWithMDI(pair, hoursAhead) {
+    var base = isNewsSafeToTrade(pair, hoursAhead || 4);
+
+    // Preserve full original result - DO NOT mutate .safe or .status
+    var result = Object.assign({}, base);
+
+    if (base && base.nextEvent && base.nextEvent.currency) {
+        var mdiRef = getMacroCrossReference(pair, base.nextEvent.currency);
+        if (mdiRef) {
+            result.macro = mdiRef;
+        } else {
+            result.macro = {
+                available:  false,
+                annotation: 'MDI data unavailable for this pair',
+                disclaimer: MDI_DISCLAIMER
+            };
+        }
+    } else {
+        result.macro = null; // no upcoming news -> nothing to annotate
+    }
+
+    return result;
+}
+
+// Expose helpers globally so any UI module can consume them.
+// Note: these are PURE READ helpers. They do not modify gate state.
+if (typeof window !== 'undefined') {
+    window.MDI = {
+        getMacroCrossReference: getMacroCrossReference,
+        getNewsImpactWithMDI:   getNewsImpactWithMDI,
+        isLoaded:               function() { return _mdiData !== null; },
+        isStale:                function() { return _mdiStale; },
+        DISCLAIMER:             MDI_DISCLAIMER
+    };
+}
+
+// ============================================
+// END MDI CROSS-REFERENCE
+// ============================================
+
+// ============================================
 // NEWS IMPACT TIER SYSTEM (v4.1.0)
 // ============================================
 
