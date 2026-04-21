@@ -1,9 +1,2 @@
 #!/bin/bash
-# NOTE: This backup is a BEST-GUESS reconstruction, not confirmed from Unraid.
-# Please run on Unraid to verify + update if different:
-#
-#   cat /boot/config/plugins/user.scripts/scripts/ig_sentiment_scraper/script
-#
-# If the live version differs, replace the contents of this file with it
-# and commit the correction.
-/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/ig_sentiment_scraper.py --unraid >> /mnt/user/appdata/trading-state/data/ig-sentiment-cron.log 2>&1
+/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/ig_sentiment_scraper.py --unraid

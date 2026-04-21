@@ -2,8 +2,11 @@
 # MDI Phase 3 event matcher - runs every minute
 # Pulls Oanda creds from existing trading-state container so we don't
 # duplicate secrets in the script file.
+
 OANDA_API_KEY=$(docker exec trading-state printenv OANDA_API_KEY 2>/dev/null)
 OANDA_ACCOUNT_ID=$(docker exec trading-state printenv OANDA_ACCOUNT_ID 2>/dev/null)
 OANDA_ENV=$(docker exec trading-state printenv OANDA_ENV 2>/dev/null || echo "live")
+
 export OANDA_API_KEY OANDA_ACCOUNT_ID OANDA_ENV
+
 /usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/macro_event_matcher_v1.0.1.py --unraid >> /mnt/user/appdata/trading-state/data/event-matcher-cron.log 2>&1

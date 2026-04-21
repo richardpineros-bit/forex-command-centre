@@ -39,7 +39,87 @@ values (e.g., yield moving >100bp in 4h, policy rate changing mid-cycle).
 
 ---
 
-## 🟡 Priority 2 — MDI scraper v1.0.3 (quality fixes)
+## 🟡 Priority 2 — Cron consolidation (clean up duplicate / orphan entries)
+
+**Trigger:** Dedicated session. Do not bundle with other work - touching
+cron risks silent breakage of all scrapers if we get it wrong. Needs
+full attention.
+
+**State discovered 2026-04-21 (during MDI project sign-off audit):**
+
+Two separate cron systems are both active on Unraid:
+
+1. **`/var/spool/cron/crontabs/root`** (live system crontab) contains:
+   - System boilerplate (hourly/daily/weekly/monthly run-parts)
+   - `0 */6 * * *  forex_calendar_scraper.py --unraid`  (orphan, bare)
+   - `0 */4 * * *  oanda_orderbook_scraper.py --unraid >> /tmp/oanda-book.log`
+
+2. **`/boot/config/plugins/user.scripts/customSchedule.cron`** contains:
+   - `0 */6 * * *  forex-calendar-update/script`  (wrapper: FF --all-sites + sleep 120 + TE + cp to webroot)
+   - `0 */4 * * *  ig_sentiment_scraper/script`
+   - `* * * * *     mdi_event_matcher/script`
+   - `0 */4 * * *  mdi-scraper/script`
+
+**The mess:**
+
+a. **FF scraper runs TWICE every 6h** - once bare from crontab root (no
+   `--all-sites`, no TE, no webroot copy), and once via User Scripts
+   wrapper (which does everything properly). They race for ~2 minutes.
+   Wrapper wins because of its `sleep 120`, overwriting the bare run's
+   partial output. Wasteful but accidentally functional.
+
+b. **`oanda_orderbook_scraper.py` has NO User Script equivalent.** It's
+   the only scraper scheduled purely via the live root crontab. If that
+   crontab gets regenerated on reboot from a go-file or `/etc/cron.d/*`
+   (source not yet identified), OB scraper could silently die.
+
+c. **Orphan script `/usr/local/bin/update-forex-calendar.sh`** exists
+   but is not scheduled anywhere active. Its content is BROKEN anyway:
+   calls `forex_calendar_scraper.py` with NO args (no `--unraid`, no
+   output path config) and copies calendar in the wrong direction
+   (data/ -> src/). If ever re-enabled it would produce garbage.
+
+d. **No `/etc/crontab` file exists on this Unraid.** Root crontab gets
+   populated at boot from an unknown source - need to identify before
+   making persistent changes, or edits will revert.
+
+**Proposed cleanup (for dedicated session only):**
+
+Step 1 (safe): Remove duplicate FF entry from live root crontab.
+  crontab -l | grep -v "forex_calendar_scraper.py" | crontab -
+  /etc/rc.d/rc.crond restart
+  After: confirm only ONE FF run at next :00 mark.
+
+Step 2 (medium): Convert OB scraper to User Script pattern.
+  Create /boot/config/plugins/user.scripts/scripts/oanda-orderbook-scraper/
+    name = "oanda-orderbook-scraper"
+    schedule = "0 */4 * * *"
+    script = bash wrapper with log redirect
+  Backup in docs/cron-backup/
+  Remove OB line from root crontab.
+  Verify User Scripts plugin picks it up + OB still runs every 4h.
+
+Step 3 (safe): Delete orphan update-forex-calendar.sh.
+  rm /usr/local/bin/update-forex-calendar.sh
+  Also inspect /var/spool/cron/crontab.* temp files for any lingering
+  references and clear them.
+
+Step 4 (investigate): Find where root crontab is regenerated at boot.
+  Candidates: /boot/config/go, /etc/cron.d/*, systemd timer units.
+  Without fixing this, Step 1-3 changes revert on reboot.
+
+**Dependencies:** None, but requires patience and careful testing.
+Do NOT bundle with code changes - cron changes need their own
+verification window.
+
+**Risk if deferred indefinitely:**
+  - Minor: wasted compute (duplicate FF scraper run)
+  - Medium: OB scraper could silently stop after a reboot
+  - Medium: accumulating entropy makes future debugging harder
+
+---
+
+## 🟡 Priority 3 — MDI scraper v1.0.3 (quality fixes)
 
 **Trigger:** After ~1 week of MDI scraper runs confirms the AUD HIKE
 pattern is persistent (not a one-off).
@@ -65,7 +145,7 @@ alongside v1.0.3. Do not silently rewrite history.
 
 ---
 
-## 🟡 Priority 3 — MDI Phase 3 UI analysis section
+## 🟡 Priority 4 — MDI Phase 3 UI analysis section
 
 **Trigger:** `stats.dominant_complete` ≥ 30 in `/macro-dominance/events`
 response. Until then the counter in the Intel Hub MDI tab should keep
@@ -97,7 +177,7 @@ bundle promotion with unlock.
 
 ---
 
-## 🟢 Priority 4 — Calendar path consolidation
+## 🟢 Priority 5 — Calendar path consolidation
 
 **Trigger:** Low-risk cleanup session. Not urgent.
 
@@ -121,7 +201,7 @@ as part of Priority 1 work.
 
 ---
 
-## 🟢 Priority 5 — Cron / User Script backup & version control
+## 🟢 Priority 6 — Cron / User Script backup & version control
 
 **Trigger:** Next time we touch any User Script.
 
