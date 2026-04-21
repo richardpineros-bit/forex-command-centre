@@ -1,6 +1,0 @@
-{
-  "_comment": "Copy to oanda-scraper-config.json and fill in your credentials. NEVER commit the live config file.",
-  "api_token": "YOUR_OANDA_API_TOKEN_HERE",
-  "environment": "live",
-  "_environment_note": "Use 'live' for live account, 'practice' for demo account"
-}

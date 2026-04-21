@@ -1,3 +1,106 @@
+## [OB Source Migration: Oanda -> Myfxbook] - 2026-04-22
+### Full replacement of retail order-book sentiment source
+
+**Problem statement:**
+Armed-panel OB satellite was showing "OB —" on most pairs. Probe
+testing confirmed:
+
+1. Oanda public GraphQL (labs-api.oanda.com) only supports ~12 FX
+   majors. INTERNAL_ERROR on anything outside that list.
+2. Oanda v20 REST positionBook/orderBook endpoints return 401 for
+   Oanda Australia accounts (regional restriction, no workaround).
+3. Further investigation uncovered there was no Oanda OB cron scheduled
+   at all. customSchedule.cron had no entry. OB data on disk was only
+   updating when the scraper was run manually. The "limited coverage"
+   symptom masked a second unrelated problem: stale data across the
+   whole file.
+
+**Solution: source swap to Myfxbook Community Outlook official public API.**
+Not an addition — a replacement. One retail crowd source in, one out.
+
+**Why Myfxbook:**
+- Richer data than Oanda or IG: long/short %, position counts,
+  volumes, AND average entry prices (enables trapped-crowd analysis
+  in Intel Hub — future upside).
+- Covers 33/33 UTCC pairs (31 direct + 2 aliases: USOIL->WTICOUSD,
+  XBRUSD->BCOUSD).
+- Official documented API, no HTML-scraping fragility.
+- Free account, stdlib-only client (no pip dependencies).
+
+**Files added:**
+
+myfxbook_sentiment_scraper_v1.0.1.py (NEW, 448 lines):
+  - urllib-based client (v1.0.0 used requests and hit a session-token
+    URL-encoding bug — see v1.0.1 fix note below).
+  - Login -> fetch -> logout per run, session never persisted.
+  - Fail-closed on: missing creds, login error, fetch error, invalid
+    payload, network/parse errors.
+  - Output path preserved as /mnt/user/appdata/trading-state/data/
+    oanda-orderbook.json for drop-in compatibility (Option A: keep
+    OB label in armed panel, zero frontend changes).
+  - Schema preserved + 6 additive bonus fields: long_positions,
+    short_positions, long_volume, short_volume, avg_long_price,
+    avg_short_price.
+  - Output includes "source": "myfxbook" for provenance auditing.
+  - Thresholds identical to oanda/ig scrapers: STRONG >=70%,
+    SOFT >=60%, <60% = NEUTRAL. Contrarian signal logic unchanged.
+
+myfxbook-config.json.template (NEW):
+  - Committed template. Live myfxbook-config.json gitignored at root
+    .gitignore (new entry added).
+
+**Files removed:**
+
+- oanda_orderbook_scraper.py (v3.0.0, 239 lines)
+- oanda-scraper-config.json.template
+- myfxbook_sentiment_scraper_v1.0.0.py (superseded by v1.0.1 before
+  reaching production; the session-token bug in v1.0.0 was only
+  exposed by a live Myfxbook session that happened to contain '/';
+  no working production runs existed to preserve)
+
+**v1.0.0 -> v1.0.1 fix (for the record):**
+
+v1.0.0 used requests.Session().get(url, params={'session': token}).
+Myfxbook session tokens can contain URL-reserved characters (observed
+case: session starting with '/'). The requests library URL-encoded
+the token on the wire, turning '/' into '%2F'. Myfxbook's server
+then decoded and compared the decoded value against its stored
+session, producing "Invalid session" on the very next call after a
+successful login.
+
+Fix: drop requests, use urllib.request directly with f-string URL
+construction. The session token is embedded AS-IS, matching the
+probe pattern that was proven to work. Stdlib only, no pip deps.
+
+**Deployment completed:**
+
+  1. Probe confirmed 33/33 coverage end-to-end.
+  2. v1.0.1 dry-run on Unraid: 33/33 fetched, all 6 bonus fields
+     populated, clean login + logout.
+  3. v1.0.1 live run: wrote oanda-orderbook.json v1.0.1 source:myfxbook
+     33 pairs, history file appended cleanly (68 old Oanda entries
+     preserved for continuity).
+  4. Alert server endpoint /oanda-book/latest returns v1.0.1 data
+     unchanged — no alert-server code changes were needed.
+  5. Armed panel hard-refreshed; OB satellites now populate for every
+     pair in the UTCC universe, confirmed visually (BTCUSD NEUTRAL,
+     NZDCHF STRONG BEARISH with 81L/19S, AUDCHF SOFT BEARISH etc).
+  6. User Scripts cron added at 0 */4 * * *:
+       /boot/config/plugins/user.scripts/scripts/
+         myfxbook_sentiment_scraper/script
+     Content: python3 path/to/myfxbook_sentiment_scraper_v1.0.1.py
+              --unraid
+
+**Known data-quality note (not blocking, future enhancement):**
+
+Myfxbook exposes extremely thin samples for WTICOUSD and BCOUSD (USOIL
+and XBRUSD, single-digit position counts vs 69k for EURUSD). Current
+scraper emits STRONG labels on these regardless. Future v1.1.0 should
+add a minimum-positions filter that forces NEUTRAL below a threshold
+(suggested: 100 total positions). Not filed yet.
+
+---
+
 ## [v5.17.1 / MDI Phase 3 path patch] - 2026-04-21
 ### Fix: matcher calendar path (v1.0.0 -> v1.0.1)
 
