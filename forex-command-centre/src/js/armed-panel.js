@@ -137,8 +137,12 @@
             var r = await fetch(API_URL + '?file=armed-watchlist');
             if (!r.ok) return;
             var result = await r.json();
-            if (result.success && result.data && result.data.pairs && typeof result.data.pairs === 'object') {
+            if (result.success && result.data && result.data.pairs
+                    && typeof result.data.pairs === 'object'
+                    && !Array.isArray(result.data.pairs)) {
                 _watchedPairs = result.data.pairs;
+            } else {
+                _watchedPairs = {}; // reset if server returned [] (PHP empty-object bug)
             }
         } catch(e) {}
         _watchlistLoaded = true;
@@ -149,7 +153,7 @@
             await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file: 'armed-watchlist', data: { pairs: _watchedPairs } })
+                body: JSON.stringify({ file: 'armed-watchlist', data: { pairs: Array.isArray(_watchedPairs) ? {} : _watchedPairs } })
             });
         } catch(e) {}
     }
