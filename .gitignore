@@ -30,3 +30,7 @@ node_modules/
 *.bak
 *.backup
 !utcc-indicators/
+
+# Python
+**/__pycache__/
+*.pyc

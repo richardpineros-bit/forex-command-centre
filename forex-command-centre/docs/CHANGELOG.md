@@ -1,3 +1,89 @@
+## [MDI Scraper v1.0.3] - 2026-04-22
+### AUD HIKE false-positive fix + BALANCED verdict wording
+
+**Problem statement (P5 from TODO.md):**
+v1.0.2 consistently flagged AUD as HIKE despite the RBA being on hold/
+cutting. The policy-direction parser ran HIKE/CUT/HOLD regex over the
+full page lowercase body, which false-matched historical context prose
+("RBA raised rates in 2022-2023...") sitting below the current-meeting
+summary. Two root causes:
+
+  (a) **No summary scoping.** Direction detection had no way to
+      distinguish "current meeting" prose from "page backstory" prose.
+      `\braised\s+...(?:cash|bank|rate)` matched the historical paragraph
+      as readily as the summary.
+  (b) **Broken priority logic.** The v1.0.2 comment claimed "HOLD >
+      HIKE/CUT" but the code actually did
+      `elif found_hike and not found_cut: HIKE` before falling through
+      to the HOLD conflict-resolution branch — meaning HIKE beat HOLD
+      whenever both matched. Exactly the AUD failure mode: summary said
+      "kept rates steady" (HOLD), historical said "raised aggressively"
+      (HIKE), HIKE won.
+
+**Solution:**
+
+1. **New `extract_summary_window()` helper.** Anchors on the
+   `"last recorded at"` phrase (present in every TE interest-rate page
+   summary H2, already used by Method 1 rate extraction). Returns a
+   slice `[anchor-400, next_</p>_or_anchor+800]`. The `</p>` boundary
+   is the key insight — TE summaries close their paragraph before the
+   historical context section begins, so stopping at the first `</p>`
+   after the anchor cleanly excludes the backstory.
+
+2. **Fail-closed on missing anchor.** If neither `"last recorded at"`
+   nor a fallback `<h2>` tag is found, the helper returns an empty
+   string and `parse_policy_page()` leaves `last_change = None`.
+   Better to omit the signal than guess from unstructured HTML.
+
+3. **Strict HOLD priority.** Replaced v1.0.2's broken priority chain
+   with `if found_hold: HOLD` as the first clause. HOLD language
+   ("steady at", "left unchanged", "kept at") is current-meeting-
+   specific — if it's in the summary window, the bank held THIS
+   meeting regardless of what historical prose might have leaked
+   through.
+
+4. **BALANCED verdict wording.** Changed
+   `"balanced — full news impact"` to `"balanced — no macro override"`.
+   The old wording sounded like a price-direction forecast; MDI is a
+   news-gate dampener, not a direction predictor. Updated matching
+   docstring comment at top of file.
+
+**Validation:**
+
+Smoke tests (`test_v103.py`, five cases):
+- AUD page with current HOLD + historical "raised" prose → HOLD (pass)
+- Genuine HIKE summary → HIKE (pass)
+- Genuine CUT summary + separate historical paragraph → CUT (pass)
+- No anchor in HTML → None, fail-closed (pass)
+- `extract_summary_window()` direct test → 514-char window, historical
+  prose cleanly excluded (pass)
+
+**File changes:**
+- NEW: `backend/scripts/macro_dominance_scraper_v1.0.3.py`
+- KEPT: `backend/scripts/macro_dominance_scraper_v1.0.2.py` (per
+  versioning rule — previous version stays in repo)
+
+**Deploy notes:**
+Update the User Script `mdi-scraper` on Unraid to call v1.0.3 instead
+of v1.0.2. No alert-server restart required; this scraper runs
+standalone via cron and writes to `trading-state/data/macro-dominance.json`.
+
+```bash
+# On Unraid:
+cd /mnt/user/appdata && git pull
+# Edit /boot/config/plugins/user.scripts/scripts/mdi-scraper/script
+# Change: macro_dominance_scraper_v1.0.2.py -> macro_dominance_scraper_v1.0.3.py
+# Back up the new script:
+cat /boot/config/plugins/user.scripts/scripts/mdi-scraper/script > \
+    /mnt/user/appdata/forex-command-centre/docs/cron-backup/mdi-scraper.script
+# Manual run to verify:
+python3 /mnt/user/appdata/forex-command-centre/backend/scripts/macro_dominance_scraper_v1.0.3.py --print
+# Confirm AUD now shows HOLD (or CUT) — not HIKE
+# Next cron run (0 */4 * * *) will write fresh output with the fix.
+```
+
+---
+
 ## [Armed Panel v1.14.0] - 2026-04-22
 ### Institutional satellite grid — direction-aware 8-cell heatmap
 
