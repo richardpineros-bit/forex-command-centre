@@ -1,2 +1,2 @@
 #!/bin/bash
-/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/macro_dominance_scraper_v1.0.2.py --unraid >> /mnt/user/appdata/trading-state/data/mdi-cron.log 2>&1
+/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/macro_dominance_scraper_v1.0.3.py --unraid >> /mnt/user/appdata/trading-state/data/mdi-cron.log 2>&1
