@@ -1,11 +1,13 @@
-// armed-panel.js v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
     const SENTIMENT_URL  = 'https://api.pineros.club/ig-sentiment/latest';
     const ORDERBOOK_URL  = 'https://api.pineros.club/oanda-book/latest';
     const LOCATION_URL   = 'https://api.pineros.club/location';
+    const MACRO_URL      = 'https://api.pineros.club/macro-dominance/latest';
     const REFRESH_INTERVAL = 30000; // 30 seconds
+    const MACRO_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 min - data updates every 4h
     const API_URL        = '/api/storage-api.php';
 
     // Sentiment cache
@@ -16,6 +18,10 @@
     // Oanda order book cache
     var _orderBookData  = null;
     var _orderBookStale = true;
+
+    // MDI (Macro Dominance Index) cache - SOFT satellite, display only
+    var _macroData  = null;     // { pairs: { CADJPY: {...} }, currencies: {...} }
+    var _macroStale = true;
 
     // Dismissed pairs state (server-side, permanent until new ARMED re-arms the pair)
     // Structure: { pair: { dismissedAt: ISO string } }
@@ -53,6 +59,22 @@
         } catch(e) {}
     }
     fetchOrderBook();
+
+    // MDI (Macro Dominance Index) - SOFT satellite, display only.
+    // Data updates every 4h on the backend (scraper cron), so we only poll
+    // every 30min. No need to fetch on every armed-panel refresh (30s).
+    async function fetchMacro() {
+        try {
+            var r = await fetch(MACRO_URL, { cache: 'no-cache' });
+            if (!r.ok) return;
+            var d = await r.json();
+            if (d && d.ok && d.pairs) {
+                _macroData  = d;
+                _macroStale = d.stale || false;
+            }
+        } catch(e) {}
+    }
+    fetchMacro();
 
     async function fetchLocation() {
         try {
@@ -519,6 +541,45 @@
             parts.push('<span class="intel-item intel-muted"><span class="intel-label">OB</span>loading</span>');
         }
 
+        // 3.5 MDI (Macro Dominance Index) - SOFT satellite, display only.
+        // Does NOT affect pair score or any gate. Shows which macro leg is
+        // dominant and whether news on the weaker leg is likely to cause
+        // only a brief reaction before the trend resumes.
+        if (_macroData && _macroData.pairs) {
+            var mdi = _macroData.pairs[pair];
+            if (mdi) {
+                var threshold = mdi.threshold || 'BALANCED';
+                var gap       = mdi.gap != null ? Math.round(mdi.gap) : 0;
+                var staleTag  = _macroStale ? '<span class="intel-mdi-stale"> (stale)</span>' : '';
+                var tipText;
+                var mdiClass;
+                var mdiText;
+
+                if (threshold === 'DOMINANT') {
+                    // e.g. "JPY-weakness dominant" -> "JPY-weak dom"
+                    var verdictShort = (mdi.verdict || '').replace('weakness', 'weak').replace('strength', 'strong').replace(' dominant', ' dom');
+                    mdiClass = 'intel-mdi-dominant';
+                    mdiText  = verdictShort + ' (g' + gap + ')';
+                    tipText  = 'MDI: ' + (mdi.verdict || '') + '. Gap ' + gap + '. Brief reaction, trend likely resumes on news. SOFT satellite - display only, no gate authority.';
+                } else if (threshold === 'LEANING') {
+                    var verdictLean = (mdi.verdict || '').replace(' dominant', '').replace('leaning ', '');
+                    mdiClass = 'intel-mdi-leaning';
+                    mdiText  = 'lean ' + verdictLean + ' (g' + gap + ')';
+                    tipText  = 'MDI: ' + (mdi.verdict || '') + '. Gap ' + gap + '. Partial lean, news impact partially muted. SOFT satellite - display only.';
+                } else {
+                    mdiClass = 'intel-mdi-balanced';
+                    mdiText  = 'balanced (g' + gap + ')';
+                    tipText  = 'MDI: balanced - both legs equally weighted. Gap ' + gap + '. News will have full impact. SOFT satellite - display only.';
+                }
+
+                parts.push('<span class="intel-item" title="' + tipText + '"><span class="intel-label">MDI</span><span class="' + mdiClass + '">' + mdiText + '</span>' + staleTag + '</span>');
+            }
+            // Missing data for this pair -> row hidden (fail-closed, no silent defaults)
+        } else if (_macroData === null) {
+            parts.push('<span class="intel-item intel-muted"><span class="intel-label">MDI</span>loading</span>');
+        }
+        // If _macroData is set but has no pairs, also hidden (fail-closed)
+
         // 4. ATR
         var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
         if (atrPct !== null) {
@@ -962,6 +1023,7 @@
         fetchArmedState();
         setInterval(fetchArmedState, REFRESH_INTERVAL);
         setInterval(fetchLocation, 5 * 60 * 1000);
+        setInterval(fetchMacro, MACRO_REFRESH_INTERVAL);
     })();
     
     // Global API

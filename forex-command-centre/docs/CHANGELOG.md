@@ -1,3 +1,531 @@
+## [OB Source Migration: Oanda -> Myfxbook] - 2026-04-22
+### Full replacement of retail order-book sentiment source
+
+**Problem statement:**
+Armed-panel OB satellite was showing "OB —" on most pairs. Probe
+testing confirmed:
+
+1. Oanda public GraphQL (labs-api.oanda.com) only supports ~12 FX
+   majors. INTERNAL_ERROR on anything outside that list.
+2. Oanda v20 REST positionBook/orderBook endpoints return 401 for
+   Oanda Australia accounts (regional restriction, no workaround).
+3. Further investigation uncovered there was no Oanda OB cron scheduled
+   at all. customSchedule.cron had no entry. OB data on disk was only
+   updating when the scraper was run manually. The "limited coverage"
+   symptom masked a second unrelated problem: stale data across the
+   whole file.
+
+**Solution: source swap to Myfxbook Community Outlook official public API.**
+Not an addition — a replacement. One retail crowd source in, one out.
+
+**Why Myfxbook:**
+- Richer data than Oanda or IG: long/short %, position counts,
+  volumes, AND average entry prices (enables trapped-crowd analysis
+  in Intel Hub — future upside).
+- Covers 33/33 UTCC pairs (31 direct + 2 aliases: USOIL->WTICOUSD,
+  XBRUSD->BCOUSD).
+- Official documented API, no HTML-scraping fragility.
+- Free account, stdlib-only client (no pip dependencies).
+
+**Files added:**
+
+myfxbook_sentiment_scraper_v1.0.1.py (NEW, 448 lines):
+  - urllib-based client (v1.0.0 used requests and hit a session-token
+    URL-encoding bug — see v1.0.1 fix note below).
+  - Login -> fetch -> logout per run, session never persisted.
+  - Fail-closed on: missing creds, login error, fetch error, invalid
+    payload, network/parse errors.
+  - Output path preserved as /mnt/user/appdata/trading-state/data/
+    oanda-orderbook.json for drop-in compatibility (Option A: keep
+    OB label in armed panel, zero frontend changes).
+  - Schema preserved + 6 additive bonus fields: long_positions,
+    short_positions, long_volume, short_volume, avg_long_price,
+    avg_short_price.
+  - Output includes "source": "myfxbook" for provenance auditing.
+  - Thresholds identical to oanda/ig scrapers: STRONG >=70%,
+    SOFT >=60%, <60% = NEUTRAL. Contrarian signal logic unchanged.
+
+myfxbook-config.json.template (NEW):
+  - Committed template. Live myfxbook-config.json gitignored at root
+    .gitignore (new entry added).
+
+**Files removed:**
+
+- oanda_orderbook_scraper.py (v3.0.0, 239 lines)
+- oanda-scraper-config.json.template
+- myfxbook_sentiment_scraper_v1.0.0.py (superseded by v1.0.1 before
+  reaching production; the session-token bug in v1.0.0 was only
+  exposed by a live Myfxbook session that happened to contain '/';
+  no working production runs existed to preserve)
+
+**v1.0.0 -> v1.0.1 fix (for the record):**
+
+v1.0.0 used requests.Session().get(url, params={'session': token}).
+Myfxbook session tokens can contain URL-reserved characters (observed
+case: session starting with '/'). The requests library URL-encoded
+the token on the wire, turning '/' into '%2F'. Myfxbook's server
+then decoded and compared the decoded value against its stored
+session, producing "Invalid session" on the very next call after a
+successful login.
+
+Fix: drop requests, use urllib.request directly with f-string URL
+construction. The session token is embedded AS-IS, matching the
+probe pattern that was proven to work. Stdlib only, no pip deps.
+
+**Deployment completed:**
+
+  1. Probe confirmed 33/33 coverage end-to-end.
+  2. v1.0.1 dry-run on Unraid: 33/33 fetched, all 6 bonus fields
+     populated, clean login + logout.
+  3. v1.0.1 live run: wrote oanda-orderbook.json v1.0.1 source:myfxbook
+     33 pairs, history file appended cleanly (68 old Oanda entries
+     preserved for continuity).
+  4. Alert server endpoint /oanda-book/latest returns v1.0.1 data
+     unchanged — no alert-server code changes were needed.
+  5. Armed panel hard-refreshed; OB satellites now populate for every
+     pair in the UTCC universe, confirmed visually (BTCUSD NEUTRAL,
+     NZDCHF STRONG BEARISH with 81L/19S, AUDCHF SOFT BEARISH etc).
+  6. User Scripts cron added at 0 */4 * * *:
+       /boot/config/plugins/user.scripts/scripts/
+         myfxbook_sentiment_scraper/script
+     Content: python3 path/to/myfxbook_sentiment_scraper_v1.0.1.py
+              --unraid
+
+**Known data-quality note (not blocking, future enhancement):**
+
+Myfxbook exposes extremely thin samples for WTICOUSD and BCOUSD (USOIL
+and XBRUSD, single-digit position counts vs 69k for EURUSD). Current
+scraper emits STRONG labels on these regardless. Future v1.1.0 should
+add a minimum-positions filter that forces NEUTRAL below a threshold
+(suggested: 100 total positions). Not filed yet.
+
+---
+
+## [v5.17.1 / MDI Phase 3 path patch] - 2026-04-21
+### Fix: matcher calendar path (v1.0.0 -> v1.0.1)
+
+**Issue observed on first production run:**
+Matcher cron was firing every minute correctly but every run logged:
+  WARNING: calendar file empty or missing at
+  /mnt/user/appdata/trading-state/data/calendar.json
+Capture phase ran but never found events (zero captured over 30+ runs).
+
+**Root cause investigation uncovered two separate problems:**
+
+1. **Matcher path wrong (this fix)**
+   Phase 3 build assumed calendar.json would live in the shared
+   trading-state/data directory alongside MDI, IG sentiment, OB data.
+   Actual reality: the FF calendar scraper writes to
+     /mnt/user/appdata/forex-command-centre/src/calendar.json
+   (DEFAULT_OUT constant in forex_calendar_scraper.py). This was a
+   pre-existing pattern predating my Phase 3 assumption.
+
+2. **Nginx webroot calendar was 70 days stale (fixed separately)**
+   A completely unrelated issue surfaced during investigation:
+     /mnt/user/appdata/nginx/www/calendar.json last modified 2026-02-11
+   The FF scraper wrote fresh data every 6h to src/calendar.json but
+   nothing copied that output into the nginx webroot. The PWA's
+   isNewsSafeToTrade() function reads ./calendar.json through nginx,
+   meaning the live news gate had been operating on 70-day-old data.
+   User's manual news-awareness discipline had been silently
+   compensating.
+
+   Fix (applied directly on Unraid, not via git):
+     a. One-off: cp src/calendar.json to nginx/www/calendar.json
+     b. Permanent: appended cp line to forex-calendar-update User
+        Script so every 6h scrape refreshes the webroot copy.
+
+**Changes in this commit (matcher path fix):**
+
+macro_event_matcher_v1.0.1.py (NEW, 793 lines, v1.0.0 retained):
+  - CALENDAR_FILE constant changed:
+      FROM: /mnt/user/appdata/trading-state/data/calendar.json (missing)
+      TO:   /mnt/user/appdata/forex-command-centre/src/calendar.json
+  - No other logic changes. All classification, scoring, Oanda
+    integration, fail-closed handling preserved intact.
+
+  Unit tests: all 4 classification outcomes still pass (tests do
+  not touch the file-read path so path change is a no-op for them;
+  path correctness verified by assertion on the constant itself).
+
+**Deployment on Unraid after git pull:**
+
+  1. Verify v1.0.1 lands:
+     ls forex-command-centre/backend/scripts/macro_event_matcher_v1.0.1.py
+  2. Dry-run test:
+     # env vars from trading-state container
+     OANDA_API_KEY=$(docker exec trading-state printenv OANDA_API_KEY)
+     OANDA_ACCOUNT_ID=$(docker exec trading-state printenv OANDA_ACCOUNT_ID)
+     export OANDA_API_KEY OANDA_ACCOUNT_ID
+     python3 forex-command-centre/backend/scripts/macro_event_matcher_v1.0.1.py --print
+     # Expect: NO "calendar file empty or missing" warning
+     # Expect: "Phase 1 (capture): N event(s) eligible" where N may be 0
+     unset OANDA_API_KEY OANDA_ACCOUNT_ID
+  3. Update User Script to point at v1.0.1:
+     /boot/config/plugins/user.scripts/scripts/mdi_event_matcher/script
+       ...macro_event_matcher_v1.0.0.py... -> ...macro_event_matcher_v1.0.1.py...
+  4. Re-enable the schedule if previously disabled:
+     echo "* * * * *" > /boot/config/plugins/user.scripts/scripts/mdi_event_matcher/schedule
+     /etc/rc.d/rc.crond restart
+  5. Tail the log and wait for the next High-impact event in window:
+     tail -f /mnt/user/appdata/trading-state/data/event-matcher-cron.log
+
+**Institutional note:**
+v1.0.0 and v1.0.1 both retained in repo per versioning rule. Ops
+history is intact: we can see exactly what assumption was wrong in
+v1.0.0, why, and how v1.0.1 differs. No silent overwrites.
+
+---
+
+## [v5.17.0 / MDI Phase 3 backend] - 2026-04-21
+### Feature: Event matcher + outcome classification (backend of 2)
+
+Turns MDI from display-only theory into an evidence-based signal.
+The Intel Hub counter starts accumulating toward its N>=30 unlock.
+
+**Risk Committee principle at stake:**
+> "New signals earn their weight through evidence, not assumption."
+
+Without Phase 3, MDI is a permanent curiosity. With Phase 3, in 60-90
+days of data collection you can decide whether to promote MDI from
+SOFT to MEDIUM authority - or retire it if the edge is not real.
+
+**Changes:**
+
+`macro_event_matcher_v1.0.0.py` (NEW, 777 lines):
+
+  Two-phase pipeline, both run every minute via cron:
+
+  Phase 1 (capture):
+    When a High/Critical calendar event is exactly 15min ahead
+    (+/- 90sec tolerance), captures a record containing:
+      * Event metadata
+      * MDI snapshot for every pair affected by the news currency
+      * Oanda baseline price for each affected pair
+      * Oanda ATR14 on H4 for each affected pair
+    Record saved with status: PENDING.
+
+  Phase 2 (outcome):
+    For each PENDING event, while T <= now <= T+60min, polls Oanda
+    prices and tracks max deviation per pair. At T+4h, records final
+    prices and classifies outcome per pair:
+      * REACTED_AND_RESUMED - reaction >= 0.5 ATR AND final <= 0.3 ATR
+                              (MDI hypothesis held)
+      * SUSTAINED_REACTION  - final > 0.5 ATR
+                              (news dominated, MDI wrong)
+      * MIXED               - reaction >= 0.5 ATR, final 0.3-0.5 ATR
+                              (partial absorption)
+      * NO_REACTION         - reaction < 0.5 ATR
+                              (non-event, excluded from hit rate)
+      * INSUFFICIENT_DATA   - missing baseline/atr/final
+                              (fail-closed)
+
+  Classification thresholds are pre-committed constants:
+    REACTION_THRESHOLD_ATR  = 0.5
+    RESUMED_THRESHOLD_ATR   = 0.3
+    SUSTAINED_THRESHOLD_ATR = 0.5
+  If tuning is needed later, bump to v1.1.0 and re-classify history
+  transparently in a new column - do NOT silently overwrite.
+
+  Fail-closed across the board:
+    - Missing OANDA_API_KEY / OANDA_ACCOUNT_ID -> exit 0 (do nothing)
+    - Missing calendar.json -> capture skipped, outcomes proceed
+    - Missing macro-dominance.json -> event captured with null MDI
+    - Oanda API error -> pair skipped this run, retry next run
+    - Clock drift: events captured >T-10min flagged LATE
+    - Missing ATR at finalize time -> INSUFFICIENT_DATA
+
+  Unit tests: 10/10 passing
+    find_captureable_events filter + dedupe
+    pairs_for_currency coverage
+    build_event_id determinism
+    All 4 classification outcomes + INSUFFICIENT_DATA edge case
+    finalize_event waits correctly for T+4h
+
+`apply_mdi_phase3_alert_server_patch_v1.0.0.py` (NEW, 312 lines):
+  Byte-safe idempotent patcher for alert server. Same pattern as
+  Phase 1 patcher. Includes mojibake detection, backup/restore,
+  and marker-based idempotency check.
+
+`forex-alert-server/index.js v2.15.0 -> v2.16.0`:
+  Adds GET /macro-dominance/events endpoint with filters:
+    ?status=COMPLETE|PENDING|ERROR
+    ?threshold=DOMINANT|LEANING|BALANCED
+    ?pair=CADJPY
+    ?limit=N  (max 500, default 100)
+  Returns events plus a stats block for Intel Hub unlock counter:
+    stats.dominant_complete - drives the N/30 progress bar
+    stats.complete / pending - total events captured
+  Stale at 24h (matcher should run every minute - 24h silence is
+  a concerning anomaly worth alerting on).
+
+**Institutional guardrails preserved:**
+  - MDI still SOFT authority: matcher does not modify pair score or
+    any gate
+  - Matcher is separable: can be killed/deleted without affecting
+    anything else (scraper + alert server + UI all function without it)
+  - Classification is deterministic and pre-committed: can't
+    retroactively tune to make MDI look better
+  - Three-state outcome (NO_REACTION excluded) prevents false
+    validation when the news event was a non-event anyway
+
+**Pending in Phase 3 UI (next commit, separate session):**
+  - Intel Hub MDI tab analysis section unlocks at N>=30 dominant events
+  - Hit rate breakdown: DOMINANT vs LEANING vs BALANCED
+  - Recent events table (visible at all times for transparency)
+
+**Deployment on Unraid (when ready):**
+  1. git pull
+  2. cp alert-server/index.js -> trading-state/index.js; docker restart
+  3. curl localhost:3847/health  (verify v2.16.0)
+  4. curl localhost:3847/macro-dominance/events
+     (expect {ok:true, entries:[], note:'No events captured yet...'})
+  5. Test matcher manually: python3 macro_event_matcher_v1.0.0.py --print
+  6. Add cron: * * * * *  (every minute)
+  7. Monitor first event captures. Expected cadence: ~5-15
+     High-impact events per week during normal calendar.
+
+---
+
+## [v5.16.1 / MDI Phase 2 checkpoint 2] - 2026-04-21
+### Feature: MDI news annotation + Intel Hub history tab (surfaces 4-6 of 6)
+
+Second and final commit for MDI Phase 2. Completes the Phase 2 scope
+defined in checkpoint 1.
+
+**Changes in this commit:**
+
+`news-impact.js` (+177 lines, 973 -> 1150):
+  Added MDI cross-reference helpers. The critical institutional
+  property: existing isNewsSafeToTrade() is NOT modified. New functions
+  live alongside as pure read helpers.
+
+  - fetchMDISnapshot() + 30-min refresh interval
+  - MDI_DISCLAIMER constant: verbatim SOFT-authority text included
+    in every annotation return so UI consumers cannot strip it
+  - getMacroCrossReference(pair, newsCurrency):
+      Pure lookup. Returns annotation object with:
+        threshold, gap, verdict, newsLeg, dominantLeg,
+        newsOnDominantSide, annotation (Option D phrasing:
+        "brief reaction, trend likely resumes"), stale, disclaimer
+      Handles 3 scenarios:
+        * News on weaker leg + dominance: "brief reaction, trend resumes"
+        * News on stronger leg + dominance: "aligns with dominant flow"
+        * Balanced: "news will have full impact"
+  - getNewsImpactWithMDI(pair, hoursAhead):
+      Wraps isNewsSafeToTrade() and decorates the return with a
+      .macro field. The .safe field is UNTOUCHED - callers MUST
+      use that as the authoritative gate. The .macro field is
+      additive display-only context.
+  - window.MDI global exposing the helpers + DISCLAIMER
+
+`arm-history-dashboard.html` (+299 lines, 1879 -> 2178):
+  New "Macro Dominance" tab in Intel Hub.
+
+  Banner: SOFT-authority disclaimer (amber, prominent) explicitly
+  stating MDI does NOT affect pair score or modify any gate.
+
+  Validation counter: "Hit-rate validation locked. Analysis
+  activates at N >= 30 matched news events." Currently shows 0/30.
+  Counter will advance as news events are captured alongside MDI
+  snapshots (the mechanism for that is Phase 3, not this commit).
+
+  Current Snapshot card:
+    - 28-pair sortable table
+    - Columns: Pair, Base score, Quote score, Gap (default sort),
+      Tier (DOMINANT/LEANING/BALANCED), Verdict text
+    - Colour-coded tier column, +/- coloured score cells
+    - Fetches /macro-dominance/latest
+
+  Gap Timeline card:
+    - Per-pair selector (populated from snapshot)
+    - Pure SVG line chart of gap over time, scaled 0-100
+    - Horizontal reference lines at 30 (LEANING) and 60 (DOMINANT)
+    - Dot markers colour-coded by threshold, with tooltip on hover
+    - Legend for threshold colours
+    - Fetches /macro-dominance/history?pair=X&limit=200
+
+Institutional guardrails preserved:
+  - isNewsSafeToTrade() UNCHANGED (verified by file diff)
+  - MDI helpers are pure read operations, no side effects
+  - SOFT-authority disclaimer in tab banner, annotation return,
+    window.MDI.DISCLAIMER, and inline wherever data is surfaced
+  - Fail-closed: missing MDI data -> annotation returns "unavailable"
+    rather than a defaulted neutral value
+  - Sample-size gate on analysis: 0/30 counter is locked until
+    enough matched events accumulate
+  - Separable: removing the MDI helpers, the CSS file, or the
+    Intel Hub tab leaves the rest of the system functioning
+    identically
+
+**Phase 2 complete.** All 6 surfaces delivered across 2 commits.
+Next work on MDI = Phase 3 (news-event to MDI-snapshot matcher that
+populates the history with actual outcome data, enabling the N >= 30
+validation) OR the unified Scraper Health Monitor (deferred item
+from earlier).
+
+Known observation flagged for v1.0.3:
+  AUD scoring HIKE when RBA has been cutting. Prose parser may be
+  catching past-tense 'raised' references in historical commentary.
+  Will revisit after a few more scrape cycles to confirm pattern.
+
+---
+
+## [v5.16.0 / MDI Phase 2 checkpoint 1] - 2026-04-21
+### Feature: MDI on armed panel + tooltips + CSS (surfaces 1-3 of 3)
+
+First of two commits for MDI Phase 2. Surfaces news-impact annotation and
+Intel Hub history tab to follow in checkpoint 2.
+
+**Changes in this commit:**
+
+`tooltip-definitions.js` - 3 new definitions:
+  - `mdi` - what the Macro Dominance Index is
+  - `mdi-gap` - threshold meaning (60+/30-59/<30)
+  - `mdi-absorption` - "brief reaction, trend likely resumes" explanation.
+    Explicitly states this does NOT weaken or bypass the news gate.
+
+`css/mdi-module.css` (NEW, 126 lines) - Styling for MDI badge (inherits
+from existing .intel-item base), disclaimer box, Intel Hub banner/table.
+Reuses existing CSS variables - no new colours introduced. Mobile
+responsive breakpoint at 640px.
+
+`index.html` - 1-line CSS link added (mdi-module.css?v=8).
+
+`armed-panel.js v1.12.0 -> v1.13.0`:
+  - MDI_URL constant + MACRO_REFRESH_INTERVAL (30min - backend updates every 4h)
+  - _macroData / _macroStale cache vars (mirrors IG/OB pattern)
+  - fetchMacro() function + initial call + setInterval
+  - New row 3.5 in buildIntelligenceStrip() between OB and ATR:
+    * DOMINANT (gap >=60): amber badge "JPY-weak dom (g87)"
+    * LEANING (gap 30-59): muted blue "lean JPY (g45)"
+    * BALANCED (gap <30): grey italic "balanced (g15)"
+    * Missing data: row HIDDEN entirely (fail-closed)
+    * Stale data: "(stale)" tag appended
+  - Tooltip on badge includes full SOFT-authority disclaimer
+
+**Institutional guardrails enforced:**
+- MDI does NOT feed the pair confidence score
+- MDI does NOT modify any gate (news, regime, circuit breaker)
+- Every visible MDI element carries SOFT-authority messaging
+- Fail-closed: missing scrape data hides the display entirely, never defaults
+- Separable: deleting mdi-module.css or the row 3.5 block removes MDI
+  without affecting any other system component
+
+**Pending in checkpoint 2 (next commit):**
+- news-impact.js: getMacroCrossReference() annotation function (no gate change)
+- arm-history-dashboard.html: new Macro Dominance tab with 28-pair table,
+  validation banner (N>=30 counter), timeline chart
+
+---
+
+## [v5.15.2 / MDI Phase 1 patch 2] - 2026-04-21
+### Fix: HIKE/CUT/HOLD detection (MDI scraper v1.0.1 -> v1.0.2)
+
+**Issue observed on first v1.0.1 production run:**
+Policy rates now parse correctly for all 8/8 G8 currencies (v1.0.1 fix
+confirmed working), but `last_change` returned `None` for every
+currency -- effectively silencing the policy_stance scoring component
+(+/- 20 pts per currency).
+
+Root cause: v1.0.1 searched `html[:8000]` for CB action prose ("left
+steady at", "raised the rate"). TE's nav/header boilerplate pushes
+the summary H2 past position ~17,000 chars, so the 8K window missed
+the prose entirely on every page.
+
+**Fix (v1.0.2):**
+Search full HTML for CB action patterns. The patterns ("left ... steady
+at", "raised ... rate", "cut ... rate") are specific enough that they
+do not false-match on nav/CSS/footer content.
+
+**Unit tests:** 7/7 pass, including new regression test `USD_NOISY`
+that simulates the exact v1.0.1 failure mode (20K boilerplate chars
+prepended before prose).
+
+**Note on impact:** Between v1.0.0 / v1.0.1 / v1.0.2, MDI has never
+shipped degraded data into the system -- fail-closed design meant
+missing components scored 0 rather than being defaulted. Policy stance
+was silent on all currencies during v1.0.1 but yield level, yield
+momentum, and real-rate components were scoring correctly. Effective
+signal was ~60% of design target; now full.
+
+**Deployment:** Update cron from v1.0.1 -> v1.0.2 after verifying
+clean scrape. v1.0.0 and v1.0.1 retained in repo per versioning rule.
+
+---
+
+## [v5.15.1 / MDI Phase 1 patch] - 2026-04-21
+### Fix: policy rate parser (MDI scraper v1.0.0 -> v1.0.1)
+
+**Issue observed on first production run:**
+Yields parsed successfully (8/8) but all 8 policy rate scrapes returned
+`PARSE_FAIL: no policy rate found`. Root cause: TE interest-rate pages
+do not reliably expose the `TEChartsMeta "last"` JSON or the
+`data-symbol` table row that the yield pages use. Policy rate is
+surfaced as prose in the summary H2 and headline paragraph.
+
+**Fix (v1.0.1):**
+Rewrote `parse_policy_page()` with a 5-tier priority cascade:
+
+1. PRIMARY: `"last recorded at X.XX percent"` prose match -- present
+   on every TE interest-rate page, robust across all G8 currencies.
+   Handles negative rates (Japan historical).
+2. Fed-style target ranges: `"3.5%-3.75% target range"` or
+   `"target range at 3.5%-3.75%"`. Takes upper bound as effective
+   ceiling. Handles both ASCII hyphens and en/em-dashes.
+3. Headline H2 patterns: `"steady at X.XX percent"`,
+   `"raised to X.XX percent"`, `"interest rate... X.XX percent"`.
+4. Legacy TEChartsMeta fallback (rare on policy pages, kept for safety).
+5. Legacy data-symbol row fallback.
+
+Also rewrote HIKE/CUT/HOLD detection to use summary prose patterns
+with word-gap tolerance for phrases like `"raised the bank rate"`,
+`"cut the cash rate"`. HOLD takes precedence over HIKE/CUT when both
+match (handles `"left steady after raising last month"` correctly).
+
+**Unit tests:** 6/6 pass against observed TE prose samples (US Fed
+range format, BoJ steady, BoE hike, ECB cut, SNB hold, Fed range-only
+edge case).
+
+**Deployment:** v1.0.0 and v1.0.1 both retained in repo per versioning
+rule. Update cron to call v1.0.1 after verifying it scrapes cleanly.
+
+---
+
+## [v5.15.0 / MDI Phase 1] - 2026-04-21
+### Feature: Macro Dominance Index (MDI) -- 4th Satellite
+
+**Scraper + Alert Server v2.15.0:**
+
+Institutional-grade macro dominance scoring. Core principle: "When one leg of a cross is in a strong macro regime, news on the other leg usually gets absorbed."
+
+- `macro_dominance_scraper_v1.0.0.py`: scrapes 10Y bond yields and central bank policy rates from Trading Economics for 8 G8 currencies (USD, EUR, GBP, JPY, AUD, NZD, CAD, CHF). Scores each currency -100 to +100 across 4 factors:
+  - Yield level vs peer average (+/- 30 pts)
+  - 20-day yield momentum (+/- 25 pts)
+  - Real rate vs peer average (+/- 25 pts)
+  - Policy stance / last CB change (+/- 20 pts)
+- Per-pair scoring for 28 cross pairs: `gap = |base_score - quote_score|`
+  - Gap >= 60: DOMINANT (absorption likely)
+  - Gap 30-59: LEANING (partial absorption)
+  - Gap < 30: BALANCED (full news impact)
+- Alert server v2.15.0: adds `GET /macro-dominance/latest` and `GET /macro-dominance/history?pair=X&limit=N` endpoints
+- Cron: every 4 hours via Unraid User Scripts
+- Historical logging to `macro-dominance-history.json` (last 500 snapshots) for edge-discovery validation
+
+**Design principles (institutional):**
+- **SOFT gate authority** -- v1.0.0 is display-only. News gate is NOT modified by MDI. Historical storage enables hit-rate validation before any promotion to MEDIUM authority (v1.x.x review phase after 60-90 days of data).
+- **Fail-closed** -- missing scrape data per currency causes that currency to be omitted from scoring rather than default-passed. Silent failures would violate Risk Committee design rules.
+- **Separable + inspectable** -- MDI logic runs independent of existing gates. No coupling. Can be disabled without affecting any other system component.
+
+**Phase 1 scope: backend only.** No UI changes. Phase 2 (next release) will add armed panel integration, news impact module cross-reference, and Intelligence Hub history tab.
+
+**Rationale for SOFT over MEDIUM authority:**
+Institutional risk engineering follows one rule: new signals earn their weight through evidence, not assumption. MDI is an observed rule of thumb that requires validation. Granting it authority to downgrade proven news gates before statistical hit-rate review would violate "no silent spec drift" and couple two previously-separable risk controls. The Intelligence Hub exists specifically to answer the question: "is this edge real?"
+
+**Known limitation:** `yield_20d_ago` extraction relies on TE's embedded chart series data. If TE changes chart embedding, momentum defaults to 0 (fail-closed). If consistently null after 24h, Phase 1.1 will switch to local history accumulation.
+
+---
+
 ## [v5.14.0] - 2026-04-17
 ### Feature: Server-side Entry Monitor (Problem A)
 

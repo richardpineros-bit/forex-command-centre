@@ -1,0 +1,2 @@
+#!/bin/bash
+/usr/bin/python3 /mnt/user/appdata/forex-command-centre/backend/scripts/ig_sentiment_scraper.py --unraid
