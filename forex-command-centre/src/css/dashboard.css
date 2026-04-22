@@ -1055,3 +1055,192 @@ a.armed-pair-row.armed-row-link:active {
     color: var(--color-pass);
     border-color: var(--color-pass);
 }
+/* ================================================================
+   Institutional Satellite Grid v1.14.0
+   Direction-aware heatmap replacing inline intelligence strip.
+   8 cells: ZONE | STRUCT | MDI | OB | NEWS | IG | ATR | FREQ + playbook + expand chevron.
+   Directional cells flip colour by LONG/SHORT; quality cells use absolute scale.
+   Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone.
+   Legacy intelligence strip preserved as click-to-expand detail view.
+   ================================================================ */
+
+.armed-satellite-grid {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr)) auto auto;
+    gap: 4px;
+    padding: 6px 12px 6px 36px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    align-items: stretch;
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.sgrid-cell {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 4px 4px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    cursor: help;
+    min-height: 36px;
+    transition: transform 0.12s ease, filter 0.12s ease;
+    overflow: hidden;
+}
+
+.sgrid-cell:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.18);
+}
+
+.sgrid-label {
+    font-size: 0.52rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 3px;
+    opacity: 0.85;
+}
+
+.sgrid-value {
+    font-size: 0.66rem;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.sgrid-sym {
+    font-weight: 800;
+    margin-right: 2px;
+    opacity: 0.9;
+}
+
+/* === Directional cells (NEWS, IG, OB, MDI) === */
+.sgrid-dir-good  { background: rgba(74, 222, 128, 0.18); border-color: rgba(74, 222, 128, 0.45); color: #4ade80; }
+.sgrid-dir-ok    { background: rgba(234, 179,   8, 0.13); border-color: rgba(234, 179,   8, 0.35); color: #eab308; }
+.sgrid-dir-bad   { background: rgba(239,  68,  68, 0.18); border-color: rgba(239,  68,  68, 0.45); color: #f87171; }
+.sgrid-dir-muted { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.08); color: var(--text-muted); }
+
+/* === Quality cells (ZONE, STRUCT, ATR, FREQ) === */
+.sgrid-qual-good  { background: rgba(134, 239, 172, 0.13); border-color: rgba(134, 239, 172, 0.40); color: #86efac; }
+.sgrid-qual-ok    { background: rgba(251, 191,  36, 0.15); border-color: rgba(251, 191,  36, 0.40); color: #fbbf24; }
+.sgrid-qual-bad   { background: rgba(239,  68,  68, 0.18); border-color: rgba(239,  68,  68, 0.45); color: #f87171; }
+.sgrid-qual-muted { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.08); color: var(--text-muted); }
+
+/* === Playbook label (right side, before chevron) === */
+.sgrid-playbook {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    color: var(--text-secondary);
+    font-size: 0.60rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border-left: 1px solid var(--border-color);
+    margin-left: 4px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* === Expand chevron === */
+.sgrid-expand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    user-select: none;
+    transition: color 0.12s;
+}
+.sgrid-expand:hover {
+    color: var(--text-primary);
+}
+.sgrid-chevron {
+    display: inline-block;
+    line-height: 1;
+}
+
+/* === Expanded legacy detail strip === */
+.armed-satellite-detail {
+    border-top: 1px dashed var(--border-color);
+    background: rgba(0, 0, 0, 0.15);
+}
+.armed-satellite-detail .armed-intelligence-strip {
+    display: flex !important;
+    border-top: none;
+    opacity: 0.85;
+}
+
+/* === Tier-specific: degraded grid cells muted === */
+.armed-pair-wrapper.degraded .armed-satellite-grid {
+    opacity: 0.72;
+}
+.armed-pair-wrapper.degraded .sgrid-cell {
+    filter: saturate(0.75);
+}
+
+/* === Prime: subtle accent === */
+.armed-pair-wrapper.prime .armed-satellite-grid {
+    background: linear-gradient(to right, rgba(74, 222, 128, 0.04), var(--bg-secondary) 40%);
+}
+
+/* === Hide legacy intelligence strip when rendered inline (not inside detail wrapper) === */
+/* Only hide the direct child strip, not one inside .armed-satellite-detail */
+.armed-pair-wrapper > .armed-intelligence-strip {
+    display: none;
+}
+
+/* ================================================================
+   Responsive breakpoints
+   ================================================================ */
+
+/* Tablet: wrap to 4 cols x 2 rows */
+@media (max-width: 899px) {
+    .armed-satellite-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        padding: 6px 10px 6px 28px;
+    }
+    .sgrid-playbook {
+        grid-column: 1 / -1;
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+        margin-left: 0;
+        margin-top: 2px;
+        padding: 4px 0 0 0;
+        justify-content: flex-start;
+    }
+    .sgrid-expand {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        padding: 2px 4px 0 0;
+    }
+    .sgrid-cell {
+        min-height: 40px;
+    }
+}
+
+/* Phone: 2 cols x 4 rows */
+@media (max-width: 600px) {
+    .armed-satellite-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 6px 8px 6px 8px;
+        gap: 3px;
+    }
+    .sgrid-label { font-size: 0.55rem; }
+    .sgrid-value { font-size: 0.70rem; }
+    .sgrid-cell  { min-height: 42px; }
+}

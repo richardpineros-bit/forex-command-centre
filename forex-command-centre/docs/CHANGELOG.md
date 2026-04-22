@@ -1,3 +1,88 @@
+## [Armed Panel v1.14.0] - 2026-04-22
+### Institutional satellite grid — direction-aware 8-cell heatmap
+
+**Problem statement:**
+The armed-panel intelligence strip was a single-line text wall. Everything
+had equal visual weight — ZONE, NEWS, IG, OB, MDI, ATR, STRUCT, FREQ all
+rendered as inline coloured text separated by pipes. User had to *read*
+each satellite to understand alignment; nothing could be absorbed at a
+glance. Cross-pair comparison was impossible without eye-scanning each
+row individually.
+
+**Solution: institutional cross-pair grid.**
+Replace the inline strip with a structured 8-cell grid on every armed
+pair card. Each cell is a self-contained heatmap tile with label +
+symbol + compact value + colour-coded background.
+
+**Column order (left = most institutional weight):**
+ZONE | STRUCT | MDI | OB | NEWS | IG | ATR | FREQ + playbook + chevron
+
+Location and structure first (hardest edges), then flow/positioning
+(MDI, OB), then macro context (NEWS, IG as contrarian), then conditions
+(ATR, FREQ).
+
+**Cell colour logic (two families):**
+
+Directional cells (NEWS, IG, OB, MDI) flip palette based on LONG/SHORT:
+- Green = aligned with trade direction
+- Red   = opposed to trade direction
+- Amber = neutral
+- Grey  = missing / muted
+
+Quality cells (ZONE, STRUCT, ATR, FREQ) use absolute scale:
+- Green = ideal / fresh / optimal / healthy frequency
+- Amber = acceptable / developing / caution
+- Red   = extended / stale / poor / over-signalled
+- Grey  = missing
+
+**IG remains contrarian** — crowd AGAINST the trade direction = green
+(fade signal), crowd WITH the trade = red (fade risk warning).
+
+**MDI logic:** parses the verdict string (`XXX-strength` / `YYY-weakness`
+etc.) against the base/quote currencies of the pair. DOMINANT + aligned
+with trade direction → green. DOMINANT + opposed → red. LEANING →
+amber. BALANCED → always muted/grey. MDI remains SOFT satellite —
+display only, no gate authority. Tooltip preserves the disclaimer.
+
+**Click-to-expand detail:** Every grid row ends with a chevron. Click
+reveals the original text strip below with full-label values (SOFT
+BULLISH, ALIGNED, etc.) for traders who want the verbose reading.
+Tooltip on every cell still gives quick-hover detail without clicking.
+
+**Responsive breakpoints:**
+- >=900px desktop: 8 cols in a single row
+- 600-899px tablet: 4 cols x 2 rows, playbook wraps to full width
+- <600px phone: 2 cols x 4 rows, taller cells, larger text
+
+**Tier grouping preserved:**
+PRIME / STANDARD / DEGRADED section headers, sort order, and tier
+assignment logic are untouched. DEGRADED tier pairs get reduced opacity
+(0.72) and desaturated cells (filter: saturate(0.75)). PRIME tier gets
+a subtle green-to-neutral gradient on the grid background.
+
+**Files changed:**
+- `src/js/armed-panel.js` v1.13.0 -> v1.14.0
+  - New `buildSatelliteGrid(p, rowId)` function (~230 lines) after
+    `buildIntelligenceStrip()`
+  - New `window.toggleSgridDetail(detailId, btnEl)` global for chevron
+    click handler
+  - `buildRow()` modified to emit grid + collapsible detail wrapper
+    around the legacy strip
+- `src/css/dashboard.css` +189 lines
+  - `.armed-satellite-grid`, `.sgrid-cell`, `.sgrid-{dir|qual}-{good|ok|bad|muted}`,
+    `.sgrid-playbook`, `.sgrid-expand`, `.sgrid-chevron`,
+    `.armed-satellite-detail`
+  - Responsive breakpoints at 900px and 600px
+  - Rule hides legacy `.armed-intelligence-strip` when rendered inline
+    as direct child of `.armed-pair-wrapper`; keeps it visible inside
+    `.armed-satellite-detail` (click-to-expand)
+- `src/index.html` cache-bust v=9 -> v=10 for armed-panel.js and dashboard.css
+
+**No backend changes:** Pure frontend. Alert server, enrichment logic,
+tier grouping, score computation, all gates — unchanged.
+
+---
+
 ## [OB Source Migration: Oanda -> Myfxbook] - 2026-04-22
 ### Full replacement of retail order-book sentiment source
 

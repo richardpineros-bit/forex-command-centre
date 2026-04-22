@@ -1,4 +1,4 @@
-// armed-panel.js v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -648,7 +648,247 @@
         '</div>';
     }
 
-        function buildLocationRow(p) {
+    /**
+     * Build institutional satellite grid - direction-aware heatmap.
+     * 8 cells: ZONE | STRUCT | MDI | OB | NEWS | IG | ATR | FREQ + playbook
+     * Directional cells (NEWS, IG, OB, MDI) flip colour by trade direction.
+     * Quality cells (ZONE, STRUCT, ATR, FREQ) use absolute scale.
+     * Each cell: symbol (check/tilde/cross) + compact value, tooltip with full reading.
+     * Returns HTML string. Rendering/responsive behaviour controlled by CSS.
+     */
+    function buildSatelliteGrid(p, rowId) {
+        var dir  = (p.direction || '').toUpperCase();
+        var pair = (p.pair || '').toUpperCase().replace('/', '');
+        var cells = [];
+
+        // Cell helper. state: 'good' | 'ok' | 'bad' | 'muted'. type: 'dir' | 'qual'.
+        function cell(label, value, state, tooltip, type) {
+            var symbol;
+            if      (state === 'good') symbol = '\u2713';
+            else if (state === 'bad')  symbol = '\u2717';
+            else if (state === 'ok')   symbol = '\u223C';
+            else                       symbol = '\u2014';
+            var cls = 'sgrid-cell sgrid-' + type + '-' + state;
+            var tip = tooltip ? ' title="' + String(tooltip).replace(/"/g, '&quot;') + '"' : '';
+            return '<div class="' + cls + '"' + tip + '>' +
+                '<div class="sgrid-label">' + label + '</div>' +
+                '<div class="sgrid-value"><span class="sgrid-sym">' + symbol + '</span> ' + (value || '\u2014') + '</div>' +
+            '</div>';
+        }
+
+        // 1. ZONE (quality)
+        if (p.entryZoneActive) {
+            var zg   = (p.entryZoneGrade || '').toUpperCase();
+            var zStr = p.entryZoneDist ? p.entryZoneDist + 'R' : zg;
+            var zState, zTip;
+            if (zg === 'HOT') {
+                zState = 'good';
+                zTip = 'HOT zone ' + (p.entryZoneDist || '') + 'R - optimal entry, closest to edge';
+            } else if (zg === 'OPTIMAL') {
+                zState = 'good';
+                zTip = 'OPTIMAL zone ' + (p.entryZoneDist || '') + 'R - good entry';
+            } else if (zg === 'ACCEPTABLE') {
+                zState = 'ok';
+                zTip = 'ACCEPTABLE zone ' + (p.entryZoneDist || '') + 'R - marginal entry';
+            } else if (zg === 'EXTENDED') {
+                zState = 'bad';
+                zTip = 'EXTENDED ' + (p.entryZoneDist || '') + 'R - price too far from edge, do not chase';
+            } else {
+                zState = 'muted';
+                zTip = 'Zone: ' + zg;
+            }
+            cells.push(cell('ZONE', zg === 'EXTENDED' ? 'EXT ' + zStr : zStr, zState, zTip, 'qual'));
+        } else {
+            cells.push(cell('ZONE', '-', 'muted', 'No entry zone data', 'qual'));
+        }
+
+        // 2. STRUCT (quality)
+        var structRaw = (p.structExt || '').toUpperCase();
+        if (structRaw === 'FRESH') {
+            cells.push(cell('STRUCT', 'FRESH', 'good', 'Structure fresh - recent break, clean entry window', 'qual'));
+        } else if (structRaw === 'DEVELOPING') {
+            cells.push(cell('STRUCT', 'DEV', 'ok', 'Structure developing - move underway but not yet extended', 'qual'));
+        } else if (structRaw === 'EXTENDED') {
+            cells.push(cell('STRUCT', 'EXT', 'bad', 'Structure extended - move mature, chasing risk, poor R:R', 'qual'));
+        } else {
+            cells.push(cell('STRUCT', '-', 'muted', 'No structure data', 'qual'));
+        }
+
+        // 3. MDI (directional - macro dominance relative to trade direction)
+        // Institutional logic: MDI verdict contains base/quote leg descriptors.
+        // For LONG XXXYYY: favoured if XXX-strength dominant or YYY-weakness dominant.
+        // For SHORT XXXYYY: favoured if XXX-weakness or YYY-strength dominant.
+        if (_macroData && _macroData.pairs && _macroData.pairs[pair]) {
+            var mdi       = _macroData.pairs[pair];
+            var threshold = mdi.threshold || 'BALANCED';
+            var gap       = mdi.gap != null ? Math.round(mdi.gap) : 0;
+            var verdict   = mdi.verdict || '';
+            var mdiStale  = _macroStale ? ' (stale)' : '';
+            var mdiState, mdiVal, mdiTip;
+
+            if (threshold === 'BALANCED') {
+                mdiState = 'muted';
+                mdiVal   = 'BAL g' + gap;
+                mdiTip   = 'MDI balanced (gap ' + gap + ') - news will have full impact. SOFT satellite.';
+            } else {
+                var base  = pair.substring(0, 3);
+                var quote = pair.substring(3, 6);
+                var favoursLong  = verdict.indexOf(base + '-strength') >= 0 || verdict.indexOf(quote + '-weakness') >= 0;
+                var favoursShort = verdict.indexOf(base + '-weakness') >= 0 || verdict.indexOf(quote + '-strength') >= 0;
+                var aligned      = (dir === 'LONG' && favoursLong)  || (dir === 'SHORT' && favoursShort);
+                var opposed      = (dir === 'LONG' && favoursShort) || (dir === 'SHORT' && favoursLong);
+
+                if (threshold === 'DOMINANT') {
+                    if      (aligned) mdiState = 'good';
+                    else if (opposed) mdiState = 'bad';
+                    else              mdiState = 'ok';
+                    mdiVal = 'DOM g' + gap;
+                } else { // LEANING
+                    if      (aligned) mdiState = 'ok';
+                    else if (opposed) mdiState = 'bad';
+                    else              mdiState = 'ok';
+                    mdiVal = 'LEAN g' + gap;
+                }
+                mdiTip = 'MDI: ' + verdict + ' (gap ' + gap + '). ' +
+                    (aligned ? 'Macro backdrop favours ' + dir + '.' : opposed ? 'Macro backdrop opposes ' + dir + '.' : 'Macro neutral to ' + dir + '.') +
+                    ' SOFT satellite - display only.';
+            }
+            cells.push(cell('MDI', mdiVal + mdiStale, mdiState, mdiTip, 'dir'));
+        } else {
+            cells.push(cell('MDI', '-', 'muted', 'No MDI data', 'dir'));
+        }
+
+        // 4. OB (directional - Oanda order book confirmation)
+        if (_orderBookData && _orderBookData[pair]) {
+            var ob = _orderBookData[pair];
+            if (ob.strength && ob.strength !== 'NEUTRAL') {
+                var obSig  = ob.contrarian_signal;
+                var obConf = (dir === 'LONG' && obSig === 'BULLISH') || (dir === 'SHORT' && obSig === 'BEARISH');
+                var obOppo = (dir === 'LONG' && obSig === 'BEARISH') || (dir === 'SHORT' && obSig === 'BULLISH');
+                var obState = obConf ? 'good' : obOppo ? 'bad' : 'ok';
+                var obVal   = (ob.long_pct != null && ob.short_pct != null)
+                    ? Math.round(ob.long_pct) + '/' + Math.round(ob.short_pct)
+                    : ob.strength;
+                var obStale = _orderBookStale ? ' (stale)' : '';
+                var obTip   = 'OB ' + ob.strength + ' ' + obSig + ' - ' +
+                    (obConf ? 'aligned with ' + dir : obOppo ? 'opposed to ' + dir : 'neutral');
+                cells.push(cell('OB', obVal + obStale, obState, obTip, 'dir'));
+            } else {
+                cells.push(cell('OB', 'NEUTRAL', 'ok', 'Order book neutral - no directional bias', 'dir'));
+            }
+        } else {
+            cells.push(cell('OB', '-', 'muted', 'No order book data', 'dir'));
+        }
+
+        // 5. NEWS (directional - news bias relative to trade direction)
+        if (window.NewsBiasEngine && window.NewsBiasEngine.hasData()) {
+            var bv = window.NewsBiasEngine.getVerdict(pair, dir.toLowerCase());
+            if (bv) {
+                var net    = Number(bv.net_score || 0);
+                var netStr = (net >= 0 ? '+' : '') + net.toFixed(1);
+                var conf   = (bv.confluence || 'NEUTRAL').toUpperCase();
+                var nState;
+                if      (conf.indexOf('ALIGN') >= 0)    nState = 'good';
+                else if (conf.indexOf('CONFLICT') >= 0) nState = 'bad';
+                else if (conf === 'NEUTRAL')            nState = 'ok';
+                else                                    nState = 'ok';
+                var nTip = 'News bias ' + netStr + ' ' + conf + ' for ' + dir;
+                cells.push(cell('NEWS', netStr, nState, nTip, 'dir'));
+            } else {
+                cells.push(cell('NEWS', '-', 'muted', 'No news verdict for this pair', 'dir'));
+            }
+        } else {
+            cells.push(cell('NEWS', '-', 'muted', 'News engine not loaded', 'dir'));
+        }
+
+        // 6. IG (directional, CONTRARIAN - crowd against trade = good signal)
+        if (_sentimentData && _sentimentData[pair]) {
+            var s        = _sentimentData[pair];
+            var strength = s.strength || 'NEUTRAL';
+            var cd       = (s.crowd_direction || '').toUpperCase();
+            var contra   = (dir === 'LONG' && cd === 'SHORT') || (dir === 'SHORT' && cd === 'LONG');
+            var aligned  = (dir === 'LONG' && cd === 'LONG')  || (dir === 'SHORT' && cd === 'SHORT');
+            var iState;
+            if      (strength === 'NEUTRAL') iState = 'ok';
+            else if (contra)                 iState = 'good';
+            else if (aligned)                iState = 'bad';
+            else                             iState = 'ok';
+            var iVal   = Math.round(s.long_pct || 0) + '/' + Math.round(s.short_pct || 0);
+            var iStale = _sentimentStale ? ' (stale)' : '';
+            var iTip   = 'IG ' + iVal + ' ' + strength + ' ' + (s.contrarian_signal || '') + ' - ' +
+                (contra ? 'crowd fading ' + dir + ' (contrarian edge)' :
+                 aligned ? 'crowd with ' + dir + ' (warning: fade risk)' :
+                 'crowd neutral');
+            cells.push(cell('IG', iVal + iStale, iState, iTip, 'dir'));
+        } else {
+            cells.push(cell('IG', '-', 'muted', 'No IG sentiment data', 'dir'));
+        }
+
+        // 7. ATR (quality - volatility percentile)
+        var atrPct = p.volLevel ? Math.round(Number(p.volLevel)) : null;
+        if (atrPct !== null) {
+            var aState, aLabel;
+            if      (atrPct >= 80) { aState = 'bad';  aLabel = 'EXHAUST'; }
+            else if (atrPct >= 60) { aState = 'ok';   aLabel = 'ELEVATED'; }
+            else if (atrPct >= 30) { aState = 'good'; aLabel = 'NORMAL'; }
+            else                   { aState = 'good'; aLabel = 'IDEAL'; }
+            cells.push(cell('ATR', atrPct + '%ile', aState, 'ATR ' + aLabel + ' - ' + atrPct + ' percentile', 'qual'));
+        } else {
+            cells.push(cell('ATR', '-', 'muted', 'No ATR data', 'qual'));
+        }
+
+        // 8. FREQ (quality - signal frequency, freshness hygiene)
+        var wkCount = p.weekSignalCount;
+        if (wkCount !== null && wkCount !== undefined) {
+            var fState, fLabel;
+            if      (wkCount <= 1) { fState = 'good'; fLabel = '1st'; }
+            else if (wkCount <= 3) { fState = 'good'; fLabel = wkCount + '/wk'; }
+            else if (wkCount <= 5) { fState = 'ok';   fLabel = wkCount + '/wk'; }
+            else                   { fState = 'bad';  fLabel = wkCount + '/wk'; }
+            var twoWk = p.twoWeekSignalCount || 0;
+            var fTip  = fLabel + ' signals this week (' + twoWk + ' in past 14 days) - ' +
+                (wkCount <= 3 ? 'fresh, uncluttered' :
+                 wkCount <= 5 ? 'getting noisy, check invalidations' :
+                 'over-signalled, likely chop');
+            cells.push(cell('FREQ', fLabel, fState, fTip, 'qual'));
+        } else {
+            cells.push(cell('FREQ', '-', 'muted', 'No frequency data', 'qual'));
+        }
+
+        // Playbook label on the right
+        var playbookLabel = (p.playbook || '').toUpperCase().replace(/_/g, ' ');
+        var playbookHtml  = playbookLabel
+            ? '<div class="sgrid-playbook" title="Playbook: ' + playbookLabel + '">' + playbookLabel + '</div>'
+            : '';
+
+        // Expand chevron (toggles the legacy intelligence strip as detail view)
+        var detailId = 'sgrid-detail-' + (rowId || Math.random().toString(36).slice(2, 8));
+        var chevronHtml = '<div class="sgrid-expand" onclick="event.stopPropagation();toggleSgridDetail(\'' + detailId + '\', this);return false;" title="Show/hide full-label detail">' +
+            '<span class="sgrid-chevron">\u25BE</span></div>';
+
+        return '<div class="armed-satellite-grid" data-detail-id="' + detailId + '">' +
+            cells.join('') +
+            playbookHtml +
+            chevronHtml +
+        '</div>';
+    }
+
+    // Global toggle for satellite grid detail expansion (legacy strip view).
+    if (!window.toggleSgridDetail) {
+        window.toggleSgridDetail = function(detailId, btnEl) {
+            var el = document.getElementById(detailId);
+            if (!el) return;
+            var isOpen = el.style.display === 'block';
+            el.style.display = isOpen ? 'none' : 'block';
+            if (btnEl) {
+                var chev = btnEl.querySelector('.sgrid-chevron');
+                if (chev) chev.textContent = isOpen ? '\u25BE' : '\u25B4';
+            }
+        };
+    }
+
+
+    function buildLocationRow(p) {
         var loc = _locationData[p.pair || ''];
 
         if (!loc || loc.grade === 'NO_DATA' || loc.grade === 'STALE') {
@@ -782,7 +1022,10 @@
         }
 
         var locationRowHtml  = buildLocationRow(p);
+        var rowDetailId      = 'sgrid-' + (p.pair || 'x') + '-' + Math.random().toString(36).slice(2, 8);
+        var satelliteGridHtml = buildSatelliteGrid(p, rowDetailId);
         var intelligenceHtml = buildIntelligenceStrip(p);
+        var detailWrappedHtml = '<div id="' + rowDetailId + '" class="armed-satellite-detail" style="display:none">' + intelligenceHtml + '</div>';
 
         return '<div class="' + wrapperCls + '"' + wrapperStyle + '>' +
             dismissBtn +
@@ -804,7 +1047,8 @@
                 '<span class="armed-age">' + statusHtml + '</span>' +
             '</a>' +
             locationRowHtml +
-            intelligenceHtml +
+            satelliteGridHtml +
+            detailWrappedHtml +
         '</div>';
     }
 
