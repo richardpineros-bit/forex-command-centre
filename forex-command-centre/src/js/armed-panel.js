@@ -30,8 +30,9 @@
 
     // Watchlist state
     // Structure: { pair: { watchedAt, expiresAt, snapshotScore, snapshotDirection, snapshotPlaybook, snapshotEntryZone } }
-    var _watchedPairs  = {};
-    var WATCH_TTL_MS   = 8 * 60 * 60 * 1000; // 8 hours
+    var _watchedPairs      = {};
+    var WATCH_TTL_MS       = 8 * 60 * 60 * 1000; // 8 hours
+    var _watchlistLoaded   = false; // guard: do not prune before initial load completes
 
 
     async function fetchSentiment() {
@@ -140,6 +141,7 @@
                 _watchedPairs = result.data.pairs;
             }
         } catch(e) {}
+        _watchlistLoaded = true;
     }
 
     async function saveWatchlist() {
@@ -877,16 +879,18 @@
         // Reconcile dismissed: auto-restore if new ARMED arrived since dismiss
         reconcileDismissed(allActivePairs);
 
-        // Prune expired watches
-        var watchChanged = false;
-        Object.keys(_watchedPairs).forEach(function(pair) {
-            if (isWatchExpired(_watchedPairs[pair])) {
-                delete _watchedPairs[pair];
-                watchChanged = true;
-                console.log('[ArmedPanel] Watch expired and removed: ' + pair);
-            }
-        });
-        if (watchChanged) saveWatchlist();
+        // Prune expired watches (only after loadWatchlist has completed)
+        if (_watchlistLoaded) {
+            var watchChanged = false;
+            Object.keys(_watchedPairs).forEach(function(pair) {
+                if (isWatchExpired(_watchedPairs[pair])) {
+                    delete _watchedPairs[pair];
+                    watchChanged = true;
+                    console.log('[ArmedPanel] Watch expired and removed: ' + pair);
+                }
+            });
+            if (watchChanged) saveWatchlist();
+        }
 
         // Ghost pairs: in _watchedPairs but no longer in the armed state (BLOCKED)
         var armedPairNames = allActivePairs.map(function(p) { return p.pair; });
