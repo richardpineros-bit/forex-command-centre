@@ -1,3 +1,68 @@
+## [FCC-SRL v2.0.0 + Alert Server v2.13.0] - 2026-04-25
+### Liquidity Magnet extension: session H/L + ADX bias + sweep risk tiering
+
+**Problem statement:**
+Traders (specifically Rianpi's recurring pattern) take setups that score
+well and fail in three specific ways:
+  (a) Winners reverse at TP — price almost hits target, sweeps, drops below
+      entry in one candle
+  (b) Limit orders fill, sweep takes out stop, reverses in intended direction
+  (c) Price reaches setup level, triggers entry, runs against within 1h
+
+Root cause analysis concluded these are liquidity sweep events — institutions
+need counter-orders at obvious retail levels (round numbers, prior swings,
+session extremes) to fill their own positions, so price is pushed INTO those
+clusters to generate forced sellers/buyers before reversing.
+
+FCC-SRL v1.0.0 graded location well but had no concept of "magnets between
+price and target". A PRIME grade could still sit in front of 3 stacked
+liquidity pools and the system would arm it at full tier.
+
+**Solution:**
+
+1. **Pine Script v2.0.0** (extends FCC-SRL v1.0.0, not a new indicator):
+   - Session H/L tracking (Tokyo/London/NY) added as magnet-eligible levels
+   - ADX directional bias (diPlus/diMinus, threshold 20) determines
+     ahead-of-price direction; falls back to EMA stack if ADX weak
+   - Magnet counter: iterates all tracked S/R levels (PDH/PDL/PWH/PWL/
+     Daily swings/Weekly swings/round numbers/200EMA/session H/L) and
+     counts those within magnetThreshAtr (default 2.0 ATR) of current price
+   - Directional count: magnets in trade direction only (ahead of price)
+   - Sweep risk tier: 0-1 = LOW, 2 = MEDIUM, 3+ = HIGH (configurable)
+   - Payload extended with active_session, sess_hi/lo, adx_bias, adx_value,
+     magnets_total, magnets_directional, sweep_risk, magnets[] array
+   - Webhook trigger logic: fires on grade change OR sweep risk change
+     (when alertEveryBar=false)
+
+2. **Alert Server v2.13.0** (patches v2.12.0):
+   - /webhook/location handler accepts and stores all new fields
+   - enrichArmedPair applies sweep risk tier downgrade:
+     HIGH → forces structExt=EXTENDED (DEGRADED tier)
+     MEDIUM → downgrades FRESH to EXTENDED (one tier)
+     LOW → no change
+   - appendLocHistory persists new fields for calibration analysis
+   - All new fields exposed on /state for frontend consumption
+
+**Files:**
+- utcc-indicators/fcc-sr-location_v2.0.0.pine (1,302 lines, up from 1,043)
+- patch_alert_server_v2.0.0.py (Python patcher, 4 fragments, backup + validate)
+- docs/IMPLEMENTATION_GUIDE_v2.0.0.md (full deploy procedure)
+
+**Deploy order:**
+1. Alert server patch FIRST (backward-compatible — accepts v1.0 and v2.0 payloads)
+2. Pine Script v2.0.0 SECOND (one test pair, then roll out)
+
+**Not in this release (planned next session):**
+- Frontend armed card sweep risk badge
+- Magnet list expansion panel on armed cards
+- Intelligence Hub Sweep Risk Calibration tab
+- Armed panel filter to hide HIGH sweep pairs
+
+**Backward compatibility:**
+Server v2.13.0 accepts v1.0.0 Pine payloads (new fields default safely).
+Pine v2.0.0 payloads accepted by v2.12.0 server (extra fields ignored).
+Either side can be rolled back independently.
+
 ## [MDI Scraper v1.0.3] - 2026-04-22
 ### AUD HIKE false-positive fix + BALANCED verdict wording
 
