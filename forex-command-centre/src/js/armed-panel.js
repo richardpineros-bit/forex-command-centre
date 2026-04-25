@@ -1,4 +1,4 @@
-// armed-panel.js v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.15.0 - FCC-SRL v2.0.0 frontend (alongside Alert Server v2.17.0): quality tag badge (PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED) inline next to pair name; sweep risk badge (LOW dot / MED amber / HIGH red); liquidity magnet list expansion panel (collapsed by default, click chevron to expand, sorted by distance ASC, AHEAD=amber BEHIND=muted); session+ADX bias footer line (Active: SESSION | ADX bias: LONG/SHORT (val), hidden if NONE); sort within each tier (PRIME/STANDARD/DEGRADED) groups by quality tag order PRIORITY-first then by enrichedScore desc. Tier grouping unchanged (independent dimension). Backward compat: missing v2.0.0 fields render as no-op (no badge, no line, no list). | v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -313,6 +313,109 @@
         }
 
         return 'STANDARD';
+    }
+
+    // ====================================================================
+    // v1.15.0 -- FCC-SRL v2.0.0 helpers (quality tag, sweep, magnets, session/ADX)
+    // ====================================================================
+
+    // Sort order for quality tag (lower = higher priority)
+    function qualityTagOrder(tag) {
+        var map = { 'PRIORITY': 0, 'STANDARD+': 1, 'STANDARD': 2, 'CAUTION': 3, 'CONTESTED': 4 };
+        return (tag && map[tag] !== undefined) ? map[tag] : 2; // null/unknown -> STANDARD slot
+    }
+
+    // Renders the quality tag badge. Returns '' when tag is null/missing (graceful fallback).
+    function buildQualityBadge(p) {
+        var tag = p && p.qualityTag;
+        if (!tag) return '';
+        var cls;
+        if      (tag === 'PRIORITY')  cls = 'quality-badge-priority';
+        else if (tag === 'STANDARD+') cls = 'quality-badge-standard-plus';
+        else if (tag === 'STANDARD')  cls = 'quality-badge-standard';
+        else if (tag === 'CAUTION')   cls = 'quality-badge-caution';
+        else if (tag === 'CONTESTED') cls = 'quality-badge-contested';
+        else return '';
+        var icon  = (tag === 'CAUTION' || tag === 'CONTESTED') ? '&#x26A0; ' : '';
+        var label = (tag === 'STANDARD+') ? 'STD+' : tag;
+        var reason = (p.qualityReason || '').replace(/"/g, '&quot;');
+        var title  = tag + (reason ? ' \u2014 ' + reason : '');
+        return '<span class="quality-badge ' + cls + '" title="' + title + '">' + icon + label + '</span>';
+    }
+
+    // Renders the sweep risk badge. LOW=tiny green dot, MED=amber pill, HIGH=red pill with warn icon.
+    // Returns '' when sweepRisk is null/missing.
+    function buildSweepBadge(p) {
+        var s = p && p.sweepRisk;
+        if (!s) return '';
+        var dirCount = (typeof p.magnetsDirectional === 'number') ? p.magnetsDirectional : 0;
+        var totCount = (typeof p.magnetsTotal       === 'number') ? p.magnetsTotal       : 0;
+        var behind   = Math.max(0, totCount - dirCount);
+        var tip      = dirCount + ' magnets ahead, ' + behind + ' behind';
+        if (s === 'LOW') {
+            return '<span class="sweep-badge sweep-badge-low" title="Sweep risk LOW \u2014 ' + tip + '"></span>';
+        }
+        if (s === 'MEDIUM') {
+            return '<span class="sweep-badge sweep-badge-medium" title="Sweep risk MEDIUM \u2014 ' + tip + '">SWEEP: MED</span>';
+        }
+        if (s === 'HIGH') {
+            return '<span class="sweep-badge sweep-badge-high" title="Sweep risk HIGH \u2014 ' + tip + '">&#x26A0; SWEEP: HIGH</span>';
+        }
+        return '';
+    }
+
+    // Renders the magnet list toggle button + collapsed list. Returns '' when no magnets.
+    // List is sorted by distance ASC (Pine pre-sorts; we preserve order).
+    function buildMagnetList(p, listId) {
+        var arr = Array.isArray(p && p.magnets) ? p.magnets : [];
+        if (arr.length === 0) return '';
+        var rows  = '';
+        var shown = Math.min(arr.length, 6); // Pine cap matches magnetMaxShown
+        for (var i = 0; i < shown; i++) {
+            var m       = arr[i] || {};
+            var type    = (m.type || m.name || 'LVL').toString();
+            var price   = (m.price !== undefined && m.price !== null) ? Number(m.price).toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : '\u2014';
+            var distRaw = (m.dist_atr !== undefined && m.dist_atr !== null) ? m.dist_atr : (m.distAtr !== undefined ? m.distAtr : null);
+            var dist    = (distRaw !== null) ? Number(distRaw).toFixed(1) + ' ATR' : '?';
+            var dirRaw  = (m.dir || m.direction || '').toString().toUpperCase();
+            var dirCls  = (dirRaw === 'AHEAD') ? 'magnet-row-ahead' : 'magnet-row-behind';
+            var dirLbl  = (dirRaw === 'AHEAD') ? 'AHEAD' : 'BEHIND';
+            rows +=
+                '<div class="magnet-row ' + dirCls + '">' +
+                    '<span class="magnet-row-type">' + type + '</span>' +
+                    '<span class="magnet-row-price">@ ' + price + '</span>' +
+                    '<span class="magnet-row-dist">' + dist + ' ' + dirLbl + '</span>' +
+                '</div>';
+        }
+        var moreNote = (arr.length > shown)
+            ? '<div class="magnet-list-empty">+' + (arr.length - shown) + ' more not shown</div>'
+            : '';
+        var label = arr.length + ' liquidity magnet' + (arr.length === 1 ? '' : 's');
+        return (
+            '<button type="button" class="magnet-toggle" onclick="toggleMagnetList(\'' + listId + '\', this);return false;" title="Show liquidity magnets within FCC-SRL threshold">' +
+                '<span class="chev">\u25b6</span> ' + label +
+            '</button>' +
+            '<div id="' + listId + '" class="magnet-list" style="display:none">' +
+                '<div class="magnet-list-header">Magnets (sorted by distance)</div>' +
+                rows +
+                moreNote +
+            '</div>'
+        );
+    }
+
+    // Renders the session/ADX bias footer line. Returns '' when both fields missing/NONE.
+    function buildSessionAdxLine(p) {
+        var sess  = (p && p.activeSession && p.activeSession !== 'NONE') ? p.activeSession : null;
+        var bias  = (p && p.adxBias       && p.adxBias       !== 'NONE') ? p.adxBias       : null;
+        var adxV  = (p && typeof p.adxValue === 'number') ? p.adxValue.toFixed(1) : null;
+        if (!sess && !bias) return '';
+        var parts = [];
+        if (sess) parts.push('Active: <strong>' + sess + '</strong>');
+        if (bias) {
+            var biasCls = bias === 'LONG' ? 'adx-long' : (bias === 'SHORT' ? 'adx-short' : '');
+            parts.push('ADX bias: <strong class="' + biasCls + '">' + bias + '</strong>' + (adxV ? ' (' + adxV + ')' : ''));
+        }
+        return '<div class="session-adx-line">' + parts.join(' \u2502 ') + '</div>';
     }
 
     function scoreColour(score) {
@@ -1027,12 +1130,22 @@
         var intelligenceHtml = buildIntelligenceStrip(p);
         var detailWrappedHtml = '<div id="' + rowDetailId + '" class="armed-satellite-detail" style="display:none">' + intelligenceHtml + '</div>';
 
+        // v1.15.0 -- FCC-SRL v2.0.0 visual elements
+        var qualityBadgeHtml  = buildQualityBadge(p);
+        var sweepBadgeHtml    = buildSweepBadge(p);
+        var magnetListId      = 'magnets-' + (p.pair || 'x') + '-' + Math.random().toString(36).slice(2, 8);
+        var magnetListHtml    = buildMagnetList(p, magnetListId);
+        var sessionAdxHtml    = buildSessionAdxLine(p);
+        var srlFooterHtml     = (magnetListHtml || sessionAdxHtml)
+            ? '<div class="armed-srl-footer" style="padding:4px 10px 6px 10px">' + magnetListHtml + sessionAdxHtml + '</div>'
+            : '';
+
         return '<div class="' + wrapperCls + '"' + wrapperStyle + '>' +
             dismissBtn +
             watchBtn +
             '<a href="#" class="' + rowClass + ' armed-row-link" data-pair="' + (p.pair || '') + '" onclick="' + tvOnClick + '" title="Open ' + (p.pair || '') + ' on TradingView 4H">' +
                 '<span class="armed-emoji">' + emoji + '</span>' +
-                '<span class="armed-pair-name">' + alertTypeBadge(p) + ' ' + (p.pair || '') + '</span>' +
+                '<span class="armed-pair-name">' + alertTypeBadge(p) + ' ' + (p.pair || '') + ' ' + qualityBadgeHtml + ' ' + sweepBadgeHtml + '</span>' +
                 dirBadgeHtml +
                 '<span class="armed-primary">' + (p.primary || '\u2014') + '</span>' +
                 '<span class="armed-permission ' + permDisp + '">' + permLabel + '</span>' +
@@ -1049,6 +1162,7 @@
             locationRowHtml +
             satelliteGridHtml +
             detailWrappedHtml +
+            srlFooterHtml +
         '</div>';
     }
 
@@ -1197,12 +1311,17 @@
             // Compute quality tier
             activePairs.forEach(function(p) { p._tier = qualityTier(p); });
 
-            // Sort: PRIME first, then STANDARD, then DEGRADED; score desc within tier
+            // Sort: PRIME first, then STANDARD, then DEGRADED.
+            // v1.15.0 -- within tier, secondary sort by quality tag order
+            // (PRIORITY -> STANDARD+ -> STANDARD -> CAUTION -> CONTESTED), then enrichedScore desc.
             activePairs.sort(function(a, b) {
                 var order = { 'PRIME': 0, 'STANDARD': 1, 'DEGRADED': 2 };
                 var ta = order[a._tier] !== undefined ? order[a._tier] : 1;
                 var tb = order[b._tier] !== undefined ? order[b._tier] : 1;
                 if (ta !== tb) return ta - tb;
+                var qa = qualityTagOrder(a.qualityTag);
+                var qb = qualityTagOrder(b.qualityTag);
+                if (qa !== qb) return qa - qb;
                 var sa = (a.enrichedScore !== null && a.enrichedScore !== undefined) ? a.enrichedScore : (a.score || 0);
                 var sb = (b.enrichedScore !== null && b.enrichedScore !== undefined) ? b.enrichedScore : (b.score || 0);
                 return sb - sa;
@@ -1337,6 +1456,18 @@
             var arrow = _dismissedExpanded ? '\u25b2' : '\u25bc';
             label.textContent = arrow + ' ' + count + ' dismissed \u2014 ' +
                                 (_dismissedExpanded ? 'hide' : 'show');
+        }
+    };
+
+    // v1.15.0 -- magnet list expand/collapse toggle
+    window.toggleMagnetList = function(listId, btn) {
+        var el = document.getElementById(listId);
+        if (!el) return;
+        var isOpen = el.style.display !== 'none';
+        el.style.display = isOpen ? 'none' : 'block';
+        if (btn && btn.classList) {
+            if (isOpen) btn.classList.remove('open');
+            else        btn.classList.add('open');
         }
     };
 

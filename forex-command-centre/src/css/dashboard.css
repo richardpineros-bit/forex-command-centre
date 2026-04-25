@@ -1244,3 +1244,216 @@ a.armed-pair-row.armed-row-link:active {
     .sgrid-value { font-size: 0.70rem; }
     .sgrid-cell  { min-height: 42px; }
 }
+
+
+/* ================================================================
+   FCC-SRL v2.0.0 FRONTEND INTEGRATION (added with Alert Server v2.17.0)
+   --------------------------------------------------------------
+   Quality tag badges, sweep risk badges, magnet list expansion,
+   session/ADX footer, filter chips, hidden counter chip.
+
+   Variable mapping (real codebase, not spec):
+     PRIORITY  -> --color-perfect (purple)
+     STANDARD+ -> --color-info    (blue)
+     STANDARD  -> --bg-tertiary + --text-secondary (neutral grey)
+     CAUTION   -> --color-warning (amber)
+     CONTESTED -> --color-fail    (red)
+     Magnet AHEAD  -> --color-warning
+     Magnet BEHIND -> --text-muted
+     Sweep LOW dot -> --color-pass (green dot, no text)
+   ================================================================ */
+
+/* ---- Quality tag badge (top-right of armed card) ---- */
+.quality-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    white-space: nowrap;
+}
+.quality-badge-priority      { background: var(--color-perfect); color: #fff; }
+.quality-badge-standard-plus { background: var(--color-info);    color: #fff; }
+.quality-badge-standard      { background: var(--bg-tertiary);   color: var(--text-secondary); border: 1px solid var(--border-secondary); }
+.quality-badge-caution       { background: var(--color-warning); color: #000; }
+.quality-badge-contested     { background: var(--color-fail);    color: #fff; text-decoration: line-through; }
+
+/* ---- Sweep risk badge (next to tier badge in card header) ---- */
+.sweep-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-family: var(--font-heading);
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.sweep-badge-low {
+    /* tiny green dot, no text */
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--color-pass);
+    box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+}
+.sweep-badge-medium { background: var(--color-warning); color: #000; }
+.sweep-badge-high   { background: var(--color-fail);    color: #fff; }
+
+/* ---- Magnet list expansion panel ---- */
+.magnet-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    padding: 2px 4px;
+    user-select: none;
+    transition: color var(--transition-fast);
+}
+.magnet-toggle:hover  { color: var(--text-primary); }
+.magnet-toggle .chev  { display: inline-block; transition: transform var(--transition-fast); }
+.magnet-toggle.open .chev { transform: rotate(90deg); }
+
+.magnet-list {
+    margin-top: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-tertiary);
+    border-left: 2px solid var(--border-secondary);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-heading);
+    font-size: 0.7rem;
+}
+.magnet-list-header {
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px dashed var(--border-secondary);
+}
+.magnet-list-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.65rem;
+}
+.magnet-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--spacing-sm);
+    padding: 2px 0;
+    line-height: 1.4;
+}
+.magnet-row-type   { font-weight: 600; min-width: 70px; }
+.magnet-row-price  { flex: 1; text-align: right; opacity: 0.75; }
+.magnet-row-dist   { min-width: 80px; text-align: right; font-size: 0.65rem; }
+.magnet-row-ahead  { color: var(--color-warning); }
+.magnet-row-behind { color: var(--text-muted); }
+
+/* ---- Session / ADX footer line ---- */
+.session-adx-line {
+    margin-top: var(--spacing-xs);
+    padding-top: var(--spacing-xs);
+    border-top: 1px dashed var(--border-secondary);
+    font-family: var(--font-heading);
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+.session-adx-line strong { color: var(--text-secondary); font-weight: 600; }
+.session-adx-line .adx-long  { color: var(--color-pass); }
+.session-adx-line .adx-short { color: var(--color-fail); }
+
+/* ---- Armed panel filter bar (top of panel) ---- */
+.armed-filter-bar {
+    display: flex;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+    flex-wrap: wrap;
+    align-items: center;
+}
+.armed-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-secondary);
+    padding: 4px 10px;
+    border-radius: var(--radius-md);
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    transition: all var(--transition-fast);
+}
+.armed-filter-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+.armed-filter-chip.active {
+    background: var(--color-info);
+    color: #fff;
+    border-color: var(--color-info);
+}
+
+/* ---- Hidden counter chip (always visible when filter is hiding pairs) ---- */
+.hidden-counter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px dashed var(--border-secondary);
+    padding: 4px 10px;
+    border-radius: var(--radius-md);
+    font-family: var(--font-heading);
+    font-size: 0.65rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: all var(--transition-fast);
+}
+.hidden-counter-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+    border-style: solid;
+}
+.hidden-counter-chip-count {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* ---- Mobile adjustments for new badges ---- */
+@media (max-width: 600px) {
+    .quality-badge { font-size: 0.6rem; padding: 2px 6px; }
+    .sweep-badge   { font-size: 0.55rem; padding: 2px 4px; }
+    .magnet-list   { font-size: 0.65rem; }
+    .session-adx-line { font-size: 0.58rem; }
+    .armed-filter-chip,
+    .hidden-counter-chip { font-size: 0.6rem; padding: 3px 8px; }
+}
