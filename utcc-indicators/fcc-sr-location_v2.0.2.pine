@@ -1,12 +1,20 @@
 //@version=6
 // ══════════════════════════════════════════════════════════════════════════════
-// FCC S/R Location Zones — v2.0.1
+// FCC S/R Location Zones — v2.0.2
 // Forex Command Centre — S/R visual + location grading + LIQUIDITY MAGNETS
+//
+// v2.0.2 PATCH:
+//   - Fix runtime crash when magnet array has 0 or 1 elements.
+//     Pine Script for-loops with end < start still iterate once (e.g.
+//     `for i = 0 to -1` runs once with i=0), causing index-out-of-bounds
+//     in array.get(arr, j+1) when only 1 magnet exists.
+//   - Added explicit size guards: sort requires size > 1, JSON build
+//     requires size > 0. magnetsJson stays as "[]" when no magnets found.
 //
 // v2.0.1 PATCH:
 //   - Fix Pine v6 multi-line continuation error inside magnet JSON for-loop
-//     (line 924). Refactored to single-line concatenation with extracted
-//     intermediate variables. No functional change.
+//     Refactored to single-line concatenation with extracted intermediate
+//     variables. No functional change.
 //
 // v2.0.0 CHANGELOG (MAJOR — breaking payload change):
 //   + Session H/L tracking (Tokyo/London/NY) as magnet type
@@ -900,7 +908,9 @@ if enableMagnets
 
     // Build JSON array — cap to magnetMaxShown closest magnets
     // Sort by distance (simple selection — array is small)
-    if array.size(magLvls) > 0
+    // Guard required: Pine for loops with end < start still iterate once,
+    // so we must explicitly check size before sorting.
+    if array.size(magLvls) > 1
         n = array.size(magLvls)
         // Simple bubble-sort by distance ascending (n is small, max ~20)
         for i = 0 to n - 2
@@ -920,7 +930,8 @@ if enableMagnets
                     array.set(magDirs,  j + 1, tD)
                     array.set(magDists, j + 1, tDs)
 
-        // Build JSON
+    // Build JSON — works for size 0 (empty []), size 1, and size N
+    if array.size(magLvls) > 0
         keep = math.min(array.size(magLvls), magnetMaxShown)
         magnetsJson := "["
         for k = 0 to keep - 1
