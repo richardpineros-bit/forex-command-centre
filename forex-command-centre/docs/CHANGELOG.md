@@ -1,3 +1,141 @@
+## [Alert Server v2.17.0 + armed-panel v1.15.0 + dashboard.css] - 2026-04-25
+### FCC-SRL v2.0.0 frontend integration: Quality Tag engine + visual layer
+
+**Context:**
+Pairs with the FCC-SRL v2.0.0 Pine Script + Alert Server v2.13.0 changes
+that introduced liquidity magnets, sweep risk tiering, session H/L tracking
+and ADX directional bias. Until this commit, all of that data flowed into
+state.pairs[pair] but was invisible to the frontend -- the /state response
+builder cherry-picks fields explicitly and was never updated to include
+the v2.0.0 enriched fields.
+
+**What this delivers:**
+A new institutional dimension on the armed panel that captures behavioural
+pattern over time (frequency x sweep risk) -- independent of the existing
+PRIME/STANDARD/DEGRADED tier (which captures setup quality at this moment).
+Both dimensions are now visible. A PRIME tier pair can still be flagged
+CONTESTED if the level is being repeatedly swept; the trader sees both.
+
+---
+
+### Alert Server v2.16.0 -> v2.17.0
+
+- New pure function `computeQualityTag(weekCount, sweepRisk)` returning
+  `{tag, reason}`. Matrix from FRONTEND_SPEC_v2.0.0.md section 3:
+    - 3+ weekly signals + LOW    -> PRIORITY  (Persistent structure, clean path)
+    - 3+              + MEDIUM   -> STANDARD+ (Persistent, path contested)
+    - 3+              + HIGH     -> CONTESTED (Market hunting this level repeatedly)
+    -  2              + LOW/MED  -> STANDARD  (Pattern forming / Watch carefully)
+    -  2              + HIGH     -> CONTESTED (Bad pattern emerging)
+    - 0-1             + LOW      -> STANDARD  (Fresh, unproven but clean)
+    - 0-1             + MEDIUM   -> CAUTION   (Unproven + path obstructed)
+    - 0-1             + HIGH     -> CAUTION   (Unproven + liquidity cluster ahead)
+- Wired into `enrichArmedPair()` after sweep risk resolution. Result stored
+  on `state.pairs[pair].qualityTag` and `.qualityReason`. ADX value also
+  now stored as `.adxValue` (was previously dropped).
+- `/state` response builder now exposes the v2.0.0 fields that were
+  previously enriched but never propagated:
+    sweepRisk, magnets[], magnetsTotal, magnetsDirectional,
+    activeSession, adxBias, adxValue,
+    qualityTag, qualityReason
+- Backward compat: missing weekSignalCount or sweepRisk yields
+  `{tag: 'STANDARD', reason: 'Incomplete data'}`. Frontend renders neutral
+  default; older pairs without v2.0.0 enrichment continue to work
+  unchanged.
+- Verified: `node --check` passes; `computeQualityTag` matrix 17/17 unit
+  tests pass across the full grid plus null/undefined edges.
+
+### dashboard.css (PATCH -- additive only, ~213 lines appended)
+
+- `.quality-badge` + 5 modifiers using real codebase variables (the spec's
+  `--gold/--blue/--grey/--amber/--red` don't exist; mapped to
+  `--color-perfect/--color-info/--bg-tertiary/--color-warning/--color-fail`).
+- `.sweep-badge` + 3 modifiers: LOW = 8px green dot with subtle glow,
+  MED = amber pill, HIGH = red pill.
+- `.magnet-toggle` + `.magnet-list` + `.magnet-row` (ahead/behind colour
+  classes).
+- `.session-adx-line` + `.adx-long` / `.adx-short`.
+- `.armed-filter-bar` + `.armed-filter-chip` + `.hidden-counter-chip`
+  (CSS staged ahead of v1.16.0 JS wiring; zero rendering cost while
+  unused).
+- Mobile @media adjustments at 600px breakpoint.
+
+### armed-panel.js v1.14.0 -> v1.15.0
+
+- New helpers (all return '' when their source field is null/missing):
+    - `qualityTagOrder(tag)` -- numeric sort priority
+    - `buildQualityBadge(p)` -- inline next to pair name; tooltip
+      carries the qualityReason from the server. Shortens
+      'STANDARD+' label to 'STD+' for compactness.
+    - `buildSweepBadge(p)` -- next to quality badge; tooltip:
+      '{N} magnets ahead, {M} behind'.
+    - `buildMagnetList(p, listId)` -- collapsible panel below the
+      satellite grid. Capped at 6 rows (matches Pine `magnetMaxShown`).
+      AHEAD rows use `--color-warning`, BEHIND use `--text-muted`.
+      '+N more' note when array exceeds cap.
+    - `buildSessionAdxLine(p)` -- footer line. Hidden when both
+      activeSession and adxBias are NONE/null. Partial render when
+      only one is present.
+- Sort comparator: secondary sort by qualityTagOrder within each tier
+  group (PRIORITY -> STANDARD+ -> STANDARD -> CAUTION -> CONTESTED),
+  then enrichedScore desc.
+- `window.toggleMagnetList(listId, btn)` -- expand/collapse handler
+  exposed for the inline onclick.
+
+### Tier vs Quality Tag (institutional decision)
+
+These are independent dimensions; both visible on the same card:
+
+| Dimension     | Captures                              | Source                |
+|---------------|---------------------------------------|-----------------------|
+| Tier banner   | Setup quality NOW                     | locGrade + structExt  |
+| Quality badge | Behavioural pattern OVER TIME         | weekCount x sweepRisk |
+
+Group banners (PRIME / STANDARD / DEGRADED) remain the primary grouping.
+Quality tag drives secondary sort within each group. Filter chips (v1.16.0)
+will operate on quality tag.
+
+### What is intentionally deferred (Phase 3b -> v1.16.0)
+
+- Filter chips at top of armed panel: 'Hide CONTESTED' (default ON),
+  'Hide CAUTION' (default OFF), 'Only PRIORITY' (default OFF).
+- Hidden counter chip (always visible when filter is hiding pairs).
+- localStorage persistence for filter preferences.
+
+### What is intentionally deferred (Phase 3c -> next session)
+
+- Intelligence Hub: 'Sweep Risk Calibration' tab.
+- Intelligence Hub: 'Frequency x Sweep Matrix' tab.
+- Intelligence Hub: 'Location Calibration' tab enhancements
+  (sweep_risk column + sparkline trend).
+
+### Deploy steps used
+
+```bash
+# Server (commit 5e89f1a)
+cd /mnt/user/appdata && git pull
+cp forex-alert-server/index.js /mnt/user/appdata/trading-state/index.js
+docker restart trading-state
+
+# Frontend (commit afeb000)
+cp forex-command-centre/src/js/armed-panel.js  /mnt/user/appdata/nginx/www/js/
+cp forex-command-centre/src/css/dashboard.css   /mnt/user/appdata/nginx/www/css/
+# Hard refresh PWA
+```
+
+### Verification timeline
+
+- Saturday deploy: schema-only verification. All pairs render `qualityTag:
+  null`, `sweepRisk: null` because Pine Script doesn't fire over the
+  weekend. v2.17.0 endpoint shape confirmed correct for all 21 armed
+  pairs.
+- Monday post-Tokyo open: first FCC-SRL location push will trigger
+  enrichArmedPair() for any pair that's still armed; quality tags will
+  start appearing in the UI. Distribution targets: LOW 55-65% / MED 25-35%
+  / HIGH 5-15%.
+
+---
+
 ## [FCC-SRL v2.0.0 + Alert Server v2.13.0] - 2026-04-25
 ### Liquidity Magnet extension: session H/L + ADX bias + sweep risk tiering
 
