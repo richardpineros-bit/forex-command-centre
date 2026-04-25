@@ -1,7 +1,12 @@
 //@version=6
 // ══════════════════════════════════════════════════════════════════════════════
-// FCC S/R Location Zones — v2.0.0
+// FCC S/R Location Zones — v2.0.1
 // Forex Command Centre — S/R visual + location grading + LIQUIDITY MAGNETS
+//
+// v2.0.1 PATCH:
+//   - Fix Pine v6 multi-line continuation error inside magnet JSON for-loop
+//     (line 924). Refactored to single-line concatenation with extracted
+//     intermediate variables. No functional change.
 //
 // v2.0.0 CHANGELOG (MAJOR — breaking payload change):
 //   + Session H/L tracking (Tokyo/London/NY) as magnet type
@@ -921,11 +926,11 @@ if enableMagnets
         for k = 0 to keep - 1
             if k > 0
                 magnetsJson := magnetsJson + ","
-            magnetsJson := magnetsJson +
-                '{"type":"'     + array.get(magNames, k) + '"' +
-                ',"price":"'    + str.tostring(array.get(magLvls, k),  format.mintick) + '"' +
-                ',"dist_atr":"' + str.tostring(math.round(array.get(magDists, k), 2))  + '"' +
-                ',"dir":"'      + array.get(magDirs, k)  + '"}'
+            mType  = array.get(magNames, k)
+            mPrice = str.tostring(array.get(magLvls, k), format.mintick)
+            mDist  = str.tostring(math.round(array.get(magDists, k), 2))
+            mDir   = array.get(magDirs, k)
+            magnetsJson := magnetsJson + '{"type":"' + mType + '","price":"' + mPrice + '","dist_atr":"' + mDist + '","dir":"' + mDir + '"}'
         magnetsJson := magnetsJson + "]"
 
 // Proximity checks
