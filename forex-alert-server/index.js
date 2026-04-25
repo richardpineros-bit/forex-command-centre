@@ -28,8 +28,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.16.0';
+const VERSION = '2.17.0';
 const CHANGES = [
+    '2.17.0 - Quality Tag engine (frequency x sweep risk): computeQualityTag() returns PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED based on weekSignalCount and sweep_risk. Independent of PRIME/STANDARD/DEGRADED tier. Wired into enrichArmedPair(). /state response now exposes qualityTag, qualityReason, sweepRisk, magnets[], magnetsTotal, magnetsDirectional, activeSession, adxBias, adxValue. Backward compat: missing data -> STANDARD with reason "Incomplete data".',
     '2.16.0 - MDI Phase 3: /macro-dominance/events endpoint. Reads macro-dominance-events.json written by macro_event_matcher_v1.0.0.py. Returns matched news events with MDI snapshots and ATR-scaled outcome classifications. Supports ?status, ?pair, ?threshold, ?limit query filters. SOFT authority maintained - display only, no gate modification.',
     '2.15.0 - MDI Phase 1: /macro-dominance/latest and /macro-dominance/history endpoints. Reads macro-dominance.json written by macro_dominance_scraper_v1.0.0.py (every 4h). SOFT gate authority -- display only. Scores G8 currencies and 28 cross pairs.',
     '2.14.3 - Push audit log: every push event appended to push-log.json with pair, type, zone, grade, timestamp, endpoint count. GET /push-log endpoint with ?limit=N&type=X&pair=X filters.',
@@ -814,6 +815,32 @@ function gradeToStructExt(grade) {
     return 'EXTENDED';
 }
 
+// v2.17.0 -- Quality Tag computation: persistence (weekly signal count) x sweep risk.
+// Independent dimension from PRIME/STANDARD/DEGRADED tier; captures behavioural pattern over time.
+// Matrix authoritative source: forex-command-centre/docs/FRONTEND_SPEC_v2.0.0.md section 3.
+function computeQualityTag(weekCount, sweepRisk) {
+    var w = (typeof weekCount === 'number' && weekCount >= 0) ? weekCount : null;
+    var s = sweepRisk || null;
+    if (w === null || !s) {
+        return { tag: 'STANDARD', reason: 'Incomplete data' };
+    }
+    if (w >= 3) {
+        if (s === 'LOW')    return { tag: 'PRIORITY',  reason: 'Persistent structure, clean path' };
+        if (s === 'MEDIUM') return { tag: 'STANDARD+', reason: 'Persistent, path contested' };
+        if (s === 'HIGH')   return { tag: 'CONTESTED', reason: 'Market hunting this level repeatedly' };
+    }
+    if (w === 2) {
+        if (s === 'LOW')    return { tag: 'STANDARD',  reason: 'Pattern forming, clean' };
+        if (s === 'MEDIUM') return { tag: 'STANDARD',  reason: 'Watch carefully' };
+        if (s === 'HIGH')   return { tag: 'CONTESTED', reason: 'Bad pattern emerging' };
+    }
+    // weekCount === 1 or 0
+    if (s === 'LOW')        return { tag: 'STANDARD', reason: 'Fresh, unproven but clean' };
+    if (s === 'MEDIUM')     return { tag: 'CAUTION',  reason: 'Unproven + path obstructed' };
+    if (s === 'HIGH')       return { tag: 'CAUTION',  reason: 'Unproven + liquidity cluster ahead' };
+    return { tag: 'STANDARD', reason: 'Default' };
+}
+
 function enrichArmedPair(pair) {
     try {
         var locData = loadLocation();
@@ -855,9 +882,16 @@ function enrichArmedPair(pair) {
         state.pairs[pair].activeSession      = loc.active_session      || 'NONE';
         state.pairs[pair].adxBias            = loc.adx_bias            || 'NONE';
         state.pairs[pair].magnets            = Array.isArray(loc.magnets) ? loc.magnets : [];
+        state.pairs[pair].adxValue           = (typeof loc.adx_value === 'number') ? loc.adx_value : (parseFloat(loc.adx_value) || null);
+
+        // v2.17.0 -- Quality tag (frequency x sweep risk); independent of PRIME/STANDARD/DEGRADED tier
+        var counts = getPairSignalCounts(pair);
+        var qt     = computeQualityTag(counts.weekSignalCount, sweepRisk);
+        state.pairs[pair].qualityTag    = qt.tag;
+        state.pairs[pair].qualityReason = qt.reason;
 
         saveState(state);
-        console.log('[Enrich] ' + pair + ' | grade:' + loc.grade + ' | locPts:' + locPts + ' | enriched:' + state.pairs[pair].enrichedScore + ' | structExt:' + finalStructExt + ' | sweepRisk:' + sweepRisk + ' | mags:' + (loc.magnets_directional || 0) + '/' + (loc.magnets_total || 0));
+        console.log('[Enrich] ' + pair + ' | grade:' + loc.grade + ' | locPts:' + locPts + ' | enriched:' + state.pairs[pair].enrichedScore + ' | structExt:' + finalStructExt + ' | sweepRisk:' + sweepRisk + ' | mags:' + (loc.magnets_directional || 0) + '/' + (loc.magnets_total || 0) + ' | qualityTag:' + qt.tag + ' (wk:' + counts.weekSignalCount + ')');
         return true;
     } catch (e) {
         console.error('[Enrich] Error enriching ' + pair + ':', e.message);
@@ -1415,7 +1449,18 @@ var server = http.createServer(function(req, res) {
                 entryZoneActive:    d.entryZoneActive    || false,
                 entryZoneGrade:     d.entryZoneGrade     || null,
                 entryZoneDist:      d.entryZoneDist      || null,
-                entryZoneTimestamp: d.entryZoneTimestamp || null
+                entryZoneTimestamp: d.entryZoneTimestamp || null,
+                // v2.17.0: FCC-SRL v2.0.0 -- liquidity magnets, sweep risk, session H/L, ADX bias
+                sweepRisk:          d.sweepRisk          || null,
+                magnetsTotal:       (typeof d.magnetsTotal       === 'number') ? d.magnetsTotal       : 0,
+                magnetsDirectional: (typeof d.magnetsDirectional === 'number') ? d.magnetsDirectional : 0,
+                magnets:            Array.isArray(d.magnets) ? d.magnets : [],
+                activeSession:      d.activeSession      || null,
+                adxBias:            d.adxBias            || null,
+                adxValue:           (typeof d.adxValue === 'number') ? d.adxValue : null,
+                // v2.17.0: Quality tag (frequency x sweep risk) -- independent of PRIME/STANDARD/DEGRADED tier
+                qualityTag:         d.qualityTag         || null,
+                qualityReason:      d.qualityReason      || null
             };
         }).sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
