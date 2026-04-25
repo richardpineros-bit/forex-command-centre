@@ -1,87 +1,57 @@
-# FCC-SRL v2.0.0 Frontend — Phase 3b Handoff (Filter Chips + Intelligence Hub)
+# FCC-SRL v2.0.0 Frontend — Remaining Work Handoff
 
-**Status:** Phase 1 + 2 + 3a complete on `main`.
-- Alert Server v2.17.0 (commit `5e89f1a`)
-- armed-panel v1.15.0 + dashboard.css (commit `afeb000`)
-- CHANGELOG updated (this commit)
-
-**This session deferred:** Filter chips, hidden counter, Intelligence Hub tabs.
+**Last updated:** 2026-04-25 (Saturday) after Phase 1 + 2 + 3a deploy.
 
 ---
 
-## 1. KICKOFF PROMPT (paste into new chat)
+## Current state on `main`
 
-```
-Continuing FCC-SRL v2.0.0 frontend work. Previous session shipped:
-- Alert Server v2.17.0 (computeQualityTag engine + /state v2.0.0 fields)
-- armed-panel v1.15.0 (quality badge, sweep badge, magnet list,
-  session/ADX line, secondary sort by quality tag within tier groups)
-- dashboard.css additions for all of the above
+| Component                | Version  | Commit    | Status |
+|--------------------------|----------|-----------|--------|
+| Alert Server             | v2.17.0  | `5e89f1a` | Deployed |
+| `dashboard.css`          | additive | `afeb000` | Deployed |
+| `armed-panel.js`         | v1.15.0  | `afeb000` | Deployed |
+| `CHANGELOG.md`           | updated  | `4ec3046` | — |
 
-This session: Phase 3b -- filter chips + hidden counter on the armed
-panel, plus Phase 3c -- Intelligence Hub tabs.
+### What's running
 
-Full spec is in forex-command-centre/docs/PHASE_3B_HANDOFF.md in the
-repo. Please clone the repo, read the spec end-to-end, then confirm
-scope and build order before writing any code.
+- `computeQualityTag(weekCount, sweepRisk)` server engine (PRIORITY / STANDARD+ / STANDARD / CAUTION / CONTESTED)
+- `enrichArmedPair()` writes qualityTag + adxValue onto state
+- `/state` exposes all v2.0.0 fields + qualityTag/qualityReason
+- Armed panel renders quality badge, sweep badge, magnet list, session/ADX line
+- Sort: tier group → quality tag order → enrichedScore desc
 
-Key rules still in effect:
-- Ask before starting any task
-- Clone repo via bash (never web_fetch)
-- Blunt, direct, institutional framing
-- Australian/UK spelling
-- All file edits via Python byte-level ops with corruption checks
-- Version bumps on any content change
-- Update CHANGELOG.md after deployment
-- Token injection pattern: set -> push -> clear (never persist)
+### Saturday verification result
 
-First check: by Monday, /state on a few armed pairs should show
-populated qualityTag / qualityReason / sweepRisk / magnets fields.
-Run `curl -s https://api.pineros.club/state | jq '.pairs[0:3] | .[] |
-{pair, qualityTag, qualityReason, sweepRisk, magnetsTotal,
-magnetsDirectional, activeSession, adxBias, adxValue}'` and confirm
-real data is flowing before building UI on top of it.
-```
+All 21 armed pairs render with v2.0.0 fields = `null`. Pine doesn't fire over the weekend. UI suppresses badges/lists when source data null. Schema confirmed correct. Real data starts Monday post-Tokyo open.
 
 ---
 
-## 2. PHASE 3B SCOPE — FILTER CHIPS + HIDDEN COUNTER
+## REMAINING WORK
 
-**Target file:** `forex-command-centre/src/js/armed-panel.js` (v1.15.0 -> v1.16.0)
+### Phase 3b — Armed panel filters (small, 1 session)
 
-### Build order
+**Target:** `armed-panel.js` v1.15.0 → v1.16.0
 
-1. **Persistence layer** — localStorage key `armed-quality-filters`
-   - Default: `{hideContested: true, hideCaution: false, onlyPriority: false}`
-   - Loader: returns defaults if missing or JSON parse fails
-   - Saver: serialises after each toggle
-   - **Hide CONTESTED defaults ON** -- this is the institutional protection
-     against Rianpi's stated failure pattern (entering setups that look
-     good but get repeatedly swept). Visible counter chip ensures it's
-     never silent.
+#### Build order
 
-2. **Filter chips render** — at top of armed panel, above the section
-   header. Three chips:
-   - `Hide CONTESTED` (default active)
-   - `Hide CAUTION` (default inactive)
-   - `Only PRIORITY` (default inactive — power user mode)
-   - CSS classes already shipped in v1.15.0 (`.armed-filter-bar`,
-     `.armed-filter-chip`, `.armed-filter-chip.active`).
-   - Click toggles state, persists, re-renders.
+1. **Persistence** — `localStorage` key `armed-quality-filters`, default `{hideContested: true, hideCaution: false, onlyPriority: false}`. Decide ON-vs-OFF default with Rianpi before building.
 
-3. **Hidden counter chip** — ALWAYS VISIBLE when filter is hiding pairs
+2. **Filter chips** — three at top of armed panel:
+   - `Hide CONTESTED`
+   - `Hide CAUTION`
+   - `Only PRIORITY` (overrides both Hide flags when active)
+   - CSS already shipped: `.armed-filter-bar`, `.armed-filter-chip`, `.armed-filter-chip.active`
+
+3. **Hidden counter chip** — ALWAYS VISIBLE when filter hides pairs:
    - Format: `{n} CONTESTED hidden` and/or `{n} CAUTION hidden`
-   - CSS class `.hidden-counter-chip` already shipped.
-   - Click reveals hidden pairs temporarily (one-render override) -- DO
-     NOT make this dismissible. Institutional transparency requirement:
-     trader must always know what's being hidden.
-   - Logic precedence: `Only PRIORITY` overrides both Hide flags.
+   - CSS: `.hidden-counter-chip` shipped
+   - Click reveals temporarily (one render cycle)
+   - **NOT dismissible** — institutional transparency requirement
 
-4. **Filter application** — inside `renderArmedState()`, after the existing
-   `_dismissedPairs` filter step. Apply quality tag filters BEFORE the
-   tier/sort logic so tier counts reflect filtered pairs.
+4. **Filter application** — inside `renderArmedState()` after `_dismissedPairs` filter, before tier/sort logic so tier counts reflect filtered pairs.
 
-### Filter logic matrix
+#### Filter logic
 
 ```
 if filters.onlyPriority:
@@ -91,13 +61,10 @@ else:
     if filters.hideCaution:   drop pairs where qualityTag === 'CAUTION'
 ```
 
-Pairs with `qualityTag: null` (no v2.0.0 enrichment yet) are NEVER
-filtered out — only pairs with explicit tags. Backward compat
-non-negotiable.
+**Pairs with `qualityTag: null` are NEVER filtered.** Backward compat is non-negotiable.
 
-### Hidden counter logic
+#### Hidden counter logic
 
-After filter step, count what was dropped:
 ```
 hiddenContested = (filters.hideContested || filters.onlyPriority)
                   ? pairsBefore.filter(p => p.qualityTag === 'CONTESTED').length
@@ -107,129 +74,146 @@ hiddenCaution   = (filters.hideCaution || filters.onlyPriority)
                   : 0
 ```
 
-Render chip(s) only when count > 0. Click handler temporarily disables
-the matching filter for ONE render cycle, then restores.
-
-### Version bump
-
-`armed-panel.js v1.15.0 -> v1.16.0` (MINOR — new feature, additive).
+Render chip(s) only when count > 0.
 
 ---
 
-## 3. PHASE 3C SCOPE — INTELLIGENCE HUB TABS
+### Phase 3c — Intelligence Hub calibration tabs (large, dedicated session)
 
-**Target file:** `forex-command-centre/src/arm-history-dashboard.html` (currently 2265 lines)
+**Target:** `arm-history-dashboard.html` (currently unversioned 2265 lines)
 
-### NEW TAB: "Sweep Risk Calibration"
+Add version banner: `<!-- arm-history-dashboard.html v1.0.0 -->`. Then bump v1.0.0 → v1.1.0.
 
-Source data: `loc-history.json` (every FCC-SRL push appended; already
-captures `sweep_risk` field per event).
+#### NEW TAB: Sweep Risk Calibration
 
-Three sections:
-1. **Grade distribution chart** — bar chart of LOW/MEDIUM/HIGH counts
-   over selected time range (7d / 30d / 90d toggle). Target distribution
-   shown as overlay reference: 60% LOW / 30% MED / 10% HIGH.
-2. **Per-asset-class breakdown** — table: asset class (FX / Metals /
-   Energy / Indices / Bonds / Crypto) x sweep risk distribution.
-   Highlight rows where the class deviates significantly from target.
-3. **Auto-calibration tips** — text suggestions:
-   - "Your MED/HIGH ratio is X% — consider adjusting magnetThreshAtr
-     from 2.0 to Y"
-   - "FX class shows 85% LOW — threshold may be too loose, consider
-     1.5"
+Source: `loc-history.json`. Three sections:
+1. **Grade distribution chart** — bar chart LOW/MED/HIGH counts over 7d/30d/90d. Target overlay: 60% LOW / 30% MED / 10% HIGH.
+2. **Per-asset-class breakdown** — table of asset class × sweep risk distribution. Highlight deviations.
+3. **Auto-calibration tips** — text suggestions like "Your MED/HIGH ratio is X% — consider tightening `magnetThreshAtr` from 2.0 to Y".
 
-### NEW TAB: "Frequency x Sweep Matrix"
+#### NEW TAB: Frequency × Sweep Matrix
 
-2D heatmap: weekly signal count (Y-axis: 1, 2, 3+) x sweep risk
-(X-axis: LOW, MED, HIGH). Each cell shows count of arms in that
-quadrant. Win rate cell value comes later (depends on journal outcome
-logging — Phase 3d).
+2D heatmap: weekly signal count (Y: 1, 2, 3+) × sweep risk (X: LOW, MED, HIGH). Each cell shows count. Win rate cell value comes later (Phase 3d, depends on journal outcome logging).
 
-The killer insight cell: `3+ signals & HIGH sweep` should eventually
-show high loss rate -- proves the CONTESTED concept with data.
+#### Enhance existing Location Calibration tab
 
-### Enhance existing "Location Calibration" tab
+- Add `sweep_risk` column to grade distribution table
+- Cross-tab filter: "show only pairs where sweep_risk = HIGH"
+- Sparkline per pair showing 7-day sweep risk trend
 
-- Add `sweep_risk` column to grade distribution table.
-- New cross-tab filter: "show only pairs where sweep_risk = HIGH".
-- Sparkline per pair showing sweep risk trend over last 7 days.
+#### Server endpoints — verify before extending
 
-### Server endpoints (may already exist; verify first)
-
-- `/loc-history?range=7d|30d|90d` — paginated event list
-- `/bias-history` — already exists for ADX
-- `/location-history` — already exists per memory
-
-Server-side aggregation queries may need to be added if rolling stats
-aren't already exposed. Check `forex-alert-server/index.js` first; only
-extend if necessary.
-
-### Version bump
-
-`arm-history-dashboard.html` is unversioned (no banner). Add a version
-comment at the top this session: `<!-- arm-history-dashboard.html
-v1.0.0 -->`. Subsequent bumps follow.
+Check existing in `forex-alert-server/index.js`: `/loc-history`, `/bias-history`, `/location-history`. Add aggregation params (`?range=7d&groupby=asset_class`) only if rolling stats not already available. Server bump only if extended.
 
 ---
 
-## 4. PRE-FLIGHT FOR NEXT SESSION
+### Out of scope (Phase 3d+, future)
 
-Before writing ANY code, the next session must:
+- Trade outcome logging for Frequency × Sweep win-rate cells
+- Stop-entry order helper for pre-trade tab
+- Rejection candle detector Pine Script
+- Mobile responsive deep-tuning for new tabs
 
-1. **Confirm v2.17.0 + v1.15.0 are working in the wild** with real data:
-   ```bash
+---
+
+## CALIBRATION PLAN (post Phase 3c)
+
+Calibration uses TradingView Pine inputs (no redeploy — saves per-chart):
+
+| Input             | Default | Adjust if...                                     |
+|-------------------|---------|--------------------------------------------------|
+| `magnetThreshAtr` | 2.0     | LOW > 80% → tighten to 1.5; HIGH > 25% → 2.5     |
+| `sweepLowMax`     | 1       | If 1 magnet harmless → raise to 2                |
+| `sweepMedMax`     | 2       | If MED catching too many → lower to 1            |
+| `adxThresh`       | 20      | If ADX < 20 frequently → 18 (FX ranges)          |
+
+Target: LOW 55–65% / MED 25–35% / HIGH 5–15%.
+
+---
+
+## ROLLBACK
+
+| Layer              | Rollback                                                            |
+|--------------------|---------------------------------------------------------------------|
+| `armed-panel.js`   | Git revert OR `cp` from `armed-panel.js.backup-pre-vX.Y.Z`          |
+| Server             | `cp index.js.backup-pre-vX.Y.Z`, `docker restart trading-state`     |
+| `dashboard.css`    | Git revert — JS gracefully degrades on missing classes              |
+| Filter state       | Browser console: `localStorage.removeItem('armed-quality-filters')` |
+| HTML dashboard     | Use existing `.backup2` / `.backup3` files in src/                  |
+
+---
+
+## KICKOFF PROMPT FOR NEXT SESSION
+
+Copy-paste verbatim into the new chat:
+
+```
+Continuing FCC-SRL v2.0.0 frontend work. Three commits already on main:
+
+  4ec3046 docs: CHANGELOG entry for v2.17.0/v1.15.0 + Phase 3b handoff spec
+  afeb000 FCC-SRL v2.0.0 frontend (Phase 2 + 3a): armed-panel v1.15.0 + dashboard.css
+  5e89f1a Alert Server v2.17.0: Quality Tag engine + /state v2.0.0 field exposure
+
+These shipped:
+- computeQualityTag() server engine (PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED)
+- /state response exposes all v2.0.0 fields plus qualityTag/qualityReason
+- armed-panel renders quality badge + sweep badge + magnet list + session/ADX line
+- Sort within tier groups now secondary-sorts by quality tag
+
+Full handoff spec is in forex-command-centre/docs/PHASE_3B_HANDOFF.md.
+Please clone the repo, read the handoff doc end-to-end, then confirm
+scope and build order before writing any code.
+
+PRE-FLIGHT (mandatory before any code):
+
+1. Verify quality tags are flowing live with real data. Run:
+
    curl -s https://api.pineros.club/state | jq '
      [.pairs[] | {qualityTag, sweepRisk}] | group_by(.qualityTag)
      | map({tag: .[0].qualityTag, count: length})'
-   ```
-   If all qualityTag values are still null -- something's wrong with the
-   weekend Pine deploy or enrichment isn't firing. Diagnose first.
 
-2. **Ask Rianpi how Phase 3a feels visually** before adding complexity.
-   The badges + magnet panel + session line could be too dense, or fine.
-   This is a UI judgement call best made with live data.
+   If all qualityTag values are still null after Monday Tokyo open,
+   diagnose first -- enrichment isn't firing or Pine deploy is broken.
+   Don't build UI on a broken contract.
 
-3. **Confirm the Hide CONTESTED default ON** is still the institutional
-   call. There's an argument for default OFF on first deploy (so trader
-   sees the new tag in action) and switching to ON after a week of data.
+2. Eyeball the live PWA. Are v1.15.0 badges + magnet panel + session
+   line visually acceptable, or does density need tuning? UI judgement
+   call best made WITH live data.
 
----
+3. Confirm with me: Hide CONTESTED default ON or OFF? Spec says ON
+   (institutional protection). May want OFF for first week of data.
 
-## 5. FILE CHANGE INVENTORY (Phase 3b + 3c)
+THIS SESSION'S GOAL — pick ONE of:
 
-| File                            | Phase | Risk | Version bump        |
-|---------------------------------|-------|------|---------------------|
-| `armed-panel.js`                | 3b    | Low  | v1.16.0 (MINOR)     |
-| `arm-history-dashboard.html`    | 3c    | Med  | v1.0.0 -> v1.1.0    |
-| `forex-alert-server/index.js`   | 3c    | Low  | only if endpoints   |
-|                                 |       |      | need extending      |
-| `dashboard.css`                 | 3b/3c | Zero | none (CSS shipped)  |
+  (A) Phase 3b only -- filter chips + hidden counter + localStorage on
+      armed-panel.js (v1.15.0 -> v1.16.0). ~80 lines, low risk.
+  (B) Phase 3c only -- Intelligence Hub calibration tabs on
+      arm-history-dashboard.html. ~400-600 lines, dedicated session.
+  (C) Both 3b and 3c -- only if context budget allows. Push back if
+      unclear.
 
----
+KEY RULES (still in effect):
+- Ask before starting any task
+- Clone repo via bash (never web_fetch)
+- Blunt, direct, institutional framing
+- Australian/UK spelling
+- All file edits via Python byte-level ops with corruption checks
+- Version bumps on any content change
+- Update CHANGELOG.md after every deployment
+- Token injection pattern: set -> push -> clear (never persist)
+- Pine Script v6 only, traditional if-else for multi-line conditions
+- HTML emojis as &#xNNNN; entities, never raw
 
-## 6. ROLLBACK
-
-All Phase 3b/3c changes will be additive. If anything breaks:
-- JS files: `cp` from `forex-command-centre/src/js/backup/` if you
-  preserve a backup, OR git revert.
-- Server: `cp index.js.backup-pre-vX.Y.Z` back, `docker restart
-  trading-state`.
-- Filter state corruption: `localStorage.removeItem('armed-quality-filters')`
-  in browser console.
-
----
-
-## 7. BUDGET ESTIMATE FOR NEXT SESSION
-
-- Phase 3b (filter chips + hidden counter): ~80 lines of edits.
-  Comfortable in one session.
-- Phase 3c (Intelligence Hub tabs): ~400-600 lines of edits across HTML
-  and possibly server. Likely needs its own dedicated session.
-
-Recommended split: Phase 3b in one session (also good time to do any
-visual tuning Rianpi requests on Phase 3a), Phase 3c in a separate
-session.
+Start with the pre-flight, then propose scope.
+```
 
 ---
 
-**End of handoff spec.**
+## Notes for next-session Claude
+
+- User prefers Path B (deploy + verify each phase) over Path A (stack source-only)
+- User pushed back on "build everything now" mid-Saturday because Phase 3c without weekend data is building blind — repeat that judgement if pressured
+- Same GitHub token reused multiple times last session — always remind to rotate at session end if reused
+- `storage-api.php` two-copy problem (live in `nginx/www/api/` vs git in `forex-command-centre/backend/api/`) is a known landmine — diff before pulling, sync both ways
+
+**End of handoff.**
