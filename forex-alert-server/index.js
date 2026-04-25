@@ -38,6 +38,7 @@ const CHANGES = [
     '2.14.0 - Server-side Entry Monitor: EMA 9/21/50 + ATR14 from Oanda 4H candles every 4h. Zone price check every 5 min. Push on entry/exit. entryZoneActive/Grade/Dist/Timestamp on /state. Fires on new ARMED. Requires OANDA_API_KEY + OANDA_ACCOUNT_ID env vars.',
     '2.13.1 - Fix signal frequency counts: getPairSignalCounts() now deduplicates arm-history events into distinct sessions (6h gap threshold). Fixes inflated counts caused by 4H re-affirmation pings logging as separate events.',
     '2.13.0 - Signal frequency: /state now exposes weekSignalCount and twoWeekSignalCount per pair, derived server-side from arm-history.json. Zero extra client API calls.',
+    '2.13.0 - FCC-SRL v2.0.0 integration: liquidity magnets (magnets_total, magnets_directional, magnets[] array), sweep_risk tier (LOW/MEDIUM/HIGH) drives structExt downgrade, session H/L tracking (active_session, sess_hi, sess_lo), ADX directional bias (adx_bias, adx_value). HIGH sweep_risk forces EXTENDED; MEDIUM downgrades FRESH->EXTENDED.',
     '2.12.0 - Add ltfBreak field (ctx.ltf_break from TR_ARMED payloads); TR_ARMED bootstrap: structure=SUPPORT|RESISTANCE infers structExt=FRESH before FCC-SRL fires; remove legacy fields criteria/volBehaviour/structBars/riskMult from pair state and arm history (never populated by ultimate-utcc.pine); remove ctx.struct_ext read (server-derives from locGrade only).',
     '2.11.0 - Location score enrichment: FCC-SRL grade drives entry location pts (0-25) added server-side to base UTCC score (max 75). enrichedScore + locScore + locGrade + locTimestamp exposed on /state. structExt derived from locGrade (FRESH/EXTENDED). Fixes broken PRIME/STANDARD/DEGRADED tier grouping in armed panel.',
     '2.10.3 - /state now exposes armedAt field (fixes dismiss auto-restore); pure JSON path reads context.playbook fallback (fixes blank playbook on Ultimate UTCC cards)',
@@ -829,14 +830,34 @@ function enrichArmedPair(pair) {
         var baseScore = state.pairs[pair].score || 0;
         var locPts    = gradeToLocPts(loc.grade);
 
-        state.pairs[pair].locScore      = locPts;
-        state.pairs[pair].enrichedScore = Math.min(100, baseScore + locPts);
-        state.pairs[pair].locGrade      = loc.grade;
-        state.pairs[pair].locTimestamp  = loc.timestamp;
-        state.pairs[pair].structExt     = gradeToStructExt(loc.grade);
+        // v2.0.0 — Sweep risk tier downgrade
+        // HIGH sweep risk forces EXTENDED (DEGRADED tier) regardless of grade
+        // MEDIUM sweep risk downgrades FRESH -> EXTENDED (one tier)
+        // LOW sweep risk has no effect
+        var rawStructExt = gradeToStructExt(loc.grade);
+        var sweepRisk    = loc.sweep_risk || 'LOW';
+        var finalStructExt = rawStructExt;
+        if (sweepRisk === 'HIGH') {
+            finalStructExt = 'EXTENDED';
+        } else if (sweepRisk === 'MEDIUM' && rawStructExt === 'FRESH') {
+            finalStructExt = 'EXTENDED';
+        }
+
+        state.pairs[pair].locScore           = locPts;
+        state.pairs[pair].enrichedScore      = Math.min(100, baseScore + locPts);
+        state.pairs[pair].locGrade           = loc.grade;
+        state.pairs[pair].locTimestamp       = loc.timestamp;
+        state.pairs[pair].structExt          = finalStructExt;
+        // v2.0.0 — expose magnet data on armed card
+        state.pairs[pair].sweepRisk          = sweepRisk;
+        state.pairs[pair].magnetsTotal       = loc.magnets_total       || 0;
+        state.pairs[pair].magnetsDirectional = loc.magnets_directional || 0;
+        state.pairs[pair].activeSession      = loc.active_session      || 'NONE';
+        state.pairs[pair].adxBias            = loc.adx_bias            || 'NONE';
+        state.pairs[pair].magnets            = Array.isArray(loc.magnets) ? loc.magnets : [];
 
         saveState(state);
-        console.log('[Enrich] ' + pair + ' | grade:' + loc.grade + ' | locPts:' + locPts + ' | enriched:' + state.pairs[pair].enrichedScore + ' | structExt:' + state.pairs[pair].structExt);
+        console.log('[Enrich] ' + pair + ' | grade:' + loc.grade + ' | locPts:' + locPts + ' | enriched:' + state.pairs[pair].enrichedScore + ' | structExt:' + finalStructExt + ' | sweepRisk:' + sweepRisk + ' | mags:' + (loc.magnets_directional || 0) + '/' + (loc.magnets_total || 0));
         return true;
     } catch (e) {
         console.error('[Enrich] Error enriching ' + pair + ':', e.message);
@@ -875,7 +896,17 @@ function appendLocHistory(payload) {
             supp_name:      payload.supp_name        || 'NONE',
             supp_dist_atr:  parseFloat(payload.supp_dist_atr)  || null,
             res_name:       payload.res_name         || 'NONE',
-            res_dist_atr:   parseFloat(payload.res_dist_atr)   || null
+            res_dist_atr:   parseFloat(payload.res_dist_atr)   || null,
+            // v2.0.0 — Liquidity Magnets + Session H/L + ADX for calibration
+            active_session:      payload.active_session      || 'NONE',
+            sess_hi:             parseFloat(payload.sess_hi) || null,
+            sess_lo:             parseFloat(payload.sess_lo) || null,
+            adx_bias:            payload.adx_bias            || 'NONE',
+            adx_value:           parseFloat(payload.adx_value) || null,
+            magnets_total:       parseInt(payload.magnets_total)       || 0,
+            magnets_directional: parseInt(payload.magnets_directional) || 0,
+            sweep_risk:          payload.sweep_risk          || 'LOW',
+            magnets:             Array.isArray(payload.magnets) ? payload.magnets : []
         };
         data.events.push(event);
         data.total        = data.events.length;
@@ -1936,6 +1967,16 @@ var server = http.createServer(function(req, res) {
                     supp_dist_atr:  payload.supp_dist_atr  || 'na',
                     res_name:       payload.res_name       || 'NONE',
                     res_dist_atr:   payload.res_dist_atr   || 'na',
+                    // v2.0.0 — Liquidity Magnets + Session H/L + ADX bias
+                    active_session:      payload.active_session      || 'NONE',
+                    sess_hi:             payload.sess_hi             || 'na',
+                    sess_lo:             payload.sess_lo             || 'na',
+                    adx_bias:            payload.adx_bias            || 'NONE',
+                    adx_value:           payload.adx_value           || 'na',
+                    magnets_total:       payload.magnets_total       || 0,
+                    magnets_directional: payload.magnets_directional || 0,
+                    sweep_risk:          payload.sweep_risk          || 'LOW',
+                    magnets:             Array.isArray(payload.magnets) ? payload.magnets : [],
                     timestamp:      now.toISOString()
                 };
                 saveLocation(data);
