@@ -543,6 +543,89 @@ small change if scoped as Option C.
 
 ---
 
+## 🟡 Priority 13 — UTCC v3.1.0 disarm webhook (close the stale-armed gap)
+
+**Trigger:** First time a setup invalidates intra-bar after the v3.0.0
+deploy and you notice an armed card lingering on the dashboard with
+no notification that it should be cleared.
+
+**Scope:**
+- `ultimate-utcc.pine` v3.1.0: add edge-triggered DISARM webhook firing
+  on the rising edge of `tfDisarmCode != "" or trDisarmCode != ""`.
+  Same JSON envelope pattern as ARMED but `"type":"BLOCKED"` with
+  `"disarm_code"` field carrying the existing internal codes
+  (`TF-DISARM-PERM`, `TF-DISARM-MTF`, `TF-DISARM-EXTENDED`,
+  `TF-DISARM-SCORE`, `TR-DISARM-PERM`, `TR-DISARM-BREAK`,
+  `TR-DISARM-STRUCT`).
+- Alert server already has `pushBlocked()` handler waiting for these
+  payloads — no server-side changes required.
+- Frontend: disarm push notification will surface automatically via
+  existing webpush plumbing.
+
+**Why this is needed:**
+v3.0.0 edge-triggered firing solved the 4H latency on arming, but
+introduced a stale-state risk: a pair that silently invalidates
+intra-bar (e.g. MTF alignment breaks, structure damage, score collapses
+through `disarmDrop` hysteresis) currently has no event broadcasting
+that fact. The internal disarm codes are computed but never escape the
+indicator. Bar-close repeat-fires used to mask this — every 4H the
+pair would either re-affirm or quietly disappear. With v3.0.0 there
+is no re-affirmation, so a stale armed card may sit on the dashboard
+until something else triggers cleanup.
+
+**Why this is P2 not P1:**
+Manual review on the dashboard catches stale setups. The trader
+doesn't blindly enter on a stale card. But the institutional principle
+is "every state transition produces an event" — silent invalidation
+violates that. This closes the gap.
+
+**Dependencies:**
+- v3.0.0 stack must be deployed first and observed for 1-2 weeks to
+  characterise how often setups silently invalidate intra-bar.
+- If stale-armed cards are not actually a problem in practice, this
+  may drop to P3 or get closed without action.
+
+**Estimated effort:** ~20 min Pine edit + commit + deploy.
+
+---
+
+## 🟢 Priority 14 — Weekly frequency week-boundary fix (AEST alignment)
+
+**Trigger:** After v3.0.0 has run for 2+ weeks, if `weekSignalCount`
+values still feel "way off" on Monday/Tuesday cards.
+
+**Scope:**
+- `getPairSignalCounts()` in `forex-alert-server/index.js`: change
+  `weekStart` calculation from "Monday 00:00 UTC" to "Monday 00:00
+  user-timezone" (AEST = UTC+10/+11 with DST handling).
+- Decide: hard-code AEST or read timezone from a config setting?
+- Hard-coded AEST is simpler but locks the server to one operator.
+  Config setting is cleaner but introduces a new whitelist entry in
+  `storage-api.php` and a settings UI element.
+- Recommended: hard-code AEST as a constant `WEEK_START_OFFSET_HOURS`
+  with a comment explaining why. Single-operator system, no need for
+  multi-timezone abstraction.
+
+**Why this matters:**
+Currently `weekStart = Monday 00:00 UTC` = ~10am Monday AEST. Anything
+armed Monday morning AEST (Sunday night UTC) counts to *last* week.
+Anything armed Sunday night AEST (Sunday afternoon UTC) is *this*
+week. Confusing for the trader who reads cards in AEST.
+
+**Why this is P3 not earlier:**
+Pure display/accuracy issue — doesn't affect trade decisions. Wait
+until the v3.0.0 dedup correction settles to see if this is still
+the dominant felt-error in frequency counts.
+
+**Dependencies:**
+- v3.0.0 deployed and 2+ weeks of arm-history data accumulated.
+- User confirms boundary issue is the residual frequency complaint
+  (not some other dedup or counting issue).
+
+**Estimated effort:** ~15 min if hard-coded AEST; ~1 hr if config-driven.
+
+---
+
 ## Closed — for audit trail
 
 ### 2026-04-21 — Stale calendar.json in nginx webroot
