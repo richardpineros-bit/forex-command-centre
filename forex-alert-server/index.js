@@ -28,8 +28,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '2.17.0';
+const VERSION = '3.0.0';
 const CHANGES = [
+    '3.0.0 - MAJOR: aligned with Ultimate UTCC v3.0.0 + FCC-SRL v3.0.0 edge-triggered alert cadence. SESSION_GAP reduced 12h -> 30min: Pine indicators now fire ONCE on rising edge of arm state (not every bar close while armed), so aggressive dedup is no longer needed. 30min window only catches genuine duplicates (TradingView retries, network reposts). weekSignalCount will now reflect TRUE distinct arm sessions, not collapsed 4H repeat-fires. Note: count values will appear lower than v2.x because old counts were inflated by repeat-fires. /webhook/location handler accepts new event_type field (TRANSITION|HEARTBEAT) from FCC-SRL v3.0.0 - no special handling, just stored.',
     '2.17.0 - Quality Tag engine (frequency x sweep risk): computeQualityTag() returns PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED based on weekSignalCount and sweep_risk. Independent of PRIME/STANDARD/DEGRADED tier. Wired into enrichArmedPair(). /state response now exposes qualityTag, qualityReason, sweepRisk, magnets[], magnetsTotal, magnetsDirectional, activeSession, adxBias, adxValue. Backward compat: missing data -> STANDARD with reason "Incomplete data".',
     '2.16.0 - MDI Phase 3: /macro-dominance/events endpoint. Reads macro-dominance-events.json written by macro_event_matcher_v1.0.0.py. Returns matched news events with MDI snapshots and ATR-scaled outcome classifications. Supports ?status, ?pair, ?threshold, ?limit query filters. SOFT authority maintained - display only, no gate modification.',
     '2.15.0 - MDI Phase 1: /macro-dominance/latest and /macro-dominance/history endpoints. Reads macro-dominance.json written by macro_dominance_scraper_v1.0.0.py (every 4h). SOFT gate authority -- display only. Scores G8 currencies and 28 cross pairs.',
@@ -541,14 +542,16 @@ function loadArmHistory() {
 // Returns distinct arm SESSIONS for a pair.
 // weekSignalCount  = sessions since Monday 00:00 UTC (current trading week)
 // twoWeekSignalCount = sessions in current + previous trading week
-// SESSION_GAP = 12h: arms within 12h of each other = same session (one count per half-day max)
+// SESSION_GAP = 30min: Pine v3.0.0 indicators are edge-triggered (one fire per
+// arm session). 30min only collapses genuine duplicates (TradingView retries,
+// network reposts). True distinct arm sessions (rearm after disarm) count separately.
 function getPairSignalCounts(pair) {
     try {
         var data        = loadArmHistory();
         var events      = data.events || [];
         var now         = new Date();
         var nowMs       = now.getTime();
-        var SESSION_GAP = 12 * 60 * 60 * 1000; // 12h gap = distinct session
+        var SESSION_GAP = 30 * 60 * 1000; // 30min gap = duplicate suppression only
 
         // Monday 00:00 UTC of the current week
         var dayOfWeek    = now.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat

@@ -1,4 +1,76 @@
-## [Alert Server v2.17.0 + armed-panel v1.15.0 + dashboard.css] - 2026-04-25
+## [Ultimate UTCC v3.0.0 + FCC-SRL v3.0.0 + Alert Server v3.0.0] - 2026-04-27
+### Edge-triggered alert cadence: end of the 4-hour latency
+
+**The problem this fixes:**
+Both Pine indicators (Ultimate UTCC and FCC S/R Location) were structurally
+locked to bar-close firing via `barstate.isconfirmed` gates wrapping the
+alert blocks. On a 4H chart, that meant:
+
+- ARMED webhooks fired at most once every 4 hours (at bar close)
+- Same pair re-fired every 4H bar while it remained armed (inflating
+  arm-history.json and weekSignalCount)
+- Location grade transitions (e.g. price entering a zone at 06:30) were
+  not pushed to the dashboard until the next bar close (08:00) - up to
+  90 minutes of latency on the most operationally critical signal
+
+This is not how institutional execution systems work. Bar-close confirmation
+is correct for state snapshots (audit trail), but not for discrete events
+(price reaching a level, conditions crossing threshold, sweep risk changing).
+
+**What changes:**
+
+#### ultimate-utcc.pine v2.7.0 -> v3.0.0
+- Removed `barstate.isconfirmed` gate from the alert block.
+- Replaced state-based alert conditions (`tfArmed and tfDirBull`) with
+  edge-triggered conditions (`tfArmed and tfDirBull and not (tfArmed[1]
+  and tfDirBull[1])`) - true ONLY on the rising edge of arm state.
+- `alert.freq_once_per_bar` retained as a safety net (max one fire per bar
+  even if var resets across tick re-runs on the realtime bar).
+- Anti-flap protection unchanged: `armPersist` (bars-above-threshold) and
+  `disarmDrop` (hysteresis on disarm score) were already in the script.
+- Result: alerts fire seconds after conditions align, not up to 4 hours.
+  No more 4H repeat-fires while a pair stays armed.
+
+#### fcc-sr-location.pine v2.0.2 -> v3.0.0
+- Removed `barstate.isconfirmed` gate from the webhook block.
+- Removed `alertEveryBar` toggle (operator-facing override of system
+  behaviour - leakage point per institutional risk-engineering).
+- Added `enableHeartbeat` toggle (default OFF) for optional liveness
+  pings on bar close - separate from event-driven transitions.
+- Alert freq changed: `alert.freq_once_per_bar_close` -> `alert.freq_once_per_bar`.
+- New `event_type` field in payload: `TRANSITION` (real grade/sweep change)
+  or `HEARTBEAT` (state confirmation, only when enabled).
+- Result: dashboard sees grade transitions (WAIT->AT ZONE, sweep tier
+  changes, etc.) the moment they occur.
+
+#### forex-alert-server/index.js v2.17.0 -> v3.0.0
+- Bumped VERSION constant.
+- `SESSION_GAP` reduced from `12h` to `30min` in `getPairSignalCounts()`.
+  The 12h dedup window existed to collapse 4H repeat-fires from v2.x Pine
+  indicators into single arm sessions. With v3.0.0 Pine firing only once
+  per arm session, the dedup window only needs to catch genuine duplicates
+  (TradingView retries, network reposts).
+- `weekSignalCount` now reflects TRUE distinct arm sessions. Note: counts
+  may appear LOWER than under v2.x because the old counts were collapsing
+  inflated repeat-fires; the new counts are accurate.
+- `/webhook/location` handler stores the new `event_type` field
+  transparently - no behavioural branch needed at this layer.
+
+**Migration notes:**
+
+1. Both Pine v3.0.0 files must be loaded into TradingView and the existing
+   v2.x alerts must be replaced. Existing webhook URL stays the same.
+2. The frontend does not need changes for this cadence shift - it just
+   receives more responsive data.
+3. Watch the first week of arm-history.json after deploy to confirm
+   weekSignalCount values reset to a sensible baseline.
+4. Mixed-version operation is supported: v2.x UTCC alerts will still be
+   accepted by alert server v3.0.0 (the 30min SESSION_GAP becomes a less
+   aggressive dedup, but no events are lost).
+
+---
+
+
 ### FCC-SRL v2.0.0 frontend integration: Quality Tag engine + visual layer
 
 **Context:**
