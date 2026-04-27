@@ -1,4 +1,4 @@
-// armed-panel.js v1.15.0 - FCC-SRL v2.0.0 frontend (alongside Alert Server v2.17.0): quality tag badge (PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED) inline next to pair name; sweep risk badge (LOW dot / MED amber / HIGH red); liquidity magnet list expansion panel (collapsed by default, click chevron to expand, sorted by distance ASC, AHEAD=amber BEHIND=muted); session+ADX bias footer line (Active: SESSION | ADX bias: LONG/SHORT (val), hidden if NONE); sort within each tier (PRIME/STANDARD/DEGRADED) groups by quality tag order PRIORITY-first then by enrichedScore desc. Tier grouping unchanged (independent dimension). Backward compat: missing v2.0.0 fields render as no-op (no badge, no line, no list). | v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.16.0 - ZONE satellite dual-tier display: top line (muted, small) shows ARMED-time entry zone from Pine alert payload (p.entryZone) -- the zone classification at the moment the alert fired. Bottom line (existing colourful) shows LIVE entry zone from server-side Entry Monitor (p.entryZoneActive) -- current EMA-derived zone state. Both visible when their data exists. Fixes regression introduced in v1.11.0 where cell rendered '-' when Entry Monitor said pair not in zone, hiding the original Pine alert zone classification entirely. Now: ARMED line always shown if p.entryZone present, LIVE line shown when entryZoneActive=true. Tooltip combines both: 'Live: HOT 0.3R | At arm time: OPTIMAL'. | v1.15.0 - FCC-SRL v2.0.0 frontend (alongside Alert Server v2.17.0): quality tag badge (PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED) inline next to pair name; sweep risk badge (LOW dot / MED amber / HIGH red); liquidity magnet list expansion panel (collapsed by default, click chevron to expand, sorted by distance ASC, AHEAD=amber BEHIND=muted); session+ADX bias footer line (Active: SESSION | ADX bias: LONG/SHORT (val), hidden if NONE); sort within each tier (PRIME/STANDARD/DEGRADED) groups by quality tag order PRIORITY-first then by enrichedScore desc. Tier grouping unchanged (independent dimension). Backward compat: missing v2.0.0 fields render as no-op (no badge, no line, no list). | v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -779,31 +779,72 @@
             '</div>';
         }
 
-        // 1. ZONE (quality)
-        if (p.entryZoneActive) {
-            var zg   = (p.entryZoneGrade || '').toUpperCase();
-            var zStr = p.entryZoneDist ? p.entryZoneDist + 'R' : zg;
-            var zState, zTip;
-            if (zg === 'HOT') {
-                zState = 'good';
-                zTip = 'HOT zone ' + (p.entryZoneDist || '') + 'R - optimal entry, closest to edge';
-            } else if (zg === 'OPTIMAL') {
-                zState = 'good';
-                zTip = 'OPTIMAL zone ' + (p.entryZoneDist || '') + 'R - good entry';
-            } else if (zg === 'ACCEPTABLE') {
-                zState = 'ok';
-                zTip = 'ACCEPTABLE zone ' + (p.entryZoneDist || '') + 'R - marginal entry';
-            } else if (zg === 'EXTENDED') {
-                zState = 'bad';
-                zTip = 'EXTENDED ' + (p.entryZoneDist || '') + 'R - price too far from edge, do not chase';
+        // 1. ZONE (quality) -- v1.16.0 dual-tier display
+        // Top line (small, muted): ARMED-time zone from Pine alert payload (p.entryZone).
+        //   Captures "what zone was price in WHEN ARMED" -- historical, fixed at arm time.
+        // Bottom line (colourful): LIVE zone from server-side Entry Monitor (p.entryZoneActive).
+        //   Captures "is price currently in EMA entry band" -- live, changing.
+        // Both can be present, only one, or neither. Cell answers both questions independently.
+        (function() {
+            var armedZ = (p.entryZone || '').toString().toUpperCase();
+            var liveZ  = (p.entryZoneGrade || '').toString().toUpperCase();
+            var liveDistStr = p.entryZoneDist ? p.entryZoneDist + 'R' : '';
+
+            // Live tier styling -- existing logic preserved
+            var liveState, liveLabel, liveDesc;
+            if (p.entryZoneActive && liveZ) {
+                if (liveZ === 'HOT') {
+                    liveState = 'good';
+                    liveLabel = liveDistStr || 'HOT';
+                    liveDesc  = 'HOT zone ' + (p.entryZoneDist || '') + 'R - optimal entry, closest to edge';
+                } else if (liveZ === 'OPTIMAL') {
+                    liveState = 'good';
+                    liveLabel = liveDistStr || 'OPT';
+                    liveDesc  = 'OPTIMAL zone ' + (p.entryZoneDist || '') + 'R - good entry';
+                } else if (liveZ === 'ACCEPTABLE') {
+                    liveState = 'ok';
+                    liveLabel = liveDistStr || 'ACC';
+                    liveDesc  = 'ACCEPTABLE zone ' + (p.entryZoneDist || '') + 'R - marginal entry';
+                } else if (liveZ === 'EXTENDED') {
+                    liveState = 'bad';
+                    liveLabel = 'EXT ' + (liveDistStr || '');
+                    liveDesc  = 'EXTENDED ' + (p.entryZoneDist || '') + 'R - price too far from edge, do not chase';
+                } else {
+                    liveState = 'muted';
+                    liveLabel = liveZ;
+                    liveDesc  = 'Live zone: ' + liveZ;
+                }
             } else {
-                zState = 'muted';
-                zTip = 'Zone: ' + zg;
+                liveState = 'muted';
+                liveLabel = '\u2014';
+                liveDesc  = 'Not currently in EMA entry band';
             }
-            cells.push(cell('ZONE', zg === 'EXTENDED' ? 'EXT ' + zStr : zStr, zState, zTip, 'qual'));
-        } else {
-            cells.push(cell('ZONE', '-', 'muted', 'No entry zone data', 'qual'));
-        }
+
+            // Build value HTML: ARMED line (if present) above LIVE line
+            var armedHtml = armedZ
+                ? '<span class="sgrid-armed-line">ARMED: ' + armedZ + '</span>'
+                : '';
+            var valueHtml = armedHtml + '<span class="sgrid-live-line">' + liveLabel + '</span>';
+
+            // Combined tooltip
+            var tip;
+            if (armedZ && p.entryZoneActive) {
+                tip = 'Live: ' + liveDesc + ' | At arm time: ' + armedZ;
+            } else if (armedZ) {
+                tip = 'At arm time: ' + armedZ + ' | Live: not currently in EMA band';
+            } else if (p.entryZoneActive) {
+                tip = 'Live: ' + liveDesc + ' | Arm-time zone not recorded';
+            } else {
+                tip = 'No entry zone data';
+            }
+
+            // If neither armed nor live data, fall through to current empty behaviour
+            if (!armedZ && !p.entryZoneActive) {
+                cells.push(cell('ZONE', '-', 'muted', tip, 'qual'));
+            } else {
+                cells.push(cell('ZONE', valueHtml, liveState, tip, 'qual'));
+            }
+        })();
 
         // 2. STRUCT (quality)
         var structRaw = (p.structExt || '').toUpperCase();
