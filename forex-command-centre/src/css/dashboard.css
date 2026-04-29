@@ -1491,3 +1491,31 @@ a.armed-pair-row.armed-row-link:active {
 @media (max-width: 600px) {
     .sgrid-armed-line { font-size: 0.45rem; margin-bottom: 1px; }
 }
+
+
+/* v1.16.1 -- dual-tier ZONE cell value container.
+   Bypasses cell() helper; both armed-line and live-line render as block lines.
+   No state symbol prefix; cell border conveys state. */
+.sgrid-value-dual {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    line-height: 1.05;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.sgrid-value-dual .sgrid-armed-line {
+    display: block;
+    margin-bottom: 0;
+}
+
+.sgrid-value-dual .sgrid-live-line {
+    display: block;
+    line-height: 1;
+}
