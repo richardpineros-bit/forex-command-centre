@@ -626,6 +626,217 @@ the dominant felt-error in frequency counts.
 
 ---
 
+## 🔴 Priority 15 — Investigate STRUCT EXT epidemic across all armed pairs
+
+**Trigger:** Observed 2026-04-27 — every armed pair (21+) showing
+`STRUCT ✗ EXT` cell. Either every single pair has genuinely aged
+out of structure (unlikely) or the derivation is mis-calibrated.
+
+**Scope:**
+- `gradeToStructExt()` in `forex-alert-server/index.js` returns FRESH only
+  for `PRIME / AT_ZONE / BREAKOUT_RETEST` location grades. Everything else
+  (OPPOSED, WAIT, BREAKOUT_EXT, NO_DIRECTION, IN_CLOUD, AT_CLOUD, FALSE_BREAK)
+  becomes EXTENDED.
+- That is 3 FRESH grades vs 7 EXTENDED grades. Distribution asymmetry alone
+  guarantees most pairs land EXTENDED most of the time.
+- Audit `loc-history.json` to confirm grade distribution across last 7
+  days. Expect dominant grades to be OPPOSED/WAIT/BREAKOUT_EXT — these
+  are the "default" states most of the time.
+- Decide: is FRESH supposed to be rare (current behaviour, by design) or
+  is the FCC-SRL Pine threshold for PRIME/AT_ZONE too tight, denying valid
+  in-zone classifications?
+- Cross-reference: when XAUUSD card showed `★ PRIME` on 2026-04-27,
+  STRUCT cell still showed EXT — may indicate `gradeToStructExt` is
+  not picking up the live location grade correctly.
+
+**Why this matters:**
+Current display tells the trader "every pair is structurally extended,
+do not trade." If that's not literally true, the cell is providing
+disinformation. If it IS true, the watchlist is wrong (too many pairs
+arming at bad locations).
+
+**Possible outcomes:**
+1. Genuine market state — leave alone, accept "extended" is normal
+   default and focus only on the rare FRESH cards
+2. FCC-SRL Pine threshold needs widening so PRIME/AT_ZONE fire more often
+3. `gradeToStructExt` map needs adjusting (e.g. AT_CLOUD or IN_CLOUD
+   should also count as FRESH)
+
+**Dependencies:**
+- 5+ trading days of `loc-history.json` data
+- Visual verification of price location vs structure on 5 sample cards
+
+**Estimated effort:** 30-60 min diagnostic; fix size depends on outcome.
+
+---
+
+## 🔴 Priority 16 — Investigate LOW CONF dominance across armed pairs
+
+**Trigger:** Observed 2026-04-27 — most armed pairs showing
+"LOW CONF" badge next to direction (LONG/SHORT). Almost no MED CONF
+or HIGH CONF pairs visible.
+
+**Scope:**
+- Confirm what drives the CONF label — likely `tier` or `score` field
+  in the UTCC alert payload. Trace the rendering logic in
+  `armed-panel.js` to find the source field and threshold.
+- Pull 5+ days of UTCC alert payloads from `utcc-alerts.json` and
+  histogram the `tier` and `score` distributions.
+- v3.0.0 stack landed 2026-04-26. Compare distributions before and
+  after — has the new edge-triggered cadence shifted what gets
+  classified as STRONG/PERFECT/EXCELLENT vs TRADE-READY?
+- If thresholds need adjustment: input parameters in
+  `ultimate-utcc.pine` (tierStrong/tierPerfect/tierExcellent score
+  cutoffs).
+
+**Why this matters:**
+If LOW CONF is the new normal post-v3.0.0, the badge has lost
+discriminating value — every card looks the same. Trader can no
+longer use it to triage which alerts deserve attention.
+
+**Possible outcomes:**
+1. v3.0.0 edge-trigger correctly catches the moment quality drops below
+   STRONG — LOW CONF dominance reflects current market regime, not a
+   bug. Wait it out.
+2. Score thresholds were calibrated for the old polling cadence and
+   need lowering to match v3.0.0 behaviour.
+3. The conf classification is correctly placed, but the satellite
+   panel needs a visual filter to hide LOW CONF pairs by default.
+
+**Dependencies:**
+- 5+ days of post-v3.0.0 `utcc-alerts.json` data
+- Score histogram analysis (can run in next session)
+
+**Estimated effort:** 45 min diagnostic; threshold tweak ~10 min if
+that's the answer.
+
+---
+
+## 🟡 Priority 17 — Phase 3b: armed panel filter chips + hidden counter
+
+**Trigger:** After Priority 15 + 16 are diagnosed and quality tag data
+has stabilised (5+ days of post-Pine-v3.0.0 enrichment).
+
+**Scope:**
+Full spec in `forex-command-centre/docs/PHASE_3B_HANDOFF.md`.
+
+Three chips at top of armed panel:
+- `Hide CONTESTED` (default ON — institutional protection)
+- `Hide CAUTION` (default OFF)
+- `Only PRIORITY` (default OFF, overrides hide flags when active)
+
+Hidden counter chip always visible when filter is hiding pairs.
+Format: `{n} CONTESTED hidden`. Click reveals temporarily.
+Persistence: localStorage key `armed-quality-filters`.
+
+**Why this matters:**
+Today every armed card is visible regardless of quality tag. Once
+quality data is reliable, the trader needs a way to default-hide
+CONTESTED pairs (the institutional CONTESTED-is-likely-loss
+hypothesis) while keeping a counter visible to maintain transparency.
+
+**Why this is P2 not P1:**
+Filter chips are pointless until quality tag distribution is
+representative. Today's data is too sparse and CAUTION-dominated
+to make hide/show decisions meaningful.
+
+**Dependencies:**
+- Quality tag data validated across ~150-200 enrichment events
+- Decision: Hide CONTESTED default ON or OFF for first week?
+- CSS classes already shipped in v1.15.0. Pure JS wiring.
+
+**Estimated effort:** ~80 lines of edits, single session, low risk.
+
+---
+
+## 🟡 Priority 18 — Phase 3c: Intelligence Hub calibration tabs
+
+**Trigger:** ~5 trading days of `loc-history.json` data (~300+ enrichment
+events) accumulated post-FCC-SRL v2.0.0 deploy.
+
+**Scope:**
+Full spec in `forex-command-centre/docs/PHASE_3B_HANDOFF.md`.
+
+Add to `forex-command-centre/src/arm-history-dashboard.html` (currently
+unversioned 2265 lines). Add version banner first, then bump to v1.1.0.
+
+NEW TAB — **Sweep Risk Calibration:**
+- Grade distribution chart (LOW/MED/HIGH counts over 7d/30d/90d)
+- Per-asset-class breakdown table
+- Auto-calibration tips ("Your MED/HIGH ratio is X% — tighten
+  magnetThreshAtr from 2.0 to Y")
+
+NEW TAB — **Frequency × Sweep Matrix:**
+- 2D heatmap: weekly signal count (Y: 1, 2, 3+) × sweep risk
+  (X: LOW, MED, HIGH)
+- Each cell shows count of arms in that quadrant
+- Win-rate cell value deferred to Phase 3d (depends on journal
+  outcome logging)
+
+ENHANCE existing **Location Calibration tab:**
+- Add `sweep_risk` column to grade distribution table
+- New cross-tab filter: "show only pairs where sweep_risk = HIGH"
+- Sparkline per pair showing 7-day sweep risk trend
+
+**Why this matters:**
+Without calibration tabs, the threshold inputs in FCC-SRL Pine have
+no feedback loop. Operator has to eyeball "did sweep risk feel
+right" without aggregate distribution data. Calibration tabs make
+the feedback loop visible and the auto-tips make it actionable.
+
+**Why this is P2 not P1:**
+Building calibration UI without calibration data renders empty
+charts. Need ~300+ events accumulated first.
+
+**Dependencies:**
+- Priority 15 (structExt) and 16 (LOW CONF) diagnostics ideally
+  resolved first — if either uncovers a calibration issue at the
+  Pine layer, threshold tweaks may need to happen before Phase 3c
+  measures distributions
+- 5+ trading days of post-FCC-SRL-v2.0.0 enrichment data
+- Verify existing endpoints `/loc-history`, `/bias-history`,
+  `/location-history` provide rolling window aggregates; extend
+  server only if necessary
+
+**Calibration plan post-build:**
+
+| Pine input        | Default | Adjust if...                                  |
+|-------------------|---------|-----------------------------------------------|
+| `magnetThreshAtr` | 2.0     | LOW > 80% → 1.5; HIGH > 25% → 2.5            |
+| `sweepLowMax`     | 1       | If 1 magnet harmless → raise to 2          |
+| `sweepMedMax`     | 2       | If MED catching too many → lower to 1      |
+| `adxThresh`       | 20      | If ADX < 20 frequently → 18 (FX ranges)    |
+
+Target distribution: LOW 55-65% / MED 25-35% / HIGH 5-15%.
+
+**Estimated effort:** ~400-600 lines across HTML + possibly server.
+Dedicated session.
+
+---
+
+## 🟢 Priority 19 — ZONE cell v1.16.1 deploy verification (one-shot)
+
+**Trigger:** Immediately after deploying commit `5adf719` to live
+`/mnt/user/appdata/nginx/www/`.
+
+**Scope:**
+Single visual verification on any armed pair card. ZONE cell should
+show two lines:
+- Top: `ARMED: HOT` (or OPTIMAL/ACCEPTABLE/EXTENDED depending on alert)
+  in small muted text
+- Bottom: live state (em-dash if Entry Monitor inactive, or grade if active)
+
+If cell still shows three lines or em-dash on top, v1.16.1 didn't
+deploy or browser cache is stale.
+
+**Why this is in TODO at all:**
+Just a checkbox so the bug fix is acknowledged as verified. Will be
+moved to Closed audit trail after first confirmation.
+
+**Estimated effort:** 30 seconds.
+
+---
+
 ## Closed — for audit trail
 
 ### 2026-04-21 — Stale calendar.json in nginx webroot
