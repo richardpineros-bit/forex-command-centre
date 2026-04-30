@@ -28,8 +28,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '3.0.0';
+const VERSION = '3.0.1';
 const CHANGES = [
+    '3.0.1 - PATCH: weekSignalCount/twoWeekSignalCount week boundary now uses Monday 00:00 Australia/Sydney (was Monday 00:00 UTC). Resolves TODO P14: pairs armed Monday morning AEST (Sunday night UTC) were being counted to LAST week, not this week. New getSydneyOffsetMs() helper uses Intl API to handle AEST (UTC+10) / AEDT (UTC+11) DST automatically. Single-operator system, hard-coded to Australia/Sydney timezone.',
     '3.0.0 - MAJOR: aligned with Ultimate UTCC v3.0.0 + FCC-SRL v3.0.0 edge-triggered alert cadence. SESSION_GAP reduced 12h -> 30min: Pine indicators now fire ONCE on rising edge of arm state (not every bar close while armed), so aggressive dedup is no longer needed. 30min window only catches genuine duplicates (TradingView retries, network reposts). weekSignalCount will now reflect TRUE distinct arm sessions, not collapsed 4H repeat-fires. Note: count values will appear lower than v2.x because old counts were inflated by repeat-fires. /webhook/location handler accepts new event_type field (TRANSITION|HEARTBEAT) from FCC-SRL v3.0.0 - no special handling, just stored.',
     '2.17.0 - Quality Tag engine (frequency x sweep risk): computeQualityTag() returns PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED based on weekSignalCount and sweep_risk. Independent of PRIME/STANDARD/DEGRADED tier. Wired into enrichArmedPair(). /state response now exposes qualityTag, qualityReason, sweepRisk, magnets[], magnetsTotal, magnetsDirectional, activeSession, adxBias, adxValue. Backward compat: missing data -> STANDARD with reason "Incomplete data".',
     '2.16.0 - MDI Phase 3: /macro-dominance/events endpoint. Reads macro-dominance-events.json written by macro_event_matcher_v1.0.0.py. Returns matched news events with MDI snapshots and ATR-scaled outcome classifications. Supports ?status, ?pair, ?threshold, ?limit query filters. SOFT authority maintained - display only, no gate modification.',
@@ -539,9 +540,29 @@ function loadArmHistory() {
     return { events: [], lastUpdate: null };
 }
 
+// Returns Australia/Sydney UTC offset in milliseconds for a given Date.
+// Handles AEST (UTC+10) / AEDT (UTC+11) DST transitions automatically via Intl.
+// Single-operator system; hard-coded to operator's timezone.
+function getSydneyOffsetMs(date) {
+    try {
+        var parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Australia/Sydney',
+            timeZoneName: 'shortOffset'
+        }).formatToParts(date);
+        var tzPart = parts.find(function(p) { return p.type === 'timeZoneName'; });
+        var m = tzPart && tzPart.value.match(/GMT([+-]\d+)/);
+        var hours = m ? parseInt(m[1], 10) : 10; // AEST fallback
+        return hours * 60 * 60 * 1000;
+    } catch (err) {
+        return 10 * 60 * 60 * 1000; // AEST fallback if Intl unavailable
+    }
+}
+
 // Returns distinct arm SESSIONS for a pair.
-// weekSignalCount  = sessions since Monday 00:00 UTC (current trading week)
+// weekSignalCount  = sessions since Monday 00:00 Australia/Sydney (current trading week)
 // twoWeekSignalCount = sessions in current + previous trading week
+// Week boundary aligned to operator's local timezone (AEST/AEDT) so cards
+// armed Monday morning AEST count to THIS week, not last week.
 // SESSION_GAP = 30min: Pine v3.0.0 indicators are edge-triggered (one fire per
 // arm session). 30min only collapses genuine duplicates (TradingView retries,
 // network reposts). True distinct arm sessions (rearm after disarm) count separately.
@@ -553,10 +574,20 @@ function getPairSignalCounts(pair) {
         var nowMs       = now.getTime();
         var SESSION_GAP = 30 * 60 * 1000; // 30min gap = duplicate suppression only
 
-        // Monday 00:00 UTC of the current week
-        var dayOfWeek    = now.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat
-        var daysSinceMon = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
-        var weekStart    = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysSinceMon));
+        // Monday 00:00 Australia/Sydney of the current week.
+        // Strategy: shift "now" by Sydney's UTC offset, read calendar fields
+        // (which now reflect Sydney local time), compute Monday 00:00 in that
+        // shifted frame, then shift back to true UTC.
+        var sydneyOffsetMs = getSydneyOffsetMs(now);
+        var nowSydney      = new Date(nowMs + sydneyOffsetMs);
+        var dayOfWeek      = nowSydney.getUTCDay(); // 0=Sun, 1=Mon ... 6=Sat (Sydney calendar)
+        var daysSinceMon   = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
+        var weekStartShifted = new Date(Date.UTC(
+            nowSydney.getUTCFullYear(),
+            nowSydney.getUTCMonth(),
+            nowSydney.getUTCDate() - daysSinceMon
+        ));
+        var weekStart     = new Date(weekStartShifted.getTime() - sydneyOffsetMs);
         var prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
 
         // Filter to this pair since start of previous week, sort chronologically
@@ -569,7 +600,7 @@ function getPairSignalCounts(pair) {
         }
         relevant.sort(function(a, b) { return a - b; });
 
-        // Deduplicate: only count first event of each 12h session
+        // Deduplicate: only count first event of each 30min session
         var sessions = [];
         var lastTs   = null;
         for (var j = 0; j < relevant.length; j++) {
