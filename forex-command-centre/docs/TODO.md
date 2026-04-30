@@ -422,27 +422,31 @@ a bad decision based on bad data. Anomaly flags are the cheap insurance.
 
 ---
 
-## 🟢 Priority 10 — Calendar path consolidation
+## ✅ Priority 10 — Calendar path consolidation — CLOSED 2026-04-30
 
-**Trigger:** Low-risk cleanup session. Not urgent.
+**Shipped:** Disk cleanup done by operator on Unraid. Git tracking
+follow-up committed in `959238a` ("P10: remove stale calendar.json
+copies (backend/src + config)").
 
-**Scope:** Remove 4 stale `calendar.json` copies that serve no purpose:
-- `/mnt/user/appdata/forex-command-centre/backend/src/calendar.json` (Mar 10)
-- `/mnt/user/appdata/forex-command-centre/config/calendar.json` (Jan 10)
-- `/mnt/user/appdata/nginx/www-backup-20260212_152919/calendar.json`
+**What was removed:**
+- `/mnt/user/appdata/forex-command-centre/backend/src/calendar.json`
+  (1,534 lines deleted from git)
+- `/mnt/user/appdata/forex-command-centre/config/calendar.json`
+  (1,310 lines deleted from git)
+- `/mnt/user/appdata/nginx/www-backup-20260212_152919/` (whole dir,
+  not git-tracked, disk-only delete)
 
-The live source of truth is:
-- **Scraper writes to:** `/mnt/user/appdata/forex-command-centre/src/calendar.json`
-- **Scraper backs up to:** `/mnt/user/appdata/forex-command-centre/data/calendar.json`
-- **User Script copies to:** `/mnt/user/appdata/nginx/www/calendar.json` (webroot)
-- **MDI matcher reads:** `/mnt/user/appdata/forex-command-centre/src/calendar.json`
+**Live source of truth confirmed working:**
+- Scraper writes to: `/mnt/user/appdata/forex-command-centre/src/calendar.json`
+- Scraper backs up to: `/mnt/user/appdata/forex-command-centre/data/calendar.json`
+- User Script copies to: `/mnt/user/appdata/nginx/www/calendar.json` (webroot)
+- MDI matcher reads: `/mnt/user/appdata/forex-command-centre/src/calendar.json`
 
-Longer-term question: consolidate *all* scraper outputs to
-`/mnt/user/appdata/trading-state/data/` so every scraper uses the same
-pattern. Currently only the FF/TE scrapers are the odd ones out. Consider
-as part of Priority 1 work.
-
-**Dependencies:** None.
+**Deferred to P1 (Scraper Health Monitoring):**
+Longer-term consolidation of all scraper outputs to
+`/mnt/user/appdata/trading-state/data/` (so every scraper uses the
+same pattern -- currently only FF/TE scrapers are odd ones out).
+Naturally fits within P1 scope.
 
 ---
 
@@ -892,6 +896,53 @@ deploy didn't land or browser cache is stale. Hard refresh
 ~~Three options were on the table -- A: loosen threshold; B: drop live
 line entirely; C: repurpose as drift indicator. Recommendation was
 Option B based on empirical evidence + institutional principles.~~
+
+---
+
+## 🟢 Priority 21 — `.gitignore` audit for runtime state files
+
+**Trigger:** Low-risk cleanup session. Not urgent but cheap to do.
+
+**Discovered during:** P10 cleanup session 2026-04-30. `git status` on
+Unraid surfaced 8 untracked runtime state files in
+`forex-command-centre/data/` and `forex-command-centre/src/` that
+look like operator-specific state, not source code:
+
+- `forex-command-centre/data/armed-dismissed.json`
+- `forex-command-centre/data/armed-exclude.json`
+- `forex-command-centre/data/armed-validation.json`
+- `forex-command-centre/data/armed-watchlist.json`
+- `forex-command-centre/data/bias-history.json`
+- `forex-command-centre/data/bias-history.json.lock`
+- `forex-command-centre/data/dashboard-theme.json`
+- `forex-command-centre/src/scraper_health.json`
+
+Plus two scratch files in `backend/scripts/`:
+- `forex-command-centre/backend/scripts/ig-sentiment-config.json`
+- `forex-command-centre/backend/scripts/myfxbook_probe_v1.0.0.py`
+
+**Risk if deferred:** Currently they sit untracked, so they don't
+break anything. But a future `git add .` (or any glob-y add) commits
+operator-specific runtime state into the public repo by mistake.
+Worst case: operator-specific armed-watchlist or theme state gets
+pushed to GitHub and lives in history forever.
+
+**Scope:**
+1. Audit existing `.gitignore` to see what's already excluded.
+2. Add the 8+ files above (or a glob pattern like `data/*.json` if
+   verified safe — i.e. nothing in `data/` is meant to be tracked).
+3. Decide on the scratch files in `backend/scripts/`:
+   - `ig-sentiment-config.json` — runtime config or template? If
+     template, should be tracked. If operator-specific, gitignore.
+   - `myfxbook_probe_v1.0.0.py` — looks like a one-off probe. Either
+     commit it (if useful for posterity) or delete.
+4. Verify nothing in the proposed exclusion list is actually meant
+   to be source-of-truth tracked (e.g. a config schema).
+5. Run `git status` after the change — should be clean.
+
+**Dependencies:** None.
+
+**Estimated effort:** ~10-15 min including audit + verification.
 
 ---
 
