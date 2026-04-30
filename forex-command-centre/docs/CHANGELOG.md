@@ -1,4 +1,70 @@
-## [Ultimate UTCC v3.0.0 + FCC-SRL v3.0.0 + Alert Server v3.0.0] - 2026-04-27
+## [Alert Server v3.0.1 + armed-panel v1.17.0] - 2026-04-30
+
+### TODO P14 + P20 closed: AEST week boundary + ZONE cell simplification
+
+Two surgical fixes shipped together. No new features, no architectural change.
+
+#### Alert Server v3.0.1 (TODO P14)
+- `weekSignalCount` and `twoWeekSignalCount` now use Monday 00:00 in
+  Australia/Sydney as the week boundary instead of Monday 00:00 UTC.
+- New `getSydneyOffsetMs(date)` helper uses the `Intl` API to resolve the
+  Sydney offset for any moment, handling AEST (UTC+10) and AEDT (UTC+11)
+  DST transitions automatically. AEST fallback if `Intl` unavailable.
+- Why: pairs armed Monday morning Sydney (Sunday night UTC) were being
+  counted to LAST week, not this week. Pairs armed Sunday night Sydney
+  (Sunday afternoon UTC) were counted to THIS week. Confusing for an
+  operator reading cards in local time.
+- Verified across three boundary scenarios:
+  - AEST Monday morning Sydney (Sun 23:00 UTC, Apr 26 2026): weekStart
+    = Sun 14:00 UTC = Mon 00:00 Sydney AEST. Pass.
+  - AEST late Sunday Sydney (Sun 13:00 UTC, Apr 26 2026): weekStart =
+    previous Mon 14:00 UTC. Pass.
+  - AEDT Monday morning Sydney (Sun 22:00 UTC, Feb 8 2026): weekStart
+    = Sun 13:00 UTC = Mon 00:00 Sydney AEDT. Pass.
+- Single-operator system, hard-coded to Australia/Sydney.
+
+#### armed-panel v1.17.0 (TODO P20 Option B)
+- ZONE satellite cell reverted to single-line `ARMED: HOT/OPTIMAL/
+  ACCEPTABLE/EXTENDED` from the Pine alert payload. Live Entry Monitor
+  state no longer surfaced in the satellite grid.
+- Why: live grade never fired in practice (observed 2026-04-27 across
+  19+ armed pairs, full session, zero `entryZoneActive: true` events).
+  ZONE cell was showing a permanently-dark em-dash on the live line --
+  disinformation, not signal.
+- Why Option B over A or C: the arm-time classification IS the
+  institutional signal -- it captures the moment the system said
+  "this setup is valid at this location." Continuously re-grading an
+  already-armed pair invites discretionary drift, the exact FOMO
+  behaviour the system exists to suppress. Option A (loosen threshold)
+  is forbidden retroactive tuning to satisfy a UI element. Option C
+  (drift indicator) belongs in execution layer, not entry-quality cell.
+- State styling: HOT/OPTIMAL=good, ACCEPTABLE=ok, EXTENDED=bad,
+  missing=muted.
+- Removed `.sgrid-armed-line`, `.sgrid-live-line`, `.sgrid-value-dual`
+  CSS (44 lines, no longer referenced).
+- Entry Monitor itself untouched in the alert server -- still runs as
+  a diagnostic, just no longer surfaced in the satellite grid.
+- Legacy `buildIntelligenceStrip()` expand-on-click row still reads
+  `entryZoneActive`. Out of P20 scope; cosmetic only since the badge
+  never shows when Entry Monitor never fires.
+
+#### Other TODO items closed in this session
+- P5 (MDI scraper v1.0.3 quality fixes) discovered already done in
+  commit `45efa3a`; just needed TODO close-out and live deploy verify.
+
+#### Deploy steps
+```
+cd /mnt/user/appdata && git pull
+cp forex-alert-server/index.js /mnt/user/appdata/trading-state/index.js
+docker restart trading-state
+cp forex-command-centre/src/js/armed-panel.js /mnt/user/appdata/nginx/www/js/
+cp forex-command-centre/src/css/dashboard.css /mnt/user/appdata/nginx/www/css/
+# Hard refresh PWA (Ctrl+Shift+R / clear cache on Android)
+```
+
+---
+
+
 ### Edge-triggered alert cadence: end of the 4-hour latency
 
 **The problem this fixes:**

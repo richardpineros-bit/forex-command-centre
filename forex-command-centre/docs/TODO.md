@@ -221,29 +221,47 @@ decision from chat.
 
 ---
 
-## 🟡 Priority 5 — MDI scraper v1.0.3 (quality fixes)
+## ✅ Priority 5 — MDI scraper v1.0.3 (quality fixes) — CLOSED 2026-04-30
 
-**Trigger:** After ~1 week of MDI scraper runs confirms the AUD HIKE
-pattern is persistent (not a one-off).
+**Status:** Code work was completed in commit `45efa3a` ("MDI scraper
+v1.0.3: fix AUD HIKE false positive + BALANCED wording") and cron-backup
+was updated in `80a3fe7` to call v1.0.3. The TODO entry was never moved
+to Closed when the fix landed -- caught during 2026-04-30 cleanup pass.
 
-**Scope:**
+**Fix shipped (per v1.0.3 source comments):**
+- AUD HIKE false positive: new `extract_summary_window()` helper anchors
+  on "last recorded at" phrase to scope HIKE/CUT/HOLD detection to the
+  current-meeting summary block (~600 chars forward / 400 back), avoiding
+  past-tense "raised" matches in historical context prose. Fail-closed:
+  if anchor absent, last_change stays None.
+- HOLD priority bug fix: v1.0.2 had broken priority logic claiming
+  "HOLD > HIKE/CUT" but actually firing HIKE first. Rewritten so HOLD
+  always wins when present (HOLD language is current-meeting-specific).
+- BALANCED verdict wording: "balanced - full news impact" (sounded like
+  a price-direction prediction) rewritten to "balanced - no macro
+  override" -- accurate to MDI's actual role as a news gate dampener.
 
-1. **AUD HIKE false positive.** RBA has been on hold/cutting but v1.0.2
+**Verification still required by operator:**
+1. Confirm cron is calling v1.0.3 on Unraid:
+   `crontab -l | grep mdi` should reference v1.0.3 (or the User Script
+   wrapper that calls v1.0.3).
+2. Observe next AUD policy reading on the MDI page in Intel Hub: should
+   reflect actual RBA stance (currently on hold/cutting), not HIKE.
+
+**Original entry retained for audit trail:**
+
+~~Trigger: After ~1 week of MDI scraper runs confirms the AUD HIKE
+pattern is persistent (not a one-off).~~
+
+~~Scope:~~
+
+~~1. AUD HIKE false positive. RBA has been on hold/cutting but v1.0.2
    consistently flags AUD as HIKE. Prose parser in `parse_policy_page()`
    likely matching past-tense "raised" in historical context commentary
-   rather than current-meeting action. Fix: tighten pattern to require
-   proximity to "this/current meeting" phrasing or specifically scope to
-   the first summary paragraph rather than full page.
+   rather than current-meeting action.~~
 
-2. **"Full news impact" wording.** The BALANCED-state text on MDI badges
-   reads as if MDI is predicting price direction, which it isn't. Rewrite
-   to something like *"no macro override — news effect not dampened"* or
-   similar. Keep it terse enough to fit the intel-item badge.
-
-**Dependencies:** None. Small patch, 30 min work.
-
-**Note on data preservation:** Per versioning rule, v1.0.2 stays in repo
-alongside v1.0.3. Do not silently rewrite history.
+~~2. "Full news impact" wording. The BALANCED-state text on MDI badges
+   reads as if MDI is predicting price direction.~~
 
 ---
 
@@ -589,40 +607,38 @@ violates that. This closes the gap.
 
 ---
 
-## 🟢 Priority 14 — Weekly frequency week-boundary fix (AEST alignment)
+## ✅ Priority 14 — Weekly frequency week-boundary fix (AEST alignment) — CLOSED 2026-04-30
 
-**Trigger:** After v3.0.0 has run for 2+ weeks, if `weekSignalCount`
-values still feel "way off" on Monday/Tuesday cards.
+**Shipped:** Alert Server v3.0.1 commit `a15c7fe`.
 
-**Scope:**
-- `getPairSignalCounts()` in `forex-alert-server/index.js`: change
-  `weekStart` calculation from "Monday 00:00 UTC" to "Monday 00:00
-  user-timezone" (AEST = UTC+10/+11 with DST handling).
-- Decide: hard-code AEST or read timezone from a config setting?
-- Hard-coded AEST is simpler but locks the server to one operator.
-  Config setting is cleaner but introduces a new whitelist entry in
-  `storage-api.php` and a settings UI element.
-- Recommended: hard-code AEST as a constant `WEEK_START_OFFSET_HOURS`
-  with a comment explaining why. Single-operator system, no need for
-  multi-timezone abstraction.
+**What was done:**
+- New `getSydneyOffsetMs(date)` helper resolves Sydney offset for any
+  date using `Intl.DateTimeFormat` with timeZone `Australia/Sydney`.
+  Returns 11h during AEDT (UTC+11), 10h during AEST (UTC+10) -- DST
+  handled automatically. AEST fallback if Intl unavailable.
+- `getPairSignalCounts()` now shifts `now` into Sydney frame, computes
+  Monday 00:00 in the Sydney calendar, then shifts back to true UTC for
+  filtering arm-history events.
+- Decision: NOT a hard-coded constant (recommended in original TODO).
+  Single hard-coded offset would be off by 1 hour for half the year due
+  to DST. Intl-based approach is still single-operator (locked to
+  Australia/Sydney) but correct year-round. Net same effort.
 
-**Why this matters:**
-Currently `weekStart = Monday 00:00 UTC` = ~10am Monday AEST. Anything
-armed Monday morning AEST (Sunday night UTC) counts to *last* week.
-Anything armed Sunday night AEST (Sunday afternoon UTC) is *this*
-week. Confusing for the trader who reads cards in AEST.
+**Verification done:**
+- AEST Monday morning Sydney scenario (Sun 23:00 UTC, Apr 26 2026):
+  weekStart = Sun 14:00 UTC = Mon 00:00 Sydney. Pass.
+- AEST late Sunday Sydney scenario (Sun 13:00 UTC, Apr 26 2026):
+  weekStart = previous Mon 14:00 UTC. Pass.
+- AEDT Monday morning Sydney scenario (Sun 22:00 UTC, Feb 8 2026):
+  weekStart = Sun 13:00 UTC = Mon 00:00 Sydney AEDT. Pass.
 
-**Why this is P3 not earlier:**
-Pure display/accuracy issue — doesn't affect trade decisions. Wait
-until the v3.0.0 dedup correction settles to see if this is still
-the dominant felt-error in frequency counts.
+**Original entry retained for audit trail:**
 
-**Dependencies:**
-- v3.0.0 deployed and 2+ weeks of arm-history data accumulated.
-- User confirms boundary issue is the residual frequency complaint
-  (not some other dedup or counting issue).
+~~Trigger: After v3.0.0 has run for 2+ weeks, if `weekSignalCount`
+values still feel "way off" on Monday/Tuesday cards.~~
 
-**Estimated effort:** ~15 min if hard-coded AEST; ~1 hr if config-driven.
+~~Recommended: hard-code AEST as a constant `WEEK_START_OFFSET_HOURS`.~~
+~~(Implemented dynamically via Intl API instead -- handles AEDT correctly.)~~
 
 ---
 
@@ -814,120 +830,68 @@ Dedicated session.
 
 ---
 
-## 🟢 Priority 19 — ZONE cell v1.16.1 deploy verification (one-shot)
+## ✅ Priority 19 — ZONE cell v1.16.1 deploy verification — SUPERSEDED 2026-04-30
 
-**Trigger:** Immediately after deploying commit `5adf719` to live
-`/mnt/user/appdata/nginx/www/`.
+**Status:** Superseded by P20 (Option B). v1.16.1 was the dual-tier
+display (ARMED line + LIVE line). v1.17.0 reverts to single-line
+ARMED-only, so the v1.16.1 visual verification is no longer relevant.
 
-**Scope:**
-Single visual verification on any armed pair card. ZONE cell should
-show two lines:
-- Top: `ARMED: HOT` (or OPTIMAL/ACCEPTABLE/EXTENDED depending on alert)
-  in small muted text
-- Bottom: live state (em-dash if Entry Monitor inactive, or grade if active)
+**New post-deploy verification for v1.17.0:**
+After deploying commits `a15c7fe` + `10afbf7` to live nginx webroot,
+visual check on any armed pair card:
+- ZONE cell should show ONE line only: `HOT`, `OPT`, `ACC`, `EXT`,
+  or `-` (em-dash for muted/missing).
+- Cell border colour conveys state: green = good (HOT/OPT), amber =
+  ok (ACC), red = bad (EXT), grey = muted.
+- Tooltip on hover shows: "HOT zone at arm time -- optimal entry,
+  closest to edge" (or equivalent for other zones).
 
-If cell still shows three lines or em-dash on top, v1.16.1 didn't
-deploy or browser cache is stale.
-
-**Why this is in TODO at all:**
-Just a checkbox so the bug fix is acknowledged as verified. Will be
-moved to Closed audit trail after first confirmation.
-
-**Estimated effort:** 30 seconds.
+If the cell still shows two lines (ARMED line + live line), the
+deploy didn't land or browser cache is stale. Hard refresh
+(Ctrl+Shift+R, or clear cache on Android PWA).
 
 ---
 
-## 🔴 Priority 20 — Entry Monitor live grade never fires (decision required)
+## ✅ Priority 20 — Entry Monitor live grade never fires (decision required) — CLOSED 2026-04-30
 
-**Trigger:** Observed 2026-04-27 — across 19 armed pairs and a full
-trading session, `entryZoneActive: true` did not occur for ANY pair.
-ZONE cell live line stays as em-dash permanently. Confirmed via:
-- `curl /state | jq '[.pairs[] | select(.entryZoneActive == true)] | length'` returned `0`
-- Logs show EntryMonitor running healthy (`EMA refresh for 14 armed pair(s)`)
-- All env vars present (`OANDA_API_KEY`, `OANDA_ACCOUNT_ID`, `OANDA_ENV=live`)
+**Decision:** Option B chosen. Shipped as armed-panel v1.17.0 commit `10afbf7`.
 
-**Root cause hypothesis:**
-Entry Monitor classifies "in zone" only when price is within a tight
-ATR band of one of the EMAs (9/21/50). On 4H charts, price typically
-moves 1+ ATR within hours of arming, so most pairs exit the band
-quickly and never re-enter. The threshold may be technically correct
-but practically too narrow for any pair to ever satisfy.
+**Institutional reasoning:**
+1. **Empirical:** Live line never fires (zero `entryZoneActive: true`
+   events across 19+ armed pairs and a full session on 2026-04-27).
+   Cell was permanent disinformation.
+2. **Architectural:** The arm-time signal IS the institutional signal.
+   It captures the moment the system said "this setup is valid here."
+   Continuously re-grading an armed pair invites discretionary drift
+   ("it's back to OPTIMAL on the live line, I can still enter") --
+   exactly the FOMO behaviour the system exists to suppress.
+3. **Authority Promotion Framework (P3):** Option A would loosen Entry
+   Monitor threshold to make the cell light up. Retroactively tuning
+   a threshold to satisfy a UI element is forbidden by P3.
+4. **Separation of concerns:** Drift (am I in profit/loss on an open
+   trade?) is execution-layer data and belongs elsewhere, not jammed
+   into the entry-quality cell. Option C conflates two frameworks.
+5. **Audit-grade design:** Confusing UI is worse than no UI.
 
-This means v1.11.0 effectively turned the ZONE cell off without
-realising — by making it 100% dependent on Entry Monitor instead
-of also surfacing the original Pine alert `entry_zone` field.
-v1.16.1 partially fixed this by adding the ARMED line, but the
-live line remains permanently dark.
+**What shipped:**
+- ZONE cell single-line, shows `ARMED: HOT/OPTIMAL/ACCEPTABLE/EXTENDED`
+  from Pine alert payload only.
+- State styling: HOT/OPTIMAL=good, ACCEPTABLE=ok, EXTENDED=bad.
+- Removed `.sgrid-armed-line`, `.sgrid-live-line`, `.sgrid-value-dual`
+  CSS (44 lines).
+- Entry Monitor untouched in alert server -- still runs as diagnostic,
+  just not surfaced in the satellite grid.
 
-**Three options — decision required:**
+**Out of scope (left intentionally):**
+- `buildIntelligenceStrip()` legacy expand-on-click strip still reads
+  `entryZoneActive`. Cosmetic only since the badge never shows when
+  Entry Monitor never fires. If revisited, separate ticket.
 
-### Option A: Loosen Entry Monitor threshold
-Find the in-zone classification logic in `forex-alert-server/index.js`
-(search for `entryZoneActive` writes or EMA distance calculations).
-Increase threshold from likely ~0.3-0.5×ATR to ~1.0×ATR.
+**Original entry retained for audit trail:**
 
-- **Pro:** Live line lights up more often, justifying its existence
-- **Con:** "In zone" loses precision — may fire when price is
-  genuinely too far from a quality entry. Risk of false-positive
-  green badges nudging trader into bad entries.
-- **Effort:** ~15 min code + 3-5 days observation to tune.
-
-### Option B: Drop the live line entirely (recommended)
-Revert ZONE cell to single line showing only `ARMED: HOT/OPTIMAL/etc`
-from the original Pine alert payload. Drop reliance on
-`entryZoneActive`. Treat the Entry Monitor as a separate diagnostic
-not surfaced in the satellite grid.
-
-- **Pro:** Cell shows useful data 100% of the time. The arm-time
-  zone classification was always the institutional signal — it
-  represents the moment the system said "arm here." That's what
-  the trader needs to see.
-- **Pro:** Simpler logic, no calibration debt, no permanent dark
-  state in the UI.
-- **Con:** Loses the (currently theoretical) value of "is price
-  *back* in zone right now?" — but if that signal never fires,
-  it provides zero value anyway.
-- **Effort:** ~10 min, single helper rewrite. Bump v1.16.x → v1.17.0
-  (semantic change to cell meaning).
-
-### Option C: Repurpose the live line as drift indicator
-Replace live grade with "distance from arm price" — e.g.
-`+0.4R drift` (favourable) or `-0.6R drift` (against trade direction).
-Calculated server-side from the live Oanda price feed already polled
-for Entry Monitor.
-
-- **Pro:** Live line gets useful purpose — shows whether the trade
-  has moved with you or against you since arming. Information
-  the trader needs at a glance.
-- **Pro:** Reuses existing Oanda polling infrastructure.
-- **Con:** New concept the trader needs to learn. New server logic
-  to derive and pass through `/state`. Bigger surface area.
-- **Effort:** ~1-2 hours server + frontend + verification.
-
-**Recommendation: Option B.**
-We have empirical evidence the live line never fires. v1.11.0 designed
-on a hypothesis (live zone re-entry would be useful) that hasn't
-materialised. Strip it out, simplify, ship. Option C is interesting
-but better as a separate v1.18.0 feature once the cell is honest about
-what it shows.
-
-**Why this is P1:**
-ZONE cell is currently telling the trader an em-dash truth that
-distracts from the only useful field (ARMED). Confusing UI is worse
-than no UI. Resolve before any further v1.x rendering work.
-
-**Dependencies:**
-- 1-2 days more observation to confirm zero entryZoneActive=true
-  events occur (not a transient Oanda issue)
-- Decision: A vs B vs C
-- If Option B chosen, also remove the .sgrid-live-line CSS and the
-  dual rendering bypass logic in v1.16.1, simplifying the cell back
-  to single-line. Bumps to v1.17.0.
-
-**Estimated effort:**
-- Option A: 15 min code, 3-5 days tune
-- Option B: 10 min code, immediate
-- Option C: 1-2 hours, plus design discussion
+~~Three options were on the table -- A: loosen threshold; B: drop live
+line entirely; C: repurpose as drift indicator. Recommendation was
+Option B based on empirical evidence + institutional principles.~~
 
 ---
 
