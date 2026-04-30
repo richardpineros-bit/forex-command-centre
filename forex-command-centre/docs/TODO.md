@@ -837,6 +837,100 @@ moved to Closed audit trail after first confirmation.
 
 ---
 
+## 🔴 Priority 20 — Entry Monitor live grade never fires (decision required)
+
+**Trigger:** Observed 2026-04-27 — across 19 armed pairs and a full
+trading session, `entryZoneActive: true` did not occur for ANY pair.
+ZONE cell live line stays as em-dash permanently. Confirmed via:
+- `curl /state | jq '[.pairs[] | select(.entryZoneActive == true)] | length'` returned `0`
+- Logs show EntryMonitor running healthy (`EMA refresh for 14 armed pair(s)`)
+- All env vars present (`OANDA_API_KEY`, `OANDA_ACCOUNT_ID`, `OANDA_ENV=live`)
+
+**Root cause hypothesis:**
+Entry Monitor classifies "in zone" only when price is within a tight
+ATR band of one of the EMAs (9/21/50). On 4H charts, price typically
+moves 1+ ATR within hours of arming, so most pairs exit the band
+quickly and never re-enter. The threshold may be technically correct
+but practically too narrow for any pair to ever satisfy.
+
+This means v1.11.0 effectively turned the ZONE cell off without
+realising — by making it 100% dependent on Entry Monitor instead
+of also surfacing the original Pine alert `entry_zone` field.
+v1.16.1 partially fixed this by adding the ARMED line, but the
+live line remains permanently dark.
+
+**Three options — decision required:**
+
+### Option A: Loosen Entry Monitor threshold
+Find the in-zone classification logic in `forex-alert-server/index.js`
+(search for `entryZoneActive` writes or EMA distance calculations).
+Increase threshold from likely ~0.3-0.5×ATR to ~1.0×ATR.
+
+- **Pro:** Live line lights up more often, justifying its existence
+- **Con:** "In zone" loses precision — may fire when price is
+  genuinely too far from a quality entry. Risk of false-positive
+  green badges nudging trader into bad entries.
+- **Effort:** ~15 min code + 3-5 days observation to tune.
+
+### Option B: Drop the live line entirely (recommended)
+Revert ZONE cell to single line showing only `ARMED: HOT/OPTIMAL/etc`
+from the original Pine alert payload. Drop reliance on
+`entryZoneActive`. Treat the Entry Monitor as a separate diagnostic
+not surfaced in the satellite grid.
+
+- **Pro:** Cell shows useful data 100% of the time. The arm-time
+  zone classification was always the institutional signal — it
+  represents the moment the system said "arm here." That's what
+  the trader needs to see.
+- **Pro:** Simpler logic, no calibration debt, no permanent dark
+  state in the UI.
+- **Con:** Loses the (currently theoretical) value of "is price
+  *back* in zone right now?" — but if that signal never fires,
+  it provides zero value anyway.
+- **Effort:** ~10 min, single helper rewrite. Bump v1.16.x → v1.17.0
+  (semantic change to cell meaning).
+
+### Option C: Repurpose the live line as drift indicator
+Replace live grade with "distance from arm price" — e.g.
+`+0.4R drift` (favourable) or `-0.6R drift` (against trade direction).
+Calculated server-side from the live Oanda price feed already polled
+for Entry Monitor.
+
+- **Pro:** Live line gets useful purpose — shows whether the trade
+  has moved with you or against you since arming. Information
+  the trader needs at a glance.
+- **Pro:** Reuses existing Oanda polling infrastructure.
+- **Con:** New concept the trader needs to learn. New server logic
+  to derive and pass through `/state`. Bigger surface area.
+- **Effort:** ~1-2 hours server + frontend + verification.
+
+**Recommendation: Option B.**
+We have empirical evidence the live line never fires. v1.11.0 designed
+on a hypothesis (live zone re-entry would be useful) that hasn't
+materialised. Strip it out, simplify, ship. Option C is interesting
+but better as a separate v1.18.0 feature once the cell is honest about
+what it shows.
+
+**Why this is P1:**
+ZONE cell is currently telling the trader an em-dash truth that
+distracts from the only useful field (ARMED). Confusing UI is worse
+than no UI. Resolve before any further v1.x rendering work.
+
+**Dependencies:**
+- 1-2 days more observation to confirm zero entryZoneActive=true
+  events occur (not a transient Oanda issue)
+- Decision: A vs B vs C
+- If Option B chosen, also remove the .sgrid-live-line CSS and the
+  dual rendering bypass logic in v1.16.1, simplifying the cell back
+  to single-line. Bumps to v1.17.0.
+
+**Estimated effort:**
+- Option A: 15 min code, 3-5 days tune
+- Option B: 10 min code, immediate
+- Option C: 1-2 hours, plus design discussion
+
+---
+
 ## Closed — for audit trail
 
 ### 2026-04-21 — Stale calendar.json in nginx webroot
