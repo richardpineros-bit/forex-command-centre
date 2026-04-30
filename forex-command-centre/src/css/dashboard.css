@@ -1460,62 +1460,9 @@ a.armed-pair-row.armed-row-link:active {
 
 
 /* =================================================================
-   v1.16.0 -- ZONE cell dual-tier display (ARMED + LIVE)
-   Top line shows arm-time zone classification (small, muted).
-   Bottom line shows live Entry Monitor state (existing colourful).
-   Both stack inside the existing .sgrid-value container.
+   v1.17.0 (TODO P20 Option B) -- ZONE cell reverted to single-line
+   ARMED-only. Dual-tier CSS rules removed:
+     .sgrid-armed-line, .sgrid-live-line, .sgrid-value-dual
+   The cell now renders via the standard cell() helper. State styling
+   handled by .sgrid-qual-{good,ok,bad,muted} (already defined above).
    ================================================================= */
-
-.sgrid-armed-line {
-    display: block;
-    font-size: 0.50rem;
-    font-weight: 600;
-    line-height: 1;
-    color: var(--text-muted);
-    letter-spacing: 0.04em;
-    margin-bottom: 2px;
-    opacity: 0.75;
-    text-transform: uppercase;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-}
-
-.sgrid-live-line {
-    display: block;
-    line-height: 1;
-}
-
-/* Mobile: shrink the armed line slightly more, keep live line readable */
-@media (max-width: 600px) {
-    .sgrid-armed-line { font-size: 0.45rem; margin-bottom: 1px; }
-}
-
-
-/* v1.16.1 -- dual-tier ZONE cell value container.
-   Bypasses cell() helper; both armed-line and live-line render as block lines.
-   No state symbol prefix; cell border conveys state. */
-.sgrid-value-dual {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    line-height: 1.05;
-    font-size: 0.66rem;
-    font-weight: 700;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    max-width: 100%;
-}
-
-.sgrid-value-dual .sgrid-armed-line {
-    display: block;
-    margin-bottom: 0;
-}
-
-.sgrid-value-dual .sgrid-live-line {
-    display: block;
-    line-height: 1;
-}
