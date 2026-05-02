@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- arm-history-dashboard.html v1.0.1 -->
+<!-- arm-history-dashboard.html v1.0.2 -->
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -384,6 +384,7 @@ body {
                 <div class="tab" onclick="showTab('pushlog',this);loadPushLog()">&#x1F514; Push Log</div>
     <div class="tab" onclick="showTab('mdi',this);loadMDI()">&#x1F310; Macro Dominance</div>
     <div class="tab" onclick="showTab('sweepcal',this);loadSweepCal()">&#x1F9F2; Sweep Risk</div>
+    <div class="tab" onclick="showTab('sweepmatrix',this);loadSweepMatrix()">&#x1F321; Freq &times; Sweep</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -723,6 +724,68 @@ body {
             <span class="card-meta">Pine input adjustments based on observed distribution</span>
         </div>
         <div class="card-body" id="sc-tips" style="font-size:0.8rem;"><div class="loading">&#x23F3;</div></div>
+    </div>
+
+</div>
+
+<!-- ============================================================
+     FREQUENCY x SWEEP MATRIX (Phase 3c v1.0.2)
+     Source: /location-history endpoint, last 7 days
+     Purpose: Visualise current pair allocation across Quality Tag
+              taxonomy (PRIORITY / STANDARD+ / STANDARD / CAUTION / CONTESTED)
+     ============================================================ -->
+<div class="page" id="tab-sweepmatrix">
+
+    <!-- Context banner -->
+    <div class="card mb" style="border-left:4px solid #60a5fa">
+        <div class="card-body" style="font-size:0.78rem;padding:10px 14px;line-height:1.5">
+            <strong style="color:#60a5fa">&#x1F4CC; Current allocation snapshot.</strong>
+            Each pair is placed in one cell based on its <strong>weekly signal count (rows)</strong> and
+            <strong>most recent sweep risk (columns)</strong>. Cell colour matches the Quality Tag the server
+            assigns (computeQualityTag). Use this to spot pairs the system is silently flagging as PRIORITY or CONTESTED.
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F321; Frequency &times; Sweep Matrix</span>
+            <span class="card-meta" id="sm-meta">Loading&#x2026;</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px">
+            <select id="sm-window" onchange="renderSweepMatrix()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="7" selected>Frequency window: 7 days</option>
+                <option value="14">Frequency window: 14 days</option>
+                <option value="30">Frequency window: 30 days</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Matrix grid -->
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F4CA; Pair Allocation Matrix</span>
+            <span class="card-meta">Hover a cell to see pair list</span>
+        </div>
+        <div class="card-body" id="sm-matrix"><div class="loading">&#x23F3;</div></div>
+    </div>
+
+    <!-- Tag rollup -->
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F3F7; Quality Tag Rollup</span>
+            <span class="card-meta">Aggregated by Quality Tag classification</span>
+        </div>
+        <div class="card-body" id="sm-rollup"><div class="loading">&#x23F3;</div></div>
+    </div>
+
+    <!-- Pairs by tag (drilldown) -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">&#x1F50D; Pairs by Quality Tag</span>
+            <span class="card-meta">Full pair list per cell</span>
+        </div>
+        <div class="card-body" id="sm-drilldown"><div class="loading">&#x23F3;</div></div>
     </div>
 
 </div>
@@ -2584,6 +2647,230 @@ function renderSweepTips(events) {
     html += '</div>';
 
     document.getElementById('sc-tips').innerHTML = html;
+}
+
+// ===========================================================================
+// FREQUENCY x SWEEP MATRIX (Phase 3c v1.0.2)
+// Builds a 3x3 cell grid: weekly signal count (1/2/3+) x sweep risk (LOW/MED/HIGH).
+// Each cell counts PAIRS (not events) currently in that bucket and colour-codes
+// by the Quality Tag taxonomy (matches server computeQualityTag exactly).
+// ===========================================================================
+
+function loadSweepMatrix() {
+    if (window._locHistoryAll && window._locHistoryAll.events) {
+        renderSweepMatrix();
+        return;
+    }
+    fetch(API_BASE + '/location-history?limit=2000')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            window._locHistoryAll = d;
+            renderSweepMatrix();
+        })
+        .catch(function(e) {
+            document.getElementById('sm-matrix').innerHTML =
+                '<p style="color:var(--color-fail)">Failed to load: ' + e.message + '</p>';
+        });
+}
+
+// Mirrors server computeQualityTag(weekCount, sweepRisk). Keep in sync.
+function _qualityTag(weekCount, sweepRisk) {
+    var w = (typeof weekCount === 'number' && weekCount >= 0) ? weekCount : null;
+    var s = sweepRisk || null;
+    if (w === null || !s) return { tag:'STANDARD', reason:'Incomplete data' };
+    if (w >= 3) {
+        if (s === 'LOW')    return { tag:'PRIORITY',  reason:'Persistent structure, clean path' };
+        if (s === 'MEDIUM') return { tag:'STANDARD+', reason:'Persistent, path contested' };
+        if (s === 'HIGH')   return { tag:'CONTESTED', reason:'Market hunting this level repeatedly' };
+    }
+    if (w === 2) {
+        if (s === 'LOW')    return { tag:'STANDARD',  reason:'Pattern forming, clean' };
+        if (s === 'MEDIUM') return { tag:'STANDARD',  reason:'Watch carefully' };
+        if (s === 'HIGH')   return { tag:'CONTESTED', reason:'Bad pattern emerging' };
+    }
+    if (s === 'LOW')        return { tag:'STANDARD', reason:'Fresh, unproven but clean' };
+    if (s === 'MEDIUM')     return { tag:'CAUTION',  reason:'Unproven + path obstructed' };
+    if (s === 'HIGH')       return { tag:'CAUTION',  reason:'Unproven + liquidity cluster ahead' };
+    return { tag:'STANDARD', reason:'Default' };
+}
+
+var _TAG_COLORS = {
+    'PRIORITY':  '#10b981',
+    'STANDARD+': '#60a5fa',
+    'STANDARD':  '#94a3b8',
+    'CAUTION':   '#eab308',
+    'CONTESTED': '#ef4444'
+};
+
+var _TAG_BG_ALPHA = {
+    'PRIORITY':  'rgba(16,185,129,0.15)',
+    'STANDARD+': 'rgba(96,165,250,0.15)',
+    'STANDARD':  'rgba(148,163,184,0.12)',
+    'CAUTION':   'rgba(234,179,8,0.18)',
+    'CONTESTED': 'rgba(239,68,68,0.18)'
+};
+
+function renderSweepMatrix() {
+    var d = window._locHistoryAll;
+    if (!d) return;
+    var allEvents = d.events || [];
+
+    var windowDays = parseInt(document.getElementById('sm-window').value) || 7;
+    var cutoff = Date.now() - (windowDays * 24 * 60 * 60 * 1000);
+    var events = allEvents.filter(function(e) {
+        return new Date(e.timestamp).getTime() >= cutoff;
+    });
+
+    // Group by pair: count events + most recent event's sweep_risk
+    var byPair = {};
+    events.forEach(function(e) {
+        var p = e.pair;
+        if (!p) return;
+        if (!byPair[p]) byPair[p] = { count:0, latest:null, latestTs:0 };
+        byPair[p].count++;
+        var ts = new Date(e.timestamp).getTime();
+        if (ts > byPair[p].latestTs) {
+            byPair[p].latestTs = ts;
+            byPair[p].latest   = e;
+        }
+    });
+
+    var pairs = Object.keys(byPair);
+    var totalPairs = pairs.length;
+
+    if (!totalPairs) {
+        document.getElementById('sm-matrix').innerHTML =
+            '<p style="color:var(--text-muted);text-align:center">No events in selected window</p>';
+        document.getElementById('sm-rollup').innerHTML = '';
+        document.getElementById('sm-drilldown').innerHTML = '';
+        document.getElementById('sm-meta').textContent = 'n=0 pairs in last ' + windowDays + 'd';
+        return;
+    }
+
+    // Build cells: cells[freqBin][sweepCol] = { pairs: [], tag: '...' }
+    // freqBin: '0_1' (0 or 1), '2', '3plus'
+    // sweepCol: 'LOW', 'MEDIUM', 'HIGH'
+    var cells = {
+        '3plus': { LOW:[], MEDIUM:[], HIGH:[] },
+        '2':     { LOW:[], MEDIUM:[], HIGH:[] },
+        '0_1':   { LOW:[], MEDIUM:[], HIGH:[] }
+    };
+
+    pairs.forEach(function(p) {
+        var info = byPair[p];
+        var sw   = (info.latest && info.latest.sweep_risk) ? info.latest.sweep_risk : 'LOW';
+        if (!cells['0_1'][sw]) sw = 'LOW';
+        var bin;
+        if (info.count >= 3)      bin = '3plus';
+        else if (info.count === 2) bin = '2';
+        else                       bin = '0_1';
+        cells[bin][sw].push({ pair:p, count:info.count, sweep:sw });
+    });
+
+    document.getElementById('sm-meta').innerHTML =
+        'n=' + totalPairs + ' pairs in last ' + windowDays + 'd';
+
+    // ---- Render matrix grid ----
+    var rowDefs = [
+        { key:'3plus', label:'3+ signals/wk', binCount:'3+' },
+        { key:'2',     label:'2 signals/wk',  binCount:'2'  },
+        { key:'0_1',   label:'0-1 signals/wk', binCount:'0-1' }
+    ];
+    var colDefs = [
+        { key:'LOW',    label:'LOW',    color:'#10b981' },
+        { key:'MEDIUM', label:'MEDIUM', color:'#eab308' },
+        { key:'HIGH',   label:'HIGH',   color:'#ef4444' }
+    ];
+
+    // Build full quality tag mapping per cell using server-equivalent function
+    var weekVal = { '3plus':3, '2':2, '0_1':1 };
+
+    var html = '<table class="data-table" style="text-align:center"><thead><tr>' +
+               '<th style="text-align:left">Frequency \\ Sweep Risk</th>';
+    colDefs.forEach(function(col) {
+        html += '<th style="color:' + col.color + ';font-weight:700">' + col.label + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    rowDefs.forEach(function(row) {
+        html += '<tr><td style="text-align:left;font-weight:700">' + row.label + '</td>';
+        colDefs.forEach(function(col) {
+            var cellPairs = cells[row.key][col.key] || [];
+            var n = cellPairs.length;
+            var tagInfo = _qualityTag(weekVal[row.key], col.key);
+            var bg     = _TAG_BG_ALPHA[tagInfo.tag] || 'transparent';
+            var border = _TAG_COLORS[tagInfo.tag] || '#888';
+            var pairList = cellPairs.map(function(c){ return c.pair + ' (' + c.count + ')'; }).join(', ');
+            var tooltip  = pairList ? pairList : 'No pairs';
+            html += '<td style="background:' + bg + ';border:1px solid ' + border + ';padding:10px 6px" title="' + tooltip + '">' +
+                      '<div style="font-size:1.4rem;font-weight:700;color:' + border + '">' + n + '</div>' +
+                      '<div style="font-size:0.62rem;letter-spacing:0.5px;color:' + border + ';font-weight:700">' + tagInfo.tag + '</div>' +
+                    '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="margin-top:10px;font-size:0.7rem;color:var(--text-muted);line-height:1.6">' +
+            'Cell colour mirrors server <code>computeQualityTag</code>. PRIORITY (green) = 3+ &amp; LOW. ' +
+            'CONTESTED (red) = 3+ &amp; HIGH OR 2 &amp; HIGH. CAUTION (amber) = unproven (0-1) with MED/HIGH path.' +
+            '</div>';
+
+    document.getElementById('sm-matrix').innerHTML = html;
+
+    // ---- Rollup by tag ----
+    var tagRollup = { 'PRIORITY':[], 'STANDARD+':[], 'STANDARD':[], 'CAUTION':[], 'CONTESTED':[] };
+    rowDefs.forEach(function(row) {
+        colDefs.forEach(function(col) {
+            var cellPairs = cells[row.key][col.key] || [];
+            var tag = _qualityTag(weekVal[row.key], col.key).tag;
+            cellPairs.forEach(function(cp) { tagRollup[tag].push(cp); });
+        });
+    });
+
+    var rollupHtml = '<table class="data-table"><thead><tr>' +
+                     '<th>Quality Tag</th><th class="r">Pairs</th><th class="r">% of total</th><th>Bar</th>' +
+                     '</tr></thead><tbody>';
+    var tagOrder = ['PRIORITY','STANDARD+','STANDARD','CAUTION','CONTESTED'];
+    tagOrder.forEach(function(t) {
+        var arr = tagRollup[t] || [];
+        var c = arr.length;
+        var pct = totalPairs ? Math.round(c / totalPairs * 1000) / 10 : 0;
+        var barW = Math.round(pct * 2);
+        var col = _TAG_COLORS[t];
+        rollupHtml += '<tr>' +
+                      '<td><span style="color:' + col + ';font-weight:700">' + t + '</span></td>' +
+                      '<td class="r">' + c + '</td>' +
+                      '<td class="r">' + pct + '%</td>' +
+                      '<td><div style="background:' + col + ';width:' + barW + 'px;height:10px;border-radius:2px;opacity:0.75"></div></td>' +
+                      '</tr>';
+    });
+    rollupHtml += '</tbody></table>';
+    document.getElementById('sm-rollup').innerHTML = rollupHtml;
+
+    // ---- Drilldown: full pair list per tag ----
+    var dHtml = '<div style="display:flex;flex-direction:column;gap:10px">';
+    tagOrder.forEach(function(t) {
+        var arr = tagRollup[t] || [];
+        if (!arr.length) return;
+        var col = _TAG_COLORS[t];
+        // Sort by count desc, then alpha
+        arr.sort(function(a,b){ return b.count - a.count || a.pair.localeCompare(b.pair); });
+        var pairChips = arr.map(function(cp) {
+            var swCol = cp.sweep === 'LOW' ? '#10b981' : (cp.sweep === 'MEDIUM' ? '#eab308' : '#ef4444');
+            return '<span style="display:inline-block;padding:3px 8px;background:var(--bg-tertiary);border-left:3px solid ' + swCol + ';border-radius:3px;font-size:0.72rem;margin:2px">' +
+                   '<strong>' + cp.pair + '</strong> ' +
+                   '<span style="color:var(--text-muted)">' + cp.count + '/wk</span></span>';
+        }).join('');
+        dHtml += '<div>' +
+                   '<div style="font-size:0.78rem;font-weight:700;color:' + col + ';margin-bottom:4px">' + t + ' &mdash; ' + arr.length + ' pair' + (arr.length === 1 ? '' : 's') + '</div>' +
+                   '<div>' + pairChips + '</div>' +
+                 '</div>';
+    });
+    dHtml += '</div>';
+    if (dHtml === '<div style="display:flex;flex-direction:column;gap:10px"></div>') {
+        dHtml = '<p style="color:var(--text-muted);text-align:center">No pairs to drill into</p>';
+    }
+    document.getElementById('sm-drilldown').innerHTML = dHtml;
 }
 
 </script>
