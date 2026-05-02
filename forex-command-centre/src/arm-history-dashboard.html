@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- arm-history-dashboard.html v1.0.2 -->
+<!-- arm-history-dashboard.html v1.1.0 -->
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -610,6 +610,12 @@ body {
                 <option value="CRYPTO">Crypto</option>
                 <option value="BONDS">Bonds</option>
             </select>
+            <select id="lc-sweep" onchange="renderLocCalib()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Sweep Risk</option>
+                <option value="LOW">Sweep: LOW only</option>
+                <option value="MEDIUM">Sweep: MEDIUM only</option>
+                <option value="HIGH">Sweep: HIGH only</option>
+            </select>
         </div>
         <div class="card-body" id="lc-grades"><div class="loading">Fetching location history&#x2026;</div></div>
     </div>
@@ -637,6 +643,14 @@ body {
         <div class="card-body" id="lc-calib-tips" style="font-size:0.8rem;"></div>
     </div>
 
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F4C8; Per-Pair 7-Day Sweep Trend</span>
+            <span class="card-meta" id="lc-spark-meta">Each dot = one day. Most-recent event's sweep risk per day.</span>
+        </div>
+        <div class="card-body" id="lc-sparklines"><div class="loading">&#x23F3;</div></div>
+    </div>
+
     <div class="card">
         <div class="card-header">
             <span class="card-title">Raw Location Events</span>
@@ -646,11 +660,11 @@ body {
             <table class="data-table" id="lc-raw-table">
                 <thead><tr>
                     <th>Time</th><th>Pair</th><th>Class</th><th>Dir</th>
-                    <th>Grade</th><th>Zone</th><th>Zone ATR</th>
+                    <th>Grade</th><th>Sweep</th><th>Zone</th><th>Zone ATR</th>
                     <th>Cloud Pos</th><th>Cloud ATR</th>
                     <th>Supp ATR</th><th>Res ATR</th><th>Breakout</th>
                 </tr></thead>
-                <tbody id="lc-raw-body"><tr><td colspan="12" style="text-align:center;color:var(--text-muted)">Load data above</td></tr></tbody>
+                <tbody id="lc-raw-body"><tr><td colspan="13" style="text-align:center;color:var(--text-muted)">Load data above</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -1702,13 +1716,16 @@ function renderLocCalib() {
     var pairF  = document.getElementById('lc-pair').value;
     var dirF   = document.getElementById('lc-dir').value;
     var assetF = document.getElementById('lc-asset').value;
+    var sweepF = document.getElementById('lc-sweep') ? document.getElementById('lc-sweep').value : '';
 
     if (pairF)  events = events.filter(function(e) { return e.pair === pairF; });
     if (dirF)   events = events.filter(function(e) { return e.direction === dirF; });
     if (assetF) events = events.filter(function(e) { return e.asset_class === assetF; });
+    if (sweepF) events = events.filter(function(e) { return (e.sweep_risk || 'LOW') === sweepF; });
 
     var total = events.length;
-    document.getElementById('lc-meta').textContent = total + ' events | Total stored: ' + d.total;
+    var sweepMeta = sweepF ? ' | Sweep filter: ' + sweepF : '';
+    document.getElementById('lc-meta').textContent = total + ' events | Total stored: ' + d.total + sweepMeta;
 
     // Grade distribution
     var gradeOrder = ['PRIME','AT_ZONE','AT_CLOUD','IN_CLOUD','WAIT','OPPOSED','BREAKOUT_RETEST','BREAKOUT_EXT','FALSE_BREAK','NO_DIRECTION'];
@@ -1718,18 +1735,47 @@ function renderLocCalib() {
     var grades = {};
     events.forEach(function(e) { grades[e.grade] = (grades[e.grade] || 0) + 1; });
 
-    var html = '<table class="data-table"><thead><tr><th>Grade</th><th class="r">Count</th><th class="r">%</th><th>Bar</th></tr></thead><tbody>';
+    // Per-grade sweep risk distribution (v1.1.0)
+    var sweepByGrade = {};
+    events.forEach(function(e) {
+        var g = e.grade;
+        var s = e.sweep_risk || 'LOW';
+        if (!sweepByGrade[g]) sweepByGrade[g] = { LOW:0, MEDIUM:0, HIGH:0 };
+        if (sweepByGrade[g][s] === undefined) sweepByGrade[g][s] = 0;
+        sweepByGrade[g][s]++;
+    });
+
+    var html = '<table class="data-table"><thead><tr>' +
+               '<th>Grade</th><th class="r">Count</th><th class="r">%</th>' +
+               '<th class="r" style="color:#10b981">LOW %</th>' +
+               '<th class="r" style="color:#eab308">MED %</th>' +
+               '<th class="r" style="color:#ef4444">HIGH %</th>' +
+               '<th>Bar</th></tr></thead><tbody>';
     gradeOrder.forEach(function(g) {
         if (!grades[g]) return;
         var cnt = grades[g];
         var pct = total ? Math.round(cnt / total * 1000) / 10 : 0;
         var col = gradeCols[g] || '#888';
         var barW = Math.round(pct * 2);
+        var sb = sweepByGrade[g] || { LOW:0, MEDIUM:0, HIGH:0 };
+        var lo = cnt ? Math.round(sb.LOW    / cnt * 1000) / 10 : 0;
+        var me = cnt ? Math.round(sb.MEDIUM / cnt * 1000) / 10 : 0;
+        var hi = cnt ? Math.round(sb.HIGH   / cnt * 1000) / 10 : 0;
+        // Highlight if HIGH dominates a grade where it shouldn't (PRIME with HIGH > 25% is concerning)
+        var hiCellStyle = '';
+        if ((g === 'PRIME' || g === 'AT_ZONE' || g === 'AT_CLOUD' || g === 'BREAKOUT_RETEST') && hi > 25) {
+            hiCellStyle = 'background:rgba(239,68,68,0.18);font-weight:700';
+        }
         html += '<tr><td><span style="color:' + col + ';font-weight:700">' + g + '</span></td>' +
                 '<td class="r">' + cnt + '</td><td class="r">' + pct + '%</td>' +
-                '<td><div style="background:' + col + ';width:' + barW + 'px;height:10px;border-radius:2px;opacity:0.7"></div></td></tr>';
+                '<td class="r">' + lo + '%</td>' +
+                '<td class="r">' + me + '%</td>' +
+                '<td class="r" style="' + hiCellStyle + '">' + hi + '%</td>' +
+                '<td><div style="background:' + col + ';width:' + barW + 'px;height:10px;border-radius:2px;opacity:0.7"></div></td>' +
+                '</tr>';
     });
     html += '</tbody></table>';
+    html += '<div style="margin-top:6px;font-size:0.7rem;color:var(--text-muted)">HIGH cell highlighted red on quality grades (PRIME/AT_ZONE/AT_CLOUD/BREAKOUT_RETEST) when HIGH &gt; 25% &mdash; signals contested entries flowing through high-quality location grades.</div>';
     document.getElementById('lc-grades').innerHTML = html;
 
     // Distance stats per grade
@@ -1804,12 +1850,15 @@ function renderLocCalib() {
     recent.forEach(function(e) {
         var gc = gradeCols[e.grade] || '#888';
         var dt = e.timestamp ? new Date(e.timestamp).toLocaleString('en-AU',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+        var sw  = e.sweep_risk || 'LOW';
+        var swCol = sw === 'LOW' ? '#10b981' : (sw === 'MEDIUM' ? '#eab308' : '#ef4444');
         tbody += '<tr>' +
             '<td style="font-size:0.65rem;color:var(--text-muted)">' + dt + '</td>' +
             '<td><strong>' + (e.pair||'') + '</strong></td>' +
             '<td style="font-size:0.65rem">' + (e.asset_class||'') + '</td>' +
             '<td style="font-size:0.65rem">' + (e.direction||'') + '</td>' +
             '<td><span style="color:' + gc + ';font-weight:700;font-size:0.7rem">' + (e.grade||'') + '</span></td>' +
+            '<td><span style="color:' + swCol + ';font-weight:700;font-size:0.65rem">' + sw + '</span></td>' +
             '<td style="font-size:0.65rem">' + (e.zone||'') + '</td>' +
             '<td class="r" style="font-size:0.65rem">' + (e.zone_dist_atr||'') + '</td>' +
             '<td style="font-size:0.65rem">' + (e.cloud_pos||'') + '</td>' +
@@ -1819,7 +1868,117 @@ function renderLocCalib() {
             '<td style="font-size:0.65rem">' + (e.breakout||'') + '</td>' +
             '</tr>';
     });
-    document.getElementById('lc-raw-body').innerHTML = tbody || '<tr><td colspan="12" style="text-align:center;color:var(--text-muted)">No events</td></tr>';
+    document.getElementById('lc-raw-body').innerHTML = tbody || '<tr><td colspan="13" style="text-align:center;color:var(--text-muted)">No events</td></tr>';
+
+    // v1.1.0 - Per-pair 7-day sweep trend sparklines
+    renderLocSweepSparklines(events);
+}
+
+// ===========================================================================
+// LOCATION CALIBRATION ENHANCEMENTS (Phase 3c v1.1.0)
+// Per-pair 7-day sweep risk sparklines: 7 colour-coded dots, one per day,
+// dot colour = that day's most-recent event's sweep_risk. Categorical data
+// rendered as discrete dots (not a line) to avoid implying continuous trend.
+// ===========================================================================
+function renderLocSweepSparklines(events) {
+    var elBody = document.getElementById('lc-sparklines');
+    if (!elBody) return;
+
+    // Restrict to last 7 days
+    var nowMs  = Date.now();
+    var dayMs  = 24 * 60 * 60 * 1000;
+    var cutoff = nowMs - 7 * dayMs;
+    var recent = events.filter(function(e) {
+        return new Date(e.timestamp).getTime() >= cutoff;
+    });
+
+    if (!recent.length) {
+        elBody.innerHTML = '<p style="color:var(--text-muted);text-align:center">No events in last 7 days</p>';
+        return;
+    }
+
+    // Group by pair, then by day-bucket (0 = oldest day, 6 = today)
+    var byPair = {};
+    recent.forEach(function(e) {
+        var p = e.pair;
+        if (!p) return;
+        var ts = new Date(e.timestamp).getTime();
+        var dayIdx = 6 - Math.floor((nowMs - ts) / dayMs);
+        if (dayIdx < 0) dayIdx = 0;
+        if (dayIdx > 6) dayIdx = 6;
+        if (!byPair[p]) byPair[p] = { days: {}, count: 0, latestTs: 0, latestSweep: null };
+        if (!byPair[p].days[dayIdx]) byPair[p].days[dayIdx] = { ts: 0, sweep: null };
+        if (ts > byPair[p].days[dayIdx].ts) {
+            byPair[p].days[dayIdx].ts    = ts;
+            byPair[p].days[dayIdx].sweep = e.sweep_risk || 'LOW';
+        }
+        if (ts > byPair[p].latestTs) {
+            byPair[p].latestTs = ts;
+            byPair[p].latestSweep = e.sweep_risk || 'LOW';
+        }
+        byPair[p].count++;
+    });
+
+    var pairs = Object.keys(byPair).sort(function(a, b) {
+        // Sort by current sweep risk severity desc, then count desc, then alpha
+        var sevOrder = { 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1 };
+        var sa = sevOrder[byPair[a].latestSweep] || 0;
+        var sb = sevOrder[byPair[b].latestSweep] || 0;
+        if (sa !== sb) return sb - sa;
+        if (byPair[a].count !== byPair[b].count) return byPair[b].count - byPair[a].count;
+        return a.localeCompare(b);
+    });
+
+    function dotColor(s) {
+        if (s === 'LOW')    return '#10b981';
+        if (s === 'MEDIUM') return '#eab308';
+        if (s === 'HIGH')   return '#ef4444';
+        return 'transparent';
+    }
+
+    var html = '<table class="data-table"><thead><tr>' +
+               '<th>Pair</th>' +
+               '<th class="r">Events 7d</th>' +
+               '<th>Latest</th>' +
+               '<th style="text-align:center">D-6</th>' +
+               '<th style="text-align:center">D-5</th>' +
+               '<th style="text-align:center">D-4</th>' +
+               '<th style="text-align:center">D-3</th>' +
+               '<th style="text-align:center">D-2</th>' +
+               '<th style="text-align:center">D-1</th>' +
+               '<th style="text-align:center">Today</th>' +
+               '</tr></thead><tbody>';
+
+    pairs.forEach(function(p) {
+        var info = byPair[p];
+        var latest    = info.latestSweep;
+        var latestCol = dotColor(latest);
+        html += '<tr>' +
+                '<td><strong>' + p + '</strong></td>' +
+                '<td class="r">' + info.count + '</td>' +
+                '<td><span style="color:' + latestCol + ';font-weight:700;font-size:0.7rem">' + latest + '</span></td>';
+        for (var dayIdx = 0; dayIdx <= 6; dayIdx++) {
+            var dayInfo = info.days[dayIdx];
+            if (dayInfo && dayInfo.sweep) {
+                var c = dotColor(dayInfo.sweep);
+                html += '<td style="text-align:center"><div title="' + dayInfo.sweep + '" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + c + '"></div></td>';
+            } else {
+                html += '<td style="text-align:center"><div title="No event" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:transparent;border:1px dashed var(--border-color)"></div></td>';
+            }
+        }
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="margin-top:8px;font-size:0.7rem;color:var(--text-muted);display:flex;gap:14px;flex-wrap:wrap">' +
+            '<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#10b981;vertical-align:middle;margin-right:4px"></span>LOW</span>' +
+            '<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#eab308;vertical-align:middle;margin-right:4px"></span>MEDIUM</span>' +
+            '<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#ef4444;vertical-align:middle;margin-right:4px"></span>HIGH</span>' +
+            '<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1px dashed var(--border-color);vertical-align:middle;margin-right:4px"></span>No event that day</span>' +
+            '<span style="color:var(--text-muted)">Sorted by latest sweep severity desc &middot; categorical data, not a continuous trend line</span>' +
+            '</div>';
+
+    document.getElementById('lc-spark-meta').innerHTML = pairs.length + ' pairs over last 7d';
+    elBody.innerHTML = html;
 }
 
 function loadIGSentiment() {
