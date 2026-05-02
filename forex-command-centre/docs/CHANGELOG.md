@@ -1,3 +1,110 @@
+## [arm-history-dashboard v1.0.0 -> v1.1.0] - 2026-05-02
+
+### Phase 3c: Intelligence Hub calibration tabs
+
+Adds two new tabs and enhances the existing Location Calibration tab,
+giving the operator a numerical view of the sweep_risk distribution
+BEFORE recalibrating Pine inputs (sweepLowMax, sweepMedMax,
+magnetThreshAtr). Conservative path per session decision: build the
+data view first, then recalibrate with evidence.
+
+No server changes - entirely additive frontend on top of existing
+/location-history endpoint.
+
+#### v1.0.0 - Version banner baseline
+
+File was previously unversioned (2265 lines). Added `<!-- arm-history-dashboard.html v1.0.0 -->` so future edits are tracked.
+
+#### v1.0.1 - Sweep Risk Calibration tab (NEW)
+
+New tab `tab-sweepcal`. Three sections:
+
+1. **Grade Distribution chart** - LOW/MEDIUM/HIGH counts vs target
+   (60/30/10) with per-tier delta column (grey if dev <=5pp,
+   amber <=15pp, red >15pp). Solid bar = actual; dashed = target.
+2. **Per Asset Class breakdown** - LOW/MED/HIGH percentages per
+   class (FX/METALS/ENERGY/INDICES/CRYPTO/BONDS) with deviation
+   flags (>15pp from overall) and thin-sample warnings (n<50).
+3. **Auto Calibration Tips** - severity-coded (OK/INFO/WARN/ACTION)
+   tips referencing exact Pine input changes from the calibration
+   table. Triggers: LOW>80%, LOW<40%, HIGH>25%, HIGH 15-25%,
+   MED+HIGH>50%, per-asset deviation >15pp, sample size <50.
+
+Range filter: 7d / 30d (default) / 90d / All time.
+Asset class filter: all six classes + "All".
+Pre-recalibration baseline banner makes current Pine inputs explicit.
+
+#### v1.0.2 - Frequency x Sweep Matrix tab (NEW)
+
+New tab `tab-sweepmatrix`. 3x3 cell grid (weekly signal count
+{3+/2/0-1} x sweep risk {LOW/MEDIUM/HIGH}). Each cell counts PAIRS
+(not events) currently in that bucket and colour-codes by Quality
+Tag using a client-side mirror of the server `computeQualityTag()`
+function.
+
+CRITICAL coupling: the `_qualityTag()` client function in this file
+MUST stay in sync with `computeQualityTag()` in
+`forex-alert-server/index.js`. Both contain the same 9-cell decision
+tree.
+
+Three sections:
+1. **Pair Allocation Matrix** - 3x3 grid with cell counts and tag
+   labels. Colour: PRIORITY green / STANDARD+ blue / STANDARD grey /
+   CAUTION amber / CONTESTED red.
+2. **Quality Tag Rollup** - aggregated count + percentage + bar per
+   tag.
+3. **Pairs by Quality Tag drilldown** - chip view of every pair
+   grouped by tag, with weekly count and sweep risk colour stripe.
+
+Frequency window selector: 7d (default) / 14d / 30d.
+Pair frequency = events in last N days.
+Pair current sweep_risk = most recent event's sweep_risk in window.
+
+#### v1.1.0 - Location Calibration enhancements
+
+Three additions to the existing Location Calibration tab:
+
+1. **Sweep risk filter dropdown** alongside pair/dir/asset filters.
+   Filters all sub-sections (grade dist, distance stats, raw events,
+   sparklines).
+2. **Grade distribution table** - new LOW/MED/HIGH percentage
+   columns. HIGH cell highlighted red on quality grades (PRIME,
+   AT_ZONE, AT_CLOUD, BREAKOUT_RETEST) when HIGH > 25% - flags
+   contested entries flowing through high-quality location grades
+   (a calibration smell).
+3. **Per-Pair 7-Day Sweep Trend sparklines** - new card before raw
+   events table. Each pair = 7 dots (D-6 through Today), dot colour
+   = that day's most-recent event's sweep_risk. Empty dashed dot =
+   no event. Sorted by latest sweep severity desc.
+
+Plus: Sweep column added to Raw Events table (header + row).
+
+**Institutional decision:** sparklines rendered as discrete coloured
+dots, not continuous lines. Drawing lines through categorical data
+implies precision that doesn't exist.
+
+#### File size
+
+`arm-history-dashboard.html`: 2265 -> 3037 lines (+772, +34%).
+
+#### Deploy
+
+```
+cd /mnt/user/appdata && git pull
+cp forex-command-centre/src/arm-history-dashboard.html nginx/www/
+# Hard refresh PWA / clear cache. No alert-server changes.
+```
+
+#### Pine recalibration NOT applied this session
+
+Per session decision: use new tabs to verify distribution
+numerically, then apply Pine input changes (sweepLowMax 1->2,
+sweepMedMax 2->4 for FX/Indices/Bonds; same + magnetThreshAtr
+2.0->1.5 for Energy/Crypto). Banner at top of new tabs makes
+pre-recalibration state explicit.
+
+---
+
 ## [armed-panel v1.18.0 + diagnostics] - 2026-05-02
 
 ### TODO P15, P16, P17 closed: STRUCT EXT diagnosis + LOW CONF link + Phase 3b filter chips
