@@ -28,8 +28,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '3.0.1';
+const VERSION = '3.1.0';
 const CHANGES = [
+    '3.1.0 - MINOR: FCC-SRL v3.1.0 per-asset magnet/sweep profile capture. Webhook handler and appendLocHistory now read profile, profile_magnet_atr, profile_sweep_low, profile_sweep_med from payload. Stored on data.pairs[pair] and appended to location-history events. Backward compat: missing fields default to null/0 (older Pine indicator pre-v3.1.0 still works). Required for Phase 3d per-profile win-rate analytics.',
     '3.0.1 - PATCH: weekSignalCount/twoWeekSignalCount week boundary now uses Monday 00:00 Australia/Sydney (was Monday 00:00 UTC). Resolves TODO P14: pairs armed Monday morning AEST (Sunday night UTC) were being counted to LAST week, not this week. New getSydneyOffsetMs() helper uses Intl API to handle AEST (UTC+10) / AEDT (UTC+11) DST automatically. Single-operator system, hard-coded to Australia/Sydney timezone.',
     '3.0.0 - MAJOR: aligned with Ultimate UTCC v3.0.0 + FCC-SRL v3.0.0 edge-triggered alert cadence. SESSION_GAP reduced 12h -> 30min: Pine indicators now fire ONCE on rising edge of arm state (not every bar close while armed), so aggressive dedup is no longer needed. 30min window only catches genuine duplicates (TradingView retries, network reposts). weekSignalCount will now reflect TRUE distinct arm sessions, not collapsed 4H repeat-fires. Note: count values will appear lower than v2.x because old counts were inflated by repeat-fires. /webhook/location handler accepts new event_type field (TRANSITION|HEARTBEAT) from FCC-SRL v3.0.0 - no special handling, just stored.',
     '2.17.0 - Quality Tag engine (frequency x sweep risk): computeQualityTag() returns PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED based on weekSignalCount and sweep_risk. Independent of PRIME/STANDARD/DEGRADED tier. Wired into enrichArmedPair(). /state response now exposes qualityTag, qualityReason, sweepRisk, magnets[], magnetsTotal, magnetsDirectional, activeSession, adxBias, adxValue. Backward compat: missing data -> STANDARD with reason "Incomplete data".',
@@ -974,7 +975,12 @@ function appendLocHistory(payload) {
             magnets_total:       parseInt(payload.magnets_total)       || 0,
             magnets_directional: parseInt(payload.magnets_directional) || 0,
             sweep_risk:          payload.sweep_risk          || 'LOW',
-            magnets:             Array.isArray(payload.magnets) ? payload.magnets : []
+            magnets:             Array.isArray(payload.magnets) ? payload.magnets : [],
+            // v3.1.0 - per-asset magnet/sweep profile capture
+            profile:             payload.profile             || null,
+            profile_magnet_atr:  parseFloat(payload.profile_magnet_atr) || null,
+            profile_sweep_low:   parseInt(payload.profile_sweep_low)    || null,
+            profile_sweep_med:   parseInt(payload.profile_sweep_med)    || null
         };
         data.events.push(event);
         data.total        = data.events.length;
@@ -2056,6 +2062,11 @@ var server = http.createServer(function(req, res) {
                     magnets_directional: payload.magnets_directional || 0,
                     sweep_risk:          payload.sweep_risk          || 'LOW',
                     magnets:             Array.isArray(payload.magnets) ? payload.magnets : [],
+                    // v3.1.0 - per-asset magnet/sweep profile (FCC-SRL v3.1.0+)
+                    profile:             payload.profile             || null,
+                    profile_magnet_atr:  parseFloat(payload.profile_magnet_atr) || null,
+                    profile_sweep_low:   parseInt(payload.profile_sweep_low)    || null,
+                    profile_sweep_med:   parseInt(payload.profile_sweep_med)    || null,
                     timestamp:      now.toISOString()
                 };
                 saveLocation(data);

@@ -1,29 +1,71 @@
 //@version=6
 // ══════════════════════════════════════════════════════════════════════════════
-// FCC S/R Location Zones — v1.0.0
-// Forex Command Centre — combined S/R visual + location grading + FCC webhook
+// FCC S/R Location Zones — v3.1.0
+// Forex Command Centre — S/R visual + location grading + LIQUIDITY MAGNETS
 //
-// Replaces:
-//   sr-location-zones.pine  (visual zones only)
-//   location-engine.pine    (webhook only)
+// v3.0.0 (MAJOR — breaking change to alert cadence):
+//   * Edge-triggered alerts. Webhook now fires the moment grade or sweep risk
+//     tier transitions, not on every 4H bar close.
+//   * Removed `barstate.isconfirmed` gate. Latency from state change to
+//     notification is now seconds, not up to 4 hours.
+//   * Removed `alertEveryBar` toggle. It was a leakage point allowing the
+//     operator to override system behaviour. Replaced with optional
+//     `enableHeartbeat` (default OFF) for liveness-check pings only.
+//   * Alert freq changed: `alert.freq_once_per_bar_close` -> `alert.freq_once_per_bar`
+//     (allows intra-bar firing, still rate-limited to one fire per bar).
+//   * Aligns FCC-SRL with Ultimate UTCC v3.0.0 cadence model. Operator sees
+//     the picture change the moment it changes — no more stale grades.
+//
+// v2.0.2 PATCH:
+//   - Fix runtime crash when magnet array has 0 or 1 elements.
+//     Pine Script for-loops with end < start still iterate once (e.g.
+//     `for i = 0 to -1` runs once with i=0), causing index-out-of-bounds
+//     in array.get(arr, j+1) when only 1 magnet exists.
+//   - Added explicit size guards: sort requires size > 1, JSON build
+//     requires size > 0. magnetsJson stays as "[]" when no magnets found.
+//
+// v2.0.1 PATCH:
+//   - Fix Pine v6 multi-line continuation error inside magnet JSON for-loop
+//     Refactored to single-line concatenation with extracted intermediate
+//     variables. No functional change.
+//
+// v2.0.0 CHANGELOG (MAJOR — breaking payload change):
+//   + Session H/L tracking (Tokyo/London/NY) as magnet type
+//   + ADX directional bias (diPlus/diMinus/ADX) for ahead-of-price logic
+//   + Magnet counting: levels within ATR threshold between price and target
+//   + Sweep risk tier: LOW / MEDIUM / HIGH (drives FCC tier downgrade)
+//   + Extended webhook payload with magnets[] array + sweep_risk fields
+// v3.1.0 (2026-05-02):
+//   + Per-asset-class magnet/sweep profiles (FX/METALS/ENERGY/INDICES/CRYPTO/BONDS)
+//   + magnetThreshAtr / sweepLowMax / sweepMedMax now resolved per asset class
+//   + Defaults: FX/Indices/Bonds/Metals = 2.0/2/4 (Metals on test profile),
+//     Energy/Crypto = 1.5/2/4 (tighter magnet detection for higher volatility)
+//   + 'profile' field added to webhook payload for per-profile analytics
+//   + Active profile shown in chart label (institutional transparency)
 //
 // Auto-detects asset class: FX | METALS | ENERGY | INDICES | CRYPTO | BONDS
 // Applies calibrated profile per class. All values manually overrideable.
 //
 // What it does:
-//   1. Draws S/R zones: Weekly/Daily swings, PDH/PDL, PWH/PWL,
+//   1. Draws S/R zones: Weekly/Daily swings, PDH/PDL, PWH/PWL, session H/L,
 //      round numbers, Daily 200 EMA — ATR-scaled boxes, colour-coded
 //   2. Touch counting: WEAK / MODERATE / STRONG / EXHAUSTED
 //   3. Confluence detection: flags when 2+ sources overlap
 //   4. Grades entry location: PRIME / AT_ZONE / AT_CLOUD / IN_CLOUD /
 //      WAIT / OPPOSED / BREAKOUT_RETEST / BREAKOUT_EXT / FALSE_BREAK
-//   5. Fires webhook to FCC alert server on every bar close
+//   5. Counts LIQUIDITY MAGNETS between current price and target direction
+//   6. Classifies SWEEP RISK (LOW/MEDIUM/HIGH) based on directional magnet count
+//   7. Fires webhook to FCC alert server on bar close
 //
-// Webhook payload (JSON):
+// Webhook payload (JSON) — v2.0.0 extended:
 //   {"pair":"EURUSD","asset_class":"FX","direction":"LONG","grade":"PRIME",
 //    "zone":"D.SwingL","zone_dist_atr":"0.12","cloud_pos":"AT_LOWER_EDGE",
 //    "cloud_dist_atr":"0.08","breakout":"NONE","supp_name":"D.SwingL",
-//    "supp_dist_atr":"0.12","res_name":"PDH","res_dist_atr":"1.4"}
+//    "supp_dist_atr":"0.12","res_name":"PDH","res_dist_atr":"1.4",
+//    "active_session":"LONDON","sess_hi":"1.0845","sess_lo":"1.0820",
+//    "adx_bias":"LONG","adx_value":"24.5",
+//    "magnets_total":4,"magnets_directional":2,"sweep_risk":"MEDIUM",
+//    "magnets":[{"type":"PDH","price":"1.0870","dist_atr":"0.8","dir":"AHEAD"}, ...]}
 //
 // Setup:
 //   1. Add to each pair on 4H chart (works on 1H and Daily too)
@@ -103,11 +145,45 @@ showLbls     = input.bool(true,  "Show Zone Labels",            group=grpGen)
 lblSize      = input.string("small", "Label Size",              group=grpGen, options=["tiny","small","normal","large"])
 extRight     = input.int(20,  "Extend Boxes Right (bars)",      group=grpGen, minval=0, maxval=200)
 showCloud    = input.bool(true, "Show EMA Cloud",               group=grpGen)
-alertEveryBar = input.bool(true, "Webhook Every Bar Close",     group=grpGen,
-                tooltip="ON = fires every bar close. OFF = only on grade change.")
+enableHeartbeat = input.bool(false, "Enable Bar-Close Heartbeat", group=grpGen,
+                tooltip="OFF (default) = webhook fires only on grade or sweep tier transitions. ON = also fires a state ping on every bar close (for liveness checks). Edge-triggered events fire either way.")
 showGradeLbl  = input.bool(true, "Show Grade Label on Chart",   group=grpGen)
 
 assetClass = manualClass == "AUTO" ? detectedClass : manualClass
+
+// v3.1.0 - Resolve effective magnet/sweep params from per-asset profile.
+// These three vars replace the flat magnetThreshAtr / sweepLowMax / sweepMedMax
+// throughout the rest of the script.
+float magnetThreshAtr = fx_magnetThreshAtr
+int   sweepLowMax     = fx_sweepLowMax
+int   sweepMedMax     = fx_sweepMedMax
+
+if assetClass == "METALS"
+    magnetThreshAtr := met_magnetThreshAtr
+    sweepLowMax     := met_sweepLowMax
+    sweepMedMax     := met_sweepMedMax
+else if assetClass == "ENERGY"
+    magnetThreshAtr := ene_magnetThreshAtr
+    sweepLowMax     := ene_sweepLowMax
+    sweepMedMax     := ene_sweepMedMax
+else if assetClass == "INDICES"
+    magnetThreshAtr := idx_magnetThreshAtr
+    sweepLowMax     := idx_sweepLowMax
+    sweepMedMax     := idx_sweepMedMax
+else if assetClass == "CRYPTO"
+    magnetThreshAtr := cr_magnetThreshAtr
+    sweepLowMax     := cr_sweepLowMax
+    sweepMedMax     := cr_sweepMedMax
+else if assetClass == "BONDS"
+    magnetThreshAtr := bnd_magnetThreshAtr
+    sweepLowMax     := bnd_sweepLowMax
+    sweepMedMax     := bnd_sweepMedMax
+// FX is the default fallback (already initialised above)
+
+// Profile name for label and webhook payload.
+// 'FX' covers FX/INDICES/BONDS family at default values; we still record the
+// specific assetClass in the webhook so server-side analytics can distinguish.
+string profileName = assetClass
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INPUTS — ZONE SOURCES
@@ -164,6 +240,85 @@ grpBrk        = "Breakout Detection"
 useBreakout   = input.bool(true,  "Enable Breakout Detection", group=grpBrk)
 retestProxMul = input.float(0.3,  "Retest Tolerance ATR x",    group=grpBrk, minval=0.1, maxval=1.0, step=0.1)
 falseBreakMul = input.float(0.2,  "False Break Threshold ATR x",group=grpBrk, minval=0.05, maxval=0.5, step=0.05)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS — LIQUIDITY MAGNETS (v2.0.0)
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpMag          = "Liquidity Magnets - Global"
+enableMagnets   = input.bool(true,  "Enable Magnet Detection",           group=grpMag,
+                    tooltip="Counts S/R levels between current price and trade direction. Drives sweep_risk tier.")
+magnetMaxShown  = input.int(6,      "Max Magnets in Payload",            group=grpMag, minval=1, maxval=15,
+                    tooltip="Caps magnet array size to limit webhook payload. Closest N are kept.")
+
+// Per-asset profiles for magnetThreshAtr / sweepLowMax / sweepMedMax (v3.1.0)
+// Defaults locked in by recalibration analysis 2026-05-02 (TODO P15/P16 diagnosis):
+//   FX/Indices/Bonds: 2.0 / 2 / 4 (institutional baseline)
+//   Energy/Crypto:    1.5 / 2 / 4 (tighter due to higher volatility regime)
+//   Metals:           2.0 / 2 / 4 (TEST profile - same values as FX, separate
+//                                  group so post-fix distribution can be observed
+//                                  and tuned independently if it diverges)
+
+grpMagFx          = "Liquidity Magnets - FX"
+fx_magnetThreshAtr = input.float(2.0, "FX: Magnet Path Threshold (ATR x)", group=grpMagFx, minval=0.5, maxval=5.0, step=0.1)
+fx_sweepLowMax     = input.int(2,     "FX: Sweep LOW: directional <= ",    group=grpMagFx, minval=0, maxval=5)
+fx_sweepMedMax     = input.int(4,     "FX: Sweep MED: directional <= ",    group=grpMagFx, minval=1, maxval=6)
+
+grpMagMet         = "Liquidity Magnets - Metals (TEST)"
+met_magnetThreshAtr = input.float(2.0, "Metals: Magnet Path Threshold (ATR x)", group=grpMagMet, minval=0.5, maxval=5.0, step=0.1,
+                        tooltip="TEST profile - starts on FX values. Tune independently if Sweep Risk tab shows Metals diverging from FX.")
+met_sweepLowMax     = input.int(2,     "Metals: Sweep LOW: directional <= ",    group=grpMagMet, minval=0, maxval=5)
+met_sweepMedMax     = input.int(4,     "Metals: Sweep MED: directional <= ",    group=grpMagMet, minval=1, maxval=6)
+
+grpMagEne         = "Liquidity Magnets - Energy"
+ene_magnetThreshAtr = input.float(1.5, "Energy: Magnet Path Threshold (ATR x)", group=grpMagEne, minval=0.5, maxval=5.0, step=0.1,
+                        tooltip="Tighter than FX baseline. Energy is volatile and produces wide ATR; tighter threshold prevents false LOW classification.")
+ene_sweepLowMax     = input.int(2,     "Energy: Sweep LOW: directional <= ",    group=grpMagEne, minval=0, maxval=5)
+ene_sweepMedMax     = input.int(4,     "Energy: Sweep MED: directional <= ",    group=grpMagEne, minval=1, maxval=6)
+
+grpMagIdx         = "Liquidity Magnets - Indices"
+idx_magnetThreshAtr = input.float(2.0, "Indices: Magnet Path Threshold (ATR x)", group=grpMagIdx, minval=0.5, maxval=5.0, step=0.1)
+idx_sweepLowMax     = input.int(2,     "Indices: Sweep LOW: directional <= ",    group=grpMagIdx, minval=0, maxval=5)
+idx_sweepMedMax     = input.int(4,     "Indices: Sweep MED: directional <= ",    group=grpMagIdx, minval=1, maxval=6)
+
+grpMagCr          = "Liquidity Magnets - Crypto"
+cr_magnetThreshAtr  = input.float(1.5, "Crypto: Magnet Path Threshold (ATR x)", group=grpMagCr, minval=0.5, maxval=5.0, step=0.1,
+                        tooltip="Tighter than FX baseline. Crypto exhibits Energy-like volatility regime.")
+cr_sweepLowMax      = input.int(2,     "Crypto: Sweep LOW: directional <= ",    group=grpMagCr, minval=0, maxval=5)
+cr_sweepMedMax      = input.int(4,     "Crypto: Sweep MED: directional <= ",    group=grpMagCr, minval=1, maxval=6)
+
+grpMagBnd         = "Liquidity Magnets - Bonds"
+bnd_magnetThreshAtr = input.float(2.0, "Bonds: Magnet Path Threshold (ATR x)", group=grpMagBnd, minval=0.5, maxval=5.0, step=0.1)
+bnd_sweepLowMax     = input.int(2,     "Bonds: Sweep LOW: directional <= ",    group=grpMagBnd, minval=0, maxval=5)
+bnd_sweepMedMax     = input.int(4,     "Bonds: Sweep MED: directional <= ",    group=grpMagBnd, minval=1, maxval=6)
+// 3+ = HIGH automatically (per asset class)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS — ADX DIRECTIONAL BIAS (v2.0.0)
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpAdx          = "ADX Directional Bias"
+enableAdx       = input.bool(true,  "Use ADX for directional filter",    group=grpAdx,
+                    tooltip="When ADX > threshold, uses diPlus/diMinus to determine trade direction. Falls back to EMA stack if ADX weak.")
+adxLen          = input.int(14,     "ADX Length",                         group=grpAdx, minval=5, maxval=50)
+adxThresh       = input.float(20.0, "ADX Minimum Threshold",              group=grpAdx, minval=10.0, maxval=40.0, step=1.0,
+                    tooltip="ADX below this = no trend confirmation. Institutional default 20.")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS — SESSION H/L (v2.0.0)
+// ══════════════════════════════════════════════════════════════════════════════
+
+grpSess         = "Session High/Low"
+enableSessions  = input.bool(true,  "Track Session H/L",                  group=grpSess,
+                    tooltip="Tokyo, London, NY session highs and lows. Added as magnet-eligible levels.")
+tokyoSess       = input.session("0000-0900",  "Tokyo Session (exchange time)",  group=grpSess,
+                    tooltip="Tokyo session in local exchange time. Default 00:00-09:00 JST.")
+londonSess      = input.session("0800-1700",  "London Session (exchange time)", group=grpSess,
+                    tooltip="London session in local exchange time. Default 08:00-17:00 GMT/BST.")
+nySess          = input.session("0930-1700",  "NY Session (exchange time)",     group=grpSess,
+                    tooltip="NY session in local exchange time. Default 09:30-17:00 EST/EDT.")
+showSessLvls    = input.bool(false, "Draw Session H/L zones on chart",    group=grpSess,
+                    tooltip="OFF by default — session lines can clutter chart. Magnet detection works regardless.")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROFILE — FX
@@ -474,6 +629,95 @@ pwLow   = request.security(syminfo.tickerid, "W", low[1],  lookahead=barmerge.lo
 ema200d = request.security(syminfo.tickerid, "D", ta.ema(close, 200))
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SESSION H/L TRACKING (v2.0.0)
+// ══════════════════════════════════════════════════════════════════════════════
+
+inTokyo  = enableSessions and not na(time(timeframe.period, tokyoSess))
+inLondon = enableSessions and not na(time(timeframe.period, londonSess))
+inNY     = enableSessions and not na(time(timeframe.period, nySess))
+
+var float tokyoH   = na
+var float tokyoL   = na
+var float tokyoHP  = na
+var float tokyoLP  = na
+var float londonH  = na
+var float londonL  = na
+var float londonHP = na
+var float londonLP = na
+var float nyH      = na
+var float nyL      = na
+var float nyHP     = na
+var float nyLP     = na
+
+// Tokyo tracking — reset on session open, freeze on close
+if inTokyo and not inTokyo[1]
+    tokyoH := high
+    tokyoL := low
+else if inTokyo
+    tokyoH := math.max(tokyoH, high)
+    tokyoL := math.min(tokyoL, low)
+if not inTokyo and inTokyo[1]
+    tokyoHP := tokyoH
+    tokyoLP := tokyoL
+
+// London tracking
+if inLondon and not inLondon[1]
+    londonH := high
+    londonL := low
+else if inLondon
+    londonH := math.max(londonH, high)
+    londonL := math.min(londonL, low)
+if not inLondon and inLondon[1]
+    londonHP := londonH
+    londonLP := londonL
+
+// NY tracking
+if inNY and not inNY[1]
+    nyH := high
+    nyL := low
+else if inNY
+    nyH := math.max(nyH, high)
+    nyL := math.min(nyL, low)
+if not inNY and inNY[1]
+    nyHP := nyH
+    nyLP := nyL
+
+// Active session label
+string activeSession = "NONE"
+if inTokyo
+    activeSession := "TOKYO"
+else if inLondon
+    activeSession := "LONDON"
+else if inNY
+    activeSession := "NY"
+
+// Current session H/L for payload (most relevant = active or last closed)
+float currentSessH = na
+float currentSessL = na
+if inTokyo
+    currentSessH := tokyoH
+    currentSessL := tokyoL
+else if inLondon
+    currentSessH := londonH
+    currentSessL := londonL
+else if inNY
+    currentSessH := nyH
+    currentSessL := nyL
+else
+    // No active session — use most recent closed session H/L
+    currentSessH := not na(nyHP) ? nyHP : not na(londonHP) ? londonHP : tokyoHP
+    currentSessL := not na(nyLP) ? nyLP : not na(londonLP) ? londonLP : tokyoLP
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADX DIRECTIONAL BIAS (v2.0.0)
+// ══════════════════════════════════════════════════════════════════════════════
+
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+string adxBias = "NONE"
+if enableAdx and adxVal >= adxThresh
+    adxBias := diPlus > diMinus ? "LONG" : "SHORT"
+
+// ══════════════════════════════════════════════════════════════════════════════
 // USER DEFINED TYPE
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -643,6 +887,12 @@ if showPWL and not na(pwLow)
 if showEMA200 and not na(ema200d)
     addLevel(ema200d, "D.200EMA")
 
+// v2.0.0 — Session H/L as magnet-eligible levels
+if enableSessions and not na(currentSessH)
+    addLevel(currentSessH, "Sess.H")
+if enableSessions and not na(currentSessL)
+    addLevel(currentSessL, "Sess.L")
+
 if showRound
     effectiveIncr = roundIncr > 0 ? roundIncr : (close > 5000.0 ? 100.0 : close > 500.0 ? 10.0 : close > 50.0 ? 1.0 : close > 5.0 ? 0.5 : close > 1.0 ? 0.01 : 0.001)
     base = math.floor(close / effectiveIncr) * effectiveIncr
@@ -684,6 +934,104 @@ if array.size(resLvls) > 0
         if na(nearResLvl) or lvl < nearResLvl
             nearResLvl  := lvl
             nearResName := array.get(resNames, k)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LIQUIDITY MAGNET COUNTING (v2.0.0)
+// Counts all levels within magnetThreshAtr of current price.
+// Directional count = levels in trade direction (ADX bias preferred, EMA fallback).
+// ══════════════════════════════════════════════════════════════════════════════
+
+int magnetsTotal       = 0
+int magnetsDirectional = 0
+string sweepRisk       = "LOW"
+string magnetsJson     = "[]"
+
+// Determine effective trade direction for magnet counting
+// ADX bias takes precedence (trend-confirmed); fall back to EMA stack direction
+string effDir = direction
+if enableAdx and adxBias != "NONE"
+    effDir := adxBias
+
+if enableMagnets
+    // Build two parallel arrays: all magnets with their sort distance
+    magLvls  = array.new_float(0)
+    magNames = array.new_string(0)
+    magDirs  = array.new_string(0)
+    magDists = array.new_float(0)
+
+    // Resistance-side magnets (ahead if direction is LONG)
+    if array.size(resLvls) > 0
+        for k = 0 to array.size(resLvls) - 1
+            lvl  = array.get(resLvls, k)
+            dist = (lvl - close) / atr14
+            if dist <= magnetThreshAtr
+                magnetsTotal := magnetsTotal + 1
+                if effDir == "LONG"
+                    magnetsDirectional := magnetsDirectional + 1
+                array.push(magLvls,  lvl)
+                array.push(magNames, array.get(resNames, k))
+                array.push(magDirs,  effDir == "LONG" ? "AHEAD" : "BEHIND")
+                array.push(magDists, dist)
+
+    // Support-side magnets (ahead if direction is SHORT)
+    if array.size(suppLvls) > 0
+        for k = 0 to array.size(suppLvls) - 1
+            lvl  = array.get(suppLvls, k)
+            dist = (close - lvl) / atr14
+            if dist <= magnetThreshAtr
+                magnetsTotal := magnetsTotal + 1
+                if effDir == "SHORT"
+                    magnetsDirectional := magnetsDirectional + 1
+                array.push(magLvls,  lvl)
+                array.push(magNames, array.get(suppNames, k))
+                array.push(magDirs,  effDir == "SHORT" ? "AHEAD" : "BEHIND")
+                array.push(magDists, dist)
+
+    // Sweep risk tier
+    if magnetsDirectional <= sweepLowMax
+        sweepRisk := "LOW"
+    else if magnetsDirectional <= sweepMedMax
+        sweepRisk := "MEDIUM"
+    else
+        sweepRisk := "HIGH"
+
+    // Build JSON array — cap to magnetMaxShown closest magnets
+    // Sort by distance (simple selection — array is small)
+    // Guard required: Pine for loops with end < start still iterate once,
+    // so we must explicitly check size before sorting.
+    if array.size(magLvls) > 1
+        n = array.size(magLvls)
+        // Simple bubble-sort by distance ascending (n is small, max ~20)
+        for i = 0 to n - 2
+            for j = 0 to n - i - 2
+                if array.get(magDists, j) > array.get(magDists, j + 1)
+                    // Swap all four arrays
+                    tL  = array.get(magLvls,  j)
+                    tN  = array.get(magNames, j)
+                    tD  = array.get(magDirs,  j)
+                    tDs = array.get(magDists, j)
+                    array.set(magLvls,  j, array.get(magLvls,  j + 1))
+                    array.set(magNames, j, array.get(magNames, j + 1))
+                    array.set(magDirs,  j, array.get(magDirs,  j + 1))
+                    array.set(magDists, j, array.get(magDists, j + 1))
+                    array.set(magLvls,  j + 1, tL)
+                    array.set(magNames, j + 1, tN)
+                    array.set(magDirs,  j + 1, tD)
+                    array.set(magDists, j + 1, tDs)
+
+    // Build JSON — works for size 0 (empty []), size 1, and size N
+    if array.size(magLvls) > 0
+        keep = math.min(array.size(magLvls), magnetMaxShown)
+        magnetsJson := "["
+        for k = 0 to keep - 1
+            if k > 0
+                magnetsJson := magnetsJson + ","
+            mType  = array.get(magNames, k)
+            mPrice = str.tostring(array.get(magLvls, k), format.mintick)
+            mDist  = str.tostring(math.round(array.get(magDists, k), 2))
+            mDir   = array.get(magDirs, k)
+            magnetsJson := magnetsJson + '{"type":"' + mType + '","price":"' + mPrice + '","dist_atr":"' + mDist + '","dir":"' + mDir + '"}'
+        magnetsJson := magnetsJson + "]"
 
 // Proximity checks
 suppDist    = na(nearSuppLvl) ? float(na) : close - nearSuppLvl
@@ -1007,7 +1355,9 @@ if barstate.islast
         zoneInf = nearZoneName != "NONE" ? " | " + nearZoneName + " (" + nearZoneDistAtr + " ATR)" : ""
         cldInf  = cloudPos != "CLEAR"    ? " | Cloud: " + cloudPos : ""
         brkInf  = breakState != "NONE"   ? " | BRK: " + breakState : ""
-        lblTxt  = "[FCC-SRL]" + clsTag + " " + direction + " | " + grade + zoneInf + cldInf + brkInf
+        // v3.1.0 - Profile + effective magnet/sweep params on label for transparency
+        profInf = " | mag:" + str.tostring(magnetThreshAtr) + " sw:" + str.tostring(sweepLowMax) + "/" + str.tostring(sweepMedMax)
+        lblTxt  = "[FCC-SRL]" + clsTag + " " + direction + " | " + grade + zoneInf + cldInf + brkInf + profInf
 
         label.new(bar_index, high + atr14 * 0.5, lblTxt,
             style=label.style_label_down,
@@ -1016,28 +1366,56 @@ if barstate.islast
             size=size.small)
 
 // ══════════════════════════════════════════════════════════════════════════════
-// WEBHOOK — fires every confirmed bar close
+// WEBHOOK — v3.0.0: edge-triggered on grade or sweep tier transition
+// (optional heartbeat ping on bar close if `enableHeartbeat` is ON)
 // ══════════════════════════════════════════════════════════════════════════════
 
-var string lastGrade = ""
-gradeChanged = grade != lastGrade
-lastGrade   := grade
+var string lastGrade     = ""
+var string lastSweepRisk = ""
+gradeChanged      = grade != lastGrade
+sweepChanged      = sweepRisk != lastSweepRisk
+lastGrade        := grade
+lastSweepRisk    := sweepRisk
 
-shouldAlert = alertEveryBar ? barstate.isconfirmed : (barstate.isconfirmed and gradeChanged)
+// Fire on:
+//   1. Real transition (grade or sweep tier changed) — fires immediately, intra-bar
+//   2. Heartbeat — only if enabled, on bar close, regardless of change
+shouldAlert = (gradeChanged or sweepChanged) or (enableHeartbeat and barstate.isconfirmed)
 
 if shouldAlert
-    jsonMsg = '{"pair":"'           + syminfo.ticker   + '"' +
-              ',"asset_class":"'    + assetClass        + '"' +
-              ',"direction":"'      + direction          + '"' +
-              ',"grade":"'          + grade              + '"' +
-              ',"zone":"'           + nearZoneName       + '"' +
-              ',"zone_dist_atr":"'  + nearZoneDistAtr    + '"' +
-              ',"cloud_pos":"'      + cloudPos           + '"' +
-              ',"cloud_dist_atr":"' + cloudEdgeAtr       + '"' +
-              ',"breakout":"'       + breakState         + '"' +
-              ',"supp_name":"'      + nearSuppName       + '"' +
-              ',"supp_dist_atr":"'  + suppDistStr        + '"' +
-              ',"res_name":"'       + nearResName        + '"' +
-              ',"res_dist_atr":"'   + resDistStr         + '"' +
+    sessHiStr = na(currentSessH) ? "na" : str.tostring(currentSessH, format.mintick)
+    sessLoStr = na(currentSessL) ? "na" : str.tostring(currentSessL, format.mintick)
+    adxValStr = str.tostring(math.round(adxVal, 1))
+
+    // Distinguish event type for the receiver
+    eventType = (gradeChanged or sweepChanged) ? "TRANSITION" : "HEARTBEAT"
+
+    jsonMsg = '{"pair":"'            + syminfo.ticker    + '"' +
+              ',"asset_class":"'     + assetClass         + '"' +
+              ',"profile":"'         + profileName        + '"' +
+              ',"profile_magnet_atr":' + str.tostring(magnetThreshAtr) +
+              ',"profile_sweep_low":'  + str.tostring(sweepLowMax) +
+              ',"profile_sweep_med":'  + str.tostring(sweepMedMax) +
+              ',"event_type":"'      + eventType          + '"' +
+              ',"direction":"'       + direction          + '"' +
+              ',"grade":"'           + grade              + '"' +
+              ',"zone":"'            + nearZoneName       + '"' +
+              ',"zone_dist_atr":"'   + nearZoneDistAtr    + '"' +
+              ',"cloud_pos":"'       + cloudPos           + '"' +
+              ',"cloud_dist_atr":"'  + cloudEdgeAtr       + '"' +
+              ',"breakout":"'        + breakState         + '"' +
+              ',"supp_name":"'       + nearSuppName       + '"' +
+              ',"supp_dist_atr":"'   + suppDistStr        + '"' +
+              ',"res_name":"'        + nearResName        + '"' +
+              ',"res_dist_atr":"'    + resDistStr         + '"' +
+              ',"active_session":"'  + activeSession      + '"' +
+              ',"sess_hi":"'         + sessHiStr          + '"' +
+              ',"sess_lo":"'         + sessLoStr          + '"' +
+              ',"adx_bias":"'        + adxBias            + '"' +
+              ',"adx_value":"'       + adxValStr          + '"' +
+              ',"magnets_total":'    + str.tostring(magnetsTotal)       +
+              ',"magnets_directional":' + str.tostring(magnetsDirectional) +
+              ',"sweep_risk":"'      + sweepRisk          + '"' +
+              ',"magnets":'          + magnetsJson        +
               '}'
-    alert(jsonMsg, alert.freq_once_per_bar_close)
+    alert(jsonMsg, alert.freq_once_per_bar)
