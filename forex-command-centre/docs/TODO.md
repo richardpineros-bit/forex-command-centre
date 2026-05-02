@@ -8,7 +8,78 @@ this), and **dependencies**.
 
 ---
 
-## 🔴 Priority 1 — Scraper Health Monitoring (unified)
+## ✅ Priority 1a — Scraper Health Monitoring (backend) — CLOSED 2026-05-02
+
+**Status:** Shipped via alert server v3.1.0 → v3.2.0. Frontend dashboard
+widget deferred to **Priority 1b** (below).
+
+**What shipped:**
+- New `GET /health/scrapers` endpoint on alert server. Returns:
+  - `fleet_status`: OK / DEGRADED / CRITICAL
+  - Per-scraper: `status` (OK / WARN / STALE / MISSING / CORRUPT),
+    `age_hours`, `last_updated`, `size_bytes`, `sanity.issues[]`
+- 5 scrapers covered: `forex_calendar`, `trading_economics`,
+  `ig_sentiment`, `myfxbook_orderbook`, `macro_dominance`
+- Per-scraper staleness thresholds (1.5× cadence): FF/TE 9h,
+  IG/OB/MDI 6h
+- Tier 3 sanity layer (silent corruption detection):
+  - Empty events arrays / absurd timestamps (calendar)
+  - Missing primary sections (TE)
+  - Too few instruments / all-zero percentages (IG)
+  - <70% pairs fetched / empty current_prices block (orderbook —
+    catches the v1.1.0 "Oanda env vars not set in cron" failure mode)
+  - Out-of-range scores / too few currencies (MDI)
+- 15-minute periodic check (`runScheduledHealthCheck`) — first run
+  after startup establishes baseline only (no push), subsequent runs
+  push on transitions (OK→non-OK or recovery)
+- Push uses new pref key `scraperHealth` (separate from `scraperError`
+  canary alerts — independently togglable in PWA)
+- New env var `CALENDAR_FILE` (default `/data/calendar.json`)
+
+**Validated end-to-end:** Both bookend cases tested with synthetic
+fixtures — mixed-state (MISSING + STALE + WARN + CORRUPT) correctly
+reports `CRITICAL`, all-healthy reports `OK`. All 5 status types fire.
+
+**Deploy notes:**
+- `docker restart trading-state` after `git pull`
+- Operator must add `cp` to FF User Script to also write
+  `calendar.json` into `/mnt/user/appdata/trading-state/data/`
+  (or set `CALENDAR_FILE` env var on the container). Otherwise
+  endpoint will correctly report `forex_calendar: MISSING` — useful
+  telemetry, but worth resolving.
+- Sanity check on the new myfxbook v1.1.0 scraper will WARN if
+  `current_prices` is empty after deploy — that's the canary for the
+  "OANDA env vars missing from cron" failure mode flagged in P12.
+
+---
+
+## 🟢 Priority 1b — Scraper Health Dashboard widget (frontend)
+
+**Trigger:** After P1a has been observed for at least 48 hours and we
+trust the per-scraper sanity-check signal isn't producing false WARNs.
+
+**Scope:**
+- Intel Hub widget showing fleet status at a glance:
+  - Top-line traffic light: green (OK) / amber (DEGRADED) / red (CRITICAL)
+  - Per-scraper rows: name, status badge, age in human-friendly format
+    ("3h ago" / "STALE 12h"), sanity issues if any
+  - Auto-refresh every 60s while tab is open
+  - Click row to expand: full file path, exact timestamp, raw size
+- Polls `GET /health/scrapers` (already shipped in P1a)
+- Discreet placement — header strip or sidebar, not stealing focus
+
+**Why this is 🟢 (low priority):** P1a already pushes notifications
+on transitions, so the operator gets alerts without needing to look at
+the dashboard. The widget is convenience for at-a-glance verification,
+not the primary failure-detection mechanism.
+
+**Dependencies:** P1a shipped (done). No other deps.
+
+---
+
+## (Closed below — original P1 spec retained for audit)
+
+## 🔴 Priority 1 — Scraper Health Monitoring (unified) — original spec
 
 **Trigger:** Before any new scraper is added. Before MDI Phase 3 UI analysis
 section is built.

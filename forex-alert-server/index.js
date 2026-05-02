@@ -13,6 +13,7 @@ const BIAS_HISTORY_FILE = process.env.BIAS_HISTORY_FILE || '/data/bias-history.j
 const PUSH_SUBS_FILE = process.env.PUSH_SUBS_FILE || '/data/push-subscriptions.json';
 const IG_SENTIMENT_FILE  = process.env.IG_SENTIMENT_FILE  || '/data/ig-sentiment.json';
 const OANDA_BOOK_FILE    = process.env.OANDA_BOOK_FILE    || '/data/oanda-orderbook.json';
+const CALENDAR_FILE      = process.env.CALENDAR_FILE      || '/data/calendar.json';
 const MACRO_DOMINANCE_FILE      = process.env.MACRO_DOMINANCE_FILE      || '/data/macro-dominance.json';
 const MACRO_DOMINANCE_HIST_FILE = process.env.MACRO_DOMINANCE_HIST_FILE || '/data/macro-dominance-history.json';
 const MACRO_EVENTS_FILE         = process.env.MACRO_EVENTS_FILE         || '/data/macro-dominance-events.json';
@@ -28,8 +29,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 const CHANGES = [
+    '3.2.0 - MINOR: Scraper health monitoring (TODO P1a). New GET /health/scrapers endpoint reports fleet status (OK / DEGRADED / CRITICAL) plus per-scraper status (OK / WARN / STALE / MISSING / CORRUPT) for all 5 scrapers (forex_calendar, trading_economics, ig_sentiment, myfxbook_orderbook, macro_dominance). Includes file age, size, sanity-check issues, and configurable stale thresholds (FF/TE: 9h after 6h cadence; IG/OB/MDI: 6h after 4h cadence). 15-minute periodic check runs in-process; sends push notification (prefKey: scraperHealth) when any scraper transitions OK->non-OK or recovers. First run after startup establishes baseline only (no push). Tier 3 sanity layer added: per-scraper checks for empty events arrays, all-zero percentages, missing instruments, out-of-range MDI scores, and silently-empty current_prices block (catches the "Oanda env vars not set in cron" failure mode for myfxbook v1.1.0). New env var CALENDAR_FILE (default /data/calendar.json) — operator must ensure FF User Script copies calendar.json to this path or override via env. Frontend dashboard widget deferred to P1b.',
     '3.1.0 - MINOR: FCC-SRL v3.1.0 per-asset magnet/sweep profile capture. Webhook handler and appendLocHistory now read profile, profile_magnet_atr, profile_sweep_low, profile_sweep_med from payload. Stored on data.pairs[pair] and appended to location-history events. Backward compat: missing fields default to null/0 (older Pine indicator pre-v3.1.0 still works). Required for Phase 3d per-profile win-rate analytics.',
     '3.0.1 - PATCH: weekSignalCount/twoWeekSignalCount week boundary now uses Monday 00:00 Australia/Sydney (was Monday 00:00 UTC). Resolves TODO P14: pairs armed Monday morning AEST (Sunday night UTC) were being counted to LAST week, not this week. New getSydneyOffsetMs() helper uses Intl API to handle AEST (UTC+10) / AEDT (UTC+11) DST automatically. Single-operator system, hard-coded to Australia/Sydney timezone.',
     '3.0.0 - MAJOR: aligned with Ultimate UTCC v3.0.0 + FCC-SRL v3.0.0 edge-triggered alert cadence. SESSION_GAP reduced 12h -> 30min: Pine indicators now fire ONCE on rising edge of arm state (not every bar close while armed), so aggressive dedup is no longer needed. 30min window only catches genuine duplicates (TradingView retries, network reposts). weekSignalCount will now reflect TRUE distinct arm sessions, not collapsed 4H repeat-fires. Note: count values will appear lower than v2.x because old counts were inflated by repeat-fires. /webhook/location handler accepts new event_type field (TRANSITION|HEARTBEAT) from FCC-SRL v3.0.0 - no special handling, just stored.',
@@ -333,6 +335,369 @@ function pushScraperError(payload) {
         requireInteraction: true,
         data:    { type: 'SCRAPER_ERROR', timestamp: ts }
     }, 'scraperError');
+}
+
+
+// ============================================================================
+// SCRAPER HEALTH MONITORING (TODO P1)
+// ============================================================================
+//
+// Unified health check for the 5 scrapers feeding the FCC. Exists because
+// during MDI Phase 3 build we discovered the nginx webroot calendar.json had
+// been stale for 70 days while the scraper ran fine. The file silently
+// stopped being copied into webroot and nobody knew. This module provides:
+//
+//   - GET /health/scrapers endpoint with per-scraper file age + sanity check
+//   - 15-minute periodic check that pushes a notification if a scraper
+//     transitions OK -> non-OK (or recovers non-OK -> OK)
+//   - Tier 3 sanity layer: per-scraper checks for suspicious values
+//     (e.g. zero pairs fetched, all-zero percentages, missing required fields)
+//
+// Status is one of:
+//   OK       - file exists, fresh, sanity passes
+//   WARN     - file exists & fresh BUT sanity check raised an issue
+//   STALE    - file exists but age > stale_threshold_hours
+//   MISSING  - file does not exist at configured path
+//   CORRUPT  - file exists but JSON is unparseable
+//
+// ============================================================================
+
+const SCRAPER_HEALTH_CONFIG = {
+    forex_calendar: {
+        label:         'ForexFactory Calendar',
+        file:          CALENDAR_FILE,
+        cadence_hours: 6,
+        stale_hours:   9,    // 1.5x cadence buffer
+        sanity:        'calendar'
+    },
+    trading_economics: {
+        label:         'Trading Economics Snapshot',
+        file:          process.env.TE_SNAPSHOT_FILE || '/data/te-snapshot.json',
+        cadence_hours: 6,
+        stale_hours:   9,
+        sanity:        'te'
+    },
+    ig_sentiment: {
+        label:         'IG Retail Sentiment',
+        file:          IG_SENTIMENT_FILE,
+        cadence_hours: 4,
+        stale_hours:   6,
+        sanity:        'ig_sentiment'
+    },
+    myfxbook_orderbook: {
+        label:         'Myfxbook Orderbook (was Oanda OB)',
+        file:          OANDA_BOOK_FILE,
+        cadence_hours: 4,
+        stale_hours:   6,
+        sanity:        'orderbook'
+    },
+    macro_dominance: {
+        label:         'Macro Dominance Index',
+        file:          MACRO_DOMINANCE_FILE,
+        cadence_hours: 4,
+        stale_hours:   6,
+        sanity:        'mdi'
+    }
+};
+
+const HEALTH_CHECK_INTERVAL_MS  = 15 * 60 * 1000;  // 15 minutes
+var _scraperHealthLastState     = {};   // key -> last status (for change detection)
+var _scraperHealthFirstRun      = true; // first run after startup — establish baseline, no push
+
+// --- Sanity checks (Tier 3) -------------------------------------------------
+
+function sanity_calendar(data) {
+    var issues = [];
+    if (!data) { issues.push('payload empty'); return issues; }
+    var events = Array.isArray(data) ? data : (Array.isArray(data.events) ? data.events : null);
+    if (events === null) { issues.push('no events array'); return issues; }
+    if (events.length === 0) issues.push('events array empty');
+    // Check for events with absurd timestamps (>30 days future or >365 days past)
+    var now = Date.now();
+    var future = 0, past = 0;
+    events.slice(0, 50).forEach(function(e) {
+        var ts = e && (e.timestamp || e.ts || e.date) ? Date.parse(e.timestamp || e.ts || e.date) : NaN;
+        if (!isNaN(ts)) {
+            if (ts - now > 30 * 24 * 3600 * 1000) future++;
+            if (now - ts > 365 * 24 * 3600 * 1000) past++;
+        }
+    });
+    if (future > 5)  issues.push(future + ' events >30d in future (suspicious)');
+    if (past > 5)    issues.push(past + ' events >365d old (suspicious)');
+    return issues;
+}
+
+function sanity_te(data) {
+    var issues = [];
+    if (!data) { issues.push('payload empty'); return issues; }
+    if (!data.last_updated) issues.push('missing last_updated');
+    // Loose check: at least one of summary/today_events/fx_snapshot present
+    if (!data.summary && !data.today_events && !data.fx_snapshot) {
+        issues.push('all primary sections empty (summary/today_events/fx_snapshot)');
+    }
+    return issues;
+}
+
+function sanity_ig_sentiment(data) {
+    var issues = [];
+    if (!data) { issues.push('payload empty'); return issues; }
+    var instruments = data.sentiment || data.instruments || data;
+    if (typeof instruments !== 'object') { issues.push('sentiment data not an object'); return issues; }
+    var keys = Object.keys(instruments).filter(function(k) {
+        return instruments[k] && typeof instruments[k] === 'object';
+    });
+    if (keys.length < 20) issues.push('only ' + keys.length + ' instruments (expected 30+)');
+    // Flag if all percentages are zero (broken scrape)
+    var allZero = keys.length > 0 && keys.every(function(k) {
+        var v = instruments[k];
+        var lp = v.long_pct || v.longPercentage || 0;
+        var sp = v.short_pct || v.shortPercentage || 0;
+        return lp === 0 && sp === 0;
+    });
+    if (allZero) issues.push('all instruments have 0/0 percentages (broken scrape)');
+    return issues;
+}
+
+function sanity_orderbook(data) {
+    var issues = [];
+    if (!data) { issues.push('payload empty'); return issues; }
+    var h = data.health || {};
+    var fetched   = h.instruments_fetched   || 0;
+    var attempted = h.instruments_attempted || 0;
+    if (attempted > 0 && fetched < Math.max(20, attempted * 0.7)) {
+        issues.push('only ' + fetched + '/' + attempted + ' pairs fetched (<70% threshold)');
+    }
+    // current_prices is a v1.1.0+ feature — flag if expected but absent
+    if (data.version && data.version.indexOf('1.1') === 0) {
+        var cp = data.current_prices || {};
+        var priced = Object.keys(cp).length;
+        if (priced === 0) {
+            issues.push('current_prices block present but empty (Oanda env vars not set in cron?)');
+        } else if (priced < 20) {
+            issues.push('only ' + priced + ' current_prices (expected 30+)');
+        }
+    }
+    return issues;
+}
+
+function sanity_mdi(data) {
+    var issues = [];
+    if (!data) { issues.push('payload empty'); return issues; }
+    var currencies = data.currencies || {};
+    var ccyKeys    = Object.keys(currencies);
+    if (ccyKeys.length < 6) issues.push('only ' + ccyKeys.length + ' currencies scored (expected 8)');
+    // Flag wildly-out-of-range scores (Tier 3 — silent corruption detection)
+    ccyKeys.forEach(function(c) {
+        var s = currencies[c] && (currencies[c].score !== undefined ? currencies[c].score : currencies[c].total);
+        if (typeof s === 'number' && (s < -200 || s > 200)) {
+            issues.push(c + ' score out of range: ' + s);
+        }
+    });
+    var pairs = data.pairs || {};
+    if (Object.keys(pairs).length < 20) {
+        issues.push('only ' + Object.keys(pairs).length + ' pairs scored (expected 28)');
+    }
+    return issues;
+}
+
+const SANITY_FUNCTIONS = {
+    calendar:      sanity_calendar,
+    te:            sanity_te,
+    ig_sentiment:  sanity_ig_sentiment,
+    orderbook:     sanity_orderbook,
+    mdi:           sanity_mdi
+};
+
+// --- Per-scraper file check -------------------------------------------------
+
+function checkScraperFile(key, cfg) {
+    var result = {
+        key:                   key,
+        label:                 cfg.label,
+        file:                  cfg.file,
+        cadence_hours:         cfg.cadence_hours,
+        stale_threshold_hours: cfg.stale_hours,
+        status:                'UNKNOWN',
+        exists:                false,
+        size_bytes:            0,
+        last_updated:          null,
+        age_hours:             null,
+        sanity:                { ok: true, issues: [] }
+    };
+
+    if (!fs.existsSync(cfg.file)) {
+        result.status = 'MISSING';
+        return result;
+    }
+
+    var stat;
+    try {
+        stat = fs.statSync(cfg.file);
+    } catch (e) {
+        result.status = 'CORRUPT';
+        result.sanity.ok = false;
+        result.sanity.issues.push('stat failed: ' + e.message);
+        return result;
+    }
+    result.exists     = true;
+    result.size_bytes = stat.size;
+
+    var data = null;
+    try {
+        var raw = fs.readFileSync(cfg.file, 'utf8');
+        if (!raw || !raw.trim()) {
+            result.status = 'CORRUPT';
+            result.sanity.ok = false;
+            result.sanity.issues.push('file is empty');
+            return result;
+        }
+        data = JSON.parse(raw);
+    } catch (e) {
+        result.status = 'CORRUPT';
+        result.sanity.ok = false;
+        result.sanity.issues.push('JSON parse failed: ' + e.message);
+        return result;
+    }
+
+    // Determine last_updated — prefer data.last_updated, fall back to mtime
+    var lastUpdMs = null;
+    if (data && data.last_updated) {
+        var parsed = Date.parse(data.last_updated);
+        if (!isNaN(parsed)) {
+            lastUpdMs = parsed;
+            result.last_updated = data.last_updated;
+        }
+    }
+    if (lastUpdMs === null) {
+        lastUpdMs = stat.mtimeMs;
+        result.last_updated = new Date(stat.mtimeMs).toISOString();
+    }
+
+    var ageMs = Date.now() - lastUpdMs;
+    result.age_hours = +(ageMs / (3600 * 1000)).toFixed(2);
+
+    var isStale = result.age_hours > cfg.stale_hours;
+
+    // Sanity check (Tier 3)
+    var sanityFn = SANITY_FUNCTIONS[cfg.sanity];
+    if (sanityFn) {
+        try {
+            var issues = sanityFn(data) || [];
+            if (issues.length > 0) {
+                result.sanity.ok = false;
+                result.sanity.issues = issues;
+            }
+        } catch (e) {
+            result.sanity.ok = false;
+            result.sanity.issues.push('sanity check threw: ' + e.message);
+        }
+    }
+
+    if (isStale) {
+        result.status = 'STALE';
+    } else if (!result.sanity.ok) {
+        result.status = 'WARN';
+    } else {
+        result.status = 'OK';
+    }
+
+    return result;
+}
+
+// --- Aggregate fleet status -------------------------------------------------
+
+function assessFleet() {
+    var checks = [];
+    Object.keys(SCRAPER_HEALTH_CONFIG).forEach(function(key) {
+        checks.push(checkScraperFile(key, SCRAPER_HEALTH_CONFIG[key]));
+    });
+
+    // Fleet status: CRITICAL if any MISSING/CORRUPT; DEGRADED if any STALE/WARN; else OK
+    var critical = checks.some(function(c) { return c.status === 'MISSING' || c.status === 'CORRUPT'; });
+    var degraded = checks.some(function(c) { return c.status === 'STALE' || c.status === 'WARN'; });
+    var fleetStatus = critical ? 'CRITICAL' : (degraded ? 'DEGRADED' : 'OK');
+
+    return {
+        ok:           fleetStatus === 'OK',
+        checked_at:   new Date().toISOString(),
+        fleet_status: fleetStatus,
+        scrapers:     checks
+    };
+}
+
+// --- Push notification on health transition ---------------------------------
+
+function pushScraperHealth(transitions) {
+    if (!transitions || !transitions.length) return;
+    // Single push per check cycle — bundle all transitions
+    var critical = transitions.filter(function(t) { return t.to === 'MISSING' || t.to === 'CORRUPT'; });
+    var stale    = transitions.filter(function(t) { return t.to === 'STALE'; });
+    var warn     = transitions.filter(function(t) { return t.to === 'WARN'; });
+    var recover  = transitions.filter(function(t) { return t.to === 'OK'; });
+
+    var titleParts = [];
+    if (critical.length) titleParts.push(critical.length + ' CRITICAL');
+    if (stale.length)    titleParts.push(stale.length + ' STALE');
+    if (warn.length)     titleParts.push(warn.length + ' WARN');
+    if (recover.length && !titleParts.length) titleParts.push(recover.length + ' RECOVERED');
+
+    var title = 'Scraper Health: ' + titleParts.join(', ');
+    var bodyLines = transitions.map(function(t) {
+        return t.label + ': ' + t.from + ' -> ' + t.to + (t.reason ? ' (' + t.reason + ')' : '');
+    });
+
+    sendPushToAll({
+        title:   title,
+        body:    bodyLines.join('\n'),
+        icon:    '/icons/icon-192.png',
+        tag:     'scraper-health',
+        vibrate: [200, 100, 200],
+        requireInteraction: critical.length > 0,
+        data:    { type: 'SCRAPER_HEALTH', transitions: transitions, timestamp: new Date().toISOString() }
+    }, 'scraperHealth');
+}
+
+function runScheduledHealthCheck() {
+    var report;
+    try {
+        report = assessFleet();
+    } catch (e) {
+        console.error('[ScraperHealth] assessFleet threw:', e.message);
+        return;
+    }
+
+    var transitions = [];
+    report.scrapers.forEach(function(s) {
+        var prev = _scraperHealthLastState[s.key];
+        if (prev === undefined) {
+            // First sighting — establish baseline only
+            return;
+        }
+        if (prev !== s.status) {
+            var reason = '';
+            if (s.status === 'STALE')       reason = s.age_hours + 'h old';
+            else if (s.status === 'MISSING') reason = 'file not at ' + s.file;
+            else if (s.status === 'CORRUPT') reason = (s.sanity.issues[0] || 'unparseable');
+            else if (s.status === 'WARN')    reason = (s.sanity.issues[0] || 'sanity issue');
+            transitions.push({ key: s.key, label: s.label, from: prev, to: s.status, reason: reason });
+        }
+    });
+
+    // Update baseline
+    report.scrapers.forEach(function(s) { _scraperHealthLastState[s.key] = s.status; });
+
+    if (_scraperHealthFirstRun) {
+        _scraperHealthFirstRun = false;
+        console.log('[ScraperHealth] Baseline established: ' + report.fleet_status +
+                    ' (' + report.scrapers.map(function(s) { return s.key + '=' + s.status; }).join(', ') + ')');
+        return;  // No push on first run, even if state is bad
+    }
+
+    if (transitions.length > 0) {
+        console.log('[ScraperHealth] Transitions: ' +
+                    transitions.map(function(t) { return t.key + ' ' + t.from + '->' + t.to; }).join(', '));
+        pushScraperHealth(transitions);
+    }
 }
 
 
@@ -2353,6 +2718,23 @@ var server = http.createServer(function(req, res) {
     }
 
     // ========================================================================
+    // SCRAPER HEALTH ENDPOINT (v3.2.0 — TODO P1)
+    // ========================================================================
+
+    // GET /health/scrapers - Unified health for all 5 scrapers
+    if (req.method === 'GET' && req.url === '/health/scrapers') {
+        try {
+            var report = assessFleet();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(report));
+        } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'health/scrapers error: ' + e.message }));
+        }
+        return;
+    }
+
+    // ========================================================================
     // ARM HISTORY ENDPOINT (v2.3.0)
     // ========================================================================
 
@@ -2879,7 +3261,8 @@ server.listen(PORT, function() {
     console.log('  Status: ' + (OANDA_API_KEY ? 'ACTIVE -- ' + OANDA_ENV : 'DISABLED -- set OANDA_API_KEY + OANDA_ACCOUNT_ID env vars'));
     console.log('');
     console.log('Utility:');
-    console.log('  GET  /health        - Health check');
+    console.log('  GET  /health           - Health check (server liveness)');
+    console.log('  GET  /health/scrapers  - Unified scraper fleet health (5 scrapers)');
     console.log('');
     console.log('Format: Institutional (v1.4.0) + Legacy backward compat');
     console.log('='.repeat(60));
@@ -2893,4 +3276,9 @@ server.listen(PORT, function() {
     } else {
         console.log('[EntryMonitor] Disabled -- OANDA_API_KEY / OANDA_ACCOUNT_ID not set');
     }
+
+    // Scraper Health Monitor (TODO P1)
+    console.log('[ScraperHealth] Starting -- 15-minute fleet check, push on transitions');
+    setTimeout(runScheduledHealthCheck, 30000);  // initial run after 30s — establishes baseline only
+    setInterval(runScheduledHealthCheck, HEALTH_CHECK_INTERVAL_MS);
 });

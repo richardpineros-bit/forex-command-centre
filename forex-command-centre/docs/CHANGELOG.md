@@ -1,4 +1,88 @@
-## [Myfxbook scraper v1.1.0 + Intel Hub OB Tier 2 — TODO P12] - 2026-05-02
+## [Alert server v3.2.0 — Scraper Health Monitoring (TODO P1a)] - 2026-05-02
+
+### Alert server v3.1.0 → v3.2.0 — MINOR: unified scraper health endpoint
+
+Closes TODO P1a (backend portion). Frontend dashboard widget deferred to P1b.
+
+**Why this exists:** During MDI Phase 3 build we discovered the nginx
+webroot `calendar.json` had been stale for 70 days while the FF scraper
+ran fine — the file silently stopped being copied into webroot. Manual
+news discipline compensated, but the automated `isNewsSafeToTrade()`
+gate was reading 70-day-old data. Same failure mode could hit any of
+the 5 scrapers. We had zero telemetry. Now we do.
+
+**New endpoint: `GET /health/scrapers`**
+
+Returns fleet status + per-scraper detail. Fleet status is one of:
+- `OK` — all scrapers OK
+- `DEGRADED` — at least one STALE or WARN, none CRITICAL
+- `CRITICAL` — at least one MISSING or CORRUPT
+
+Per-scraper status:
+- `OK` — file exists, fresh, sanity passes
+- `WARN` — file exists & fresh BUT sanity check raised an issue
+- `STALE` — file exists, age exceeds threshold
+- `MISSING` — file does not exist at configured path
+- `CORRUPT` — file exists, JSON unparseable / empty
+
+**Tier 3 sanity layer** — per-scraper checks for suspicious values:
+- forex_calendar: events array non-empty, no events >30d future or
+  >365d past
+- trading_economics: at least one of summary/today_events/fx_snapshot
+  present
+- ig_sentiment: at least 20 instruments, not all-zero percentages
+- myfxbook_orderbook: at least 70% of attempted pairs fetched; for
+  v1.1.0+ scrapers, current_prices block populated (catches the
+  "Oanda env vars not set in cron" failure mode for the new P12
+  enrichment)
+- macro_dominance: at least 6 currencies scored, scores in -200..200
+  range, at least 20 pairs scored
+
+**Per-scraper config** (cadence + stale threshold):
+- forex_calendar: 6h cadence, stale at 9h
+- trading_economics: 6h cadence, stale at 9h
+- ig_sentiment: 4h cadence, stale at 6h
+- myfxbook_orderbook: 4h cadence, stale at 6h
+- macro_dominance: 4h cadence, stale at 6h
+
+(All thresholds = 1.5× cadence to allow for cron jitter.)
+
+**Periodic check + push notifications**
+
+`runScheduledHealthCheck()` runs every 15 minutes in-process. First run
+after server startup establishes baseline only — no push, even if state
+is bad. Subsequent runs compare against last state and push on
+transitions:
+- OK → STALE/WARN/MISSING/CORRUPT triggers a push
+- non-OK → OK triggers a recovery push
+- Multiple transitions in one cycle bundled into a single push
+
+Push uses pref key `scraperHealth` (new — separate from `scraperError`
+which is reserved for the FF canary). Subscribers can disable in PWA
+settings without losing canary alerts.
+
+**New env var:** `CALENDAR_FILE` (default `/data/calendar.json`).
+The FF scraper writes to `forex-command-centre/src/calendar.json` via
+the User Script wrapper. Operator must add a `cp` line to also write to
+`/mnt/user/appdata/trading-state/data/calendar.json`, or override the
+env var on the `trading-state` container to point at the existing path.
+Without this step, the endpoint will correctly report
+`forex_calendar: MISSING` — which is itself useful telemetry, but
+should be resolved in deploy.
+
+**No change to** `/state`, `/webhook/*`, alert handling, or any live
+trading gate. New endpoint is purely diagnostic.
+
+**Validation tested:**
+- All 5 status types verified end-to-end with mixed-state fixtures
+  (OK, WARN, STALE, MISSING, CORRUPT) → fleet correctly reports CRITICAL
+- All-healthy fixtures → fleet reports OK
+- Sanity check correctly catches v1.1.0 scraper running with empty
+  current_prices block (most likely production failure mode)
+
+---
+
+
 
 ### Scraper v1.0.1 → v1.1.0 — MINOR: best-effort Oanda price enrichment
 
