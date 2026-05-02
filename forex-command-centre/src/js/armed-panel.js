@@ -1,4 +1,4 @@
-// armed-panel.js v1.17.0 - ZONE cell single-line ARMED-only (TODO P20 Option B). Drops the live line entirely. Cell now shows ARMED: HOT/OPTIMAL/ACCEPTABLE/EXTENDED from the Pine alert payload (p.entryZone) -- the institutional signal at the moment the alert fired. Reasoning: empirical evidence (2026-04-27, 19+ armed pairs, full session) showed entryZoneActive never fires, leaving the live line permanently dark. Beyond the bug, the arm-time zone IS the institutional signal -- continuously re-grading an armed pair invites discretionary drift ("oh, it's back to OPTIMAL, I can still enter"), exactly the FOMO behaviour the system is meant to suppress. Entry Monitor remains in the alert server as a separate diagnostic, not surfaced in the satellite grid. Drops dependency on p.entryZoneActive/entryZoneGrade/entryZoneDist for this cell. State styling: HOT/OPTIMAL=good, ACCEPTABLE=ok, EXTENDED=bad, missing=muted. | v1.16.1 - ZONE dual-tier rendering bug fix: cell() helper prepends an inline state symbol (em-dash for muted) which created a third visual line, clipped by overflow:hidden. Now bypasses cell() for dual-tier ZONE and renders HTML directly without symbol prefix. Border/background colour conveys state, symbol redundant in stacked layouts. | v1.16.0 - ZONE satellite dual-tier display: top line (muted, small) shows ARMED-time entry zone from Pine alert payload (p.entryZone) -- the zone classification at the moment the alert fired. Bottom line (existing colourful) shows LIVE entry zone from server-side Entry Monitor (p.entryZoneActive) -- current EMA-derived zone state. Both visible when their data exists. Fixes regression introduced in v1.11.0 where cell rendered '-' when Entry Monitor said pair not in zone, hiding the original Pine alert zone classification entirely. Now: ARMED line always shown if p.entryZone present, LIVE line shown when entryZoneActive=true. Tooltip combines both: 'Live: HOT 0.3R | At arm time: OPTIMAL'. | v1.15.0 - FCC-SRL v2.0.0 frontend (alongside Alert Server v2.17.0): quality tag badge (PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED) inline next to pair name; sweep risk badge (LOW dot / MED amber / HIGH red); liquidity magnet list expansion panel (collapsed by default, click chevron to expand, sorted by distance ASC, AHEAD=amber BEHIND=muted); session+ADX bias footer line (Active: SESSION | ADX bias: LONG/SHORT (val), hidden if NONE); sort within each tier (PRIME/STANDARD/DEGRADED) groups by quality tag order PRIORITY-first then by enrichedScore desc. Tier grouping unchanged (independent dimension). Backward compat: missing v2.0.0 fields render as no-op (no badge, no line, no list). | v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
+// armed-panel.js v1.18.0 - Phase 3b: quality filter chips + hidden counter (TODO P17). Three chips at top of armed panel: Hide CONTESTED (default ON -- institutional protection per CONTESTED-is-likely-loss hypothesis), Hide CAUTION (default OFF), Only PRIORITY (default OFF, overrides Hide flags when active). Hidden counter chip ALWAYS VISIBLE when filter hides pairs (institutional transparency); clicking reveals filtered pairs for one render cycle. Persistence via localStorage key `armed-quality-filters`. Backward compat non-negotiable: pairs with qualityTag=null are NEVER filtered. Filter applied inside renderArmedState() after _dismissedPairs filter, before tier/sort -- tier counts and section headers reflect filtered pairs. Diagnostic note (2026-05-02 P15+P16): with current Pine sweep_risk mis-calibration (HIGH 56% vs target 5-15%), CONTESTED tag dominates the universe -- the hide-by-default behaviour is essential trader protection until Pine thresholds are recalibrated. | v1.17.0 - ZONE cell single-line ARMED-only (TODO P20 Option B). Drops the live line entirely. Cell now shows ARMED: HOT/OPTIMAL/ACCEPTABLE/EXTENDED from the Pine alert payload (p.entryZone) -- the institutional signal at the moment the alert fired. Reasoning: empirical evidence (2026-04-27, 19+ armed pairs, full session) showed entryZoneActive never fires, leaving the live line permanently dark. Beyond the bug, the arm-time zone IS the institutional signal -- continuously re-grading an armed pair invites discretionary drift ("oh, it's back to OPTIMAL, I can still enter"), exactly the FOMO behaviour the system is meant to suppress. Entry Monitor remains in the alert server as a separate diagnostic, not surfaced in the satellite grid. Drops dependency on p.entryZoneActive/entryZoneGrade/entryZoneDist for this cell. State styling: HOT/OPTIMAL=good, ACCEPTABLE=ok, EXTENDED=bad, missing=muted. | v1.16.1 - ZONE dual-tier rendering bug fix: cell() helper prepends an inline state symbol (em-dash for muted) which created a third visual line, clipped by overflow:hidden. Now bypasses cell() for dual-tier ZONE and renders HTML directly without symbol prefix. Border/background colour conveys state, symbol redundant in stacked layouts. | v1.16.0 - ZONE satellite dual-tier display: top line (muted, small) shows ARMED-time entry zone from Pine alert payload (p.entryZone) -- the zone classification at the moment the alert fired. Bottom line (existing colourful) shows LIVE entry zone from server-side Entry Monitor (p.entryZoneActive) -- current EMA-derived zone state. Both visible when their data exists. Fixes regression introduced in v1.11.0 where cell rendered '-' when Entry Monitor said pair not in zone, hiding the original Pine alert zone classification entirely. Now: ARMED line always shown if p.entryZone present, LIVE line shown when entryZoneActive=true. Tooltip combines both: 'Live: HOT 0.3R | At arm time: OPTIMAL'. | v1.15.0 - FCC-SRL v2.0.0 frontend (alongside Alert Server v2.17.0): quality tag badge (PRIORITY/STANDARD+/STANDARD/CAUTION/CONTESTED) inline next to pair name; sweep risk badge (LOW dot / MED amber / HIGH red); liquidity magnet list expansion panel (collapsed by default, click chevron to expand, sorted by distance ASC, AHEAD=amber BEHIND=muted); session+ADX bias footer line (Active: SESSION | ADX bias: LONG/SHORT (val), hidden if NONE); sort within each tier (PRIME/STANDARD/DEGRADED) groups by quality tag order PRIORITY-first then by enrichedScore desc. Tier grouping unchanged (independent dimension). Backward compat: missing v2.0.0 fields render as no-op (no badge, no line, no list). | v1.14.0 - Institutional satellite grid: replaces inline intelligence strip with a structured 8-cell heatmap (ZONE|STRUCT|MDI|OB|NEWS|IG|ATR|FREQ) + playbook. Direction-aware cells (NEWS/IG/OB/MDI flip colour by LONG/SHORT alignment); quality cells (ZONE/STRUCT/ATR/FREQ) use absolute scale. Symbol + compact value per cell, tooltip with full reading. Click-to-expand chevron reveals the legacy text strip as detail. Responsive: 8 cols >=900px, 4 cols tablet, 2 cols phone. Tier grouping untouched - degraded tier gets muted opacity only. | v1.13.0 - MDI (Macro Dominance Index) satellite added to intelligence strip (row 3.5, between OB and ATR). SOFT authority - display only, does NOT affect pair score or any gate. Threshold-based colouring (DOMINANT/LEANING/BALANCED). Tooltip includes full SOFT-authority disclaimer. Fail-closed: missing data hides the row entirely, stale data shows '(stale)' tag. Fetch interval 30min (backend updates every 4h). | v1.12.0 - Freq label /wk; VALIDATE button overflow fix (grid 9col->8col, last col auto) | v1.11.0 - Entry Monitor zone badge (item 0 in intelligence strip, server-side data) | v1.10.0 - Watchlist Pin: watch button on armed cards; watched pairs pinned to top; ghost cards survive BLOCKED 8h from snapshot; armed-watchlist.json storage | v1.9.0 - Signal frequency badge in intelligence strip: weekSignalCount drives 1st/2x/4x/6x+ badge with colour tiers (grey/blue/amber/gold) | v1.8.0 - ltfBreak display row on TR cards (1H HIGHER LOW / 1H LOWER HIGH); remove legacy struct_ext snake_case fallback (structExt only); remove volBehaviour/atrBehav dead fallback path | v1.7.0 - Layout redesign: direction+conf in header row; intelligence strip consolidates news/IG/OB/ATR/struct; Oanda order book integrated as 4th satellite; score thresholds updated (HIGH>=3, MED>=1) | v1.6.0 - Score enrichment: show enrichedScore (base+locPts) when available; qualityTier uses locGrade directly; OPPOSED/FALSE_BREAK force DEGRADED; sort by enrichedScore | v1.5.3 - Await loadDismissed() before first fetchArmedState() to fix dismiss race on refresh; v1.5.2 - Expose isExcluded on window.ArmedPanel for QAB filter parity; v1.5.1 - Fix reconcile: only auto-restore pairs with armedAt; dismiss/restore trigger QAB refresh; v1.5.0 - Bugfixes: data-pair for clearExpired, armedAt for dismiss reconcile, getDismissedPairs exposed; v1.4.0 - Ultimate UTCC: TF_ARMED (blue) / TR_ARMED (orange) cards; position size; playbook in verdict row; 3 satellites retained
 (function() {
     // Configuration
     const STATE_URL      = 'https://api.pineros.club/state';
@@ -33,6 +33,18 @@
     var _watchedPairs      = {};
     var WATCH_TTL_MS       = 8 * 60 * 60 * 1000; // 8 hours
     var _watchlistLoaded   = false; // guard: do not prune before initial load completes
+
+    // v1.18.0 Phase 3b: quality filter chips
+    // Persisted in localStorage under key 'armed-quality-filters'
+    var QUALITY_FILTER_KEY = 'armed-quality-filters';
+    var _qualityFilters = {
+        hideContested: true,   // default ON -- institutional protection
+        hideCaution:   false,  // default OFF -- CAUTION still tradeable with discipline
+        onlyPriority:  false   // default OFF -- when ON, overrides hide flags
+    };
+    var _revealOnce = false;   // one-cycle bypass when user clicks hidden counter chip
+    // Snapshot of pre-filter pairs, used by hidden-counter chip rendering
+    var _pairsBeforeQualityFilter = [];
 
 
     async function fetchSentiment() {
@@ -129,6 +141,142 @@
                 })
             });
         } catch(e) {}
+    }
+
+    // v1.18.0 Phase 3b: Quality filter chip helpers
+    // ----------------------------------------------------------------
+    // localStorage-backed (synchronous; no server round-trip needed since
+    // these are personal display preferences, not shared state).
+
+    function loadFilters() {
+        try {
+            var raw = localStorage.getItem(QUALITY_FILTER_KEY);
+            if (!raw) return;
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                if (typeof parsed.hideContested === 'boolean') _qualityFilters.hideContested = parsed.hideContested;
+                if (typeof parsed.hideCaution   === 'boolean') _qualityFilters.hideCaution   = parsed.hideCaution;
+                if (typeof parsed.onlyPriority  === 'boolean') _qualityFilters.onlyPriority  = parsed.onlyPriority;
+            }
+        } catch(e) {
+            // Corrupted localStorage value -- silently fall back to defaults
+            console.warn('[ArmedPanel] Quality filter load failed, using defaults:', e.message);
+        }
+    }
+
+    function saveFilters() {
+        try {
+            localStorage.setItem(QUALITY_FILTER_KEY, JSON.stringify(_qualityFilters));
+        } catch(e) {
+            console.warn('[ArmedPanel] Quality filter save failed:', e.message);
+        }
+    }
+
+    // Apply current filters to a pairs array. Returns NEW array.
+    // Backward compat: pairs with qualityTag = null/undefined are NEVER filtered.
+    // Reveal-once bypass: if _revealOnce flag is set, returns input unchanged
+    // and clears the flag (so next render re-applies filters).
+    function applyQualityFilters(pairs) {
+        if (_revealOnce) {
+            _revealOnce = false;
+            return pairs.slice();
+        }
+        return pairs.filter(function(p) {
+            var tag = p && p.qualityTag;
+            // Backward compat: missing tag = always show
+            if (!tag) return true;
+            if (_qualityFilters.onlyPriority) {
+                return tag === 'PRIORITY';
+            }
+            if (_qualityFilters.hideContested && tag === 'CONTESTED') return false;
+            if (_qualityFilters.hideCaution   && tag === 'CAUTION')   return false;
+            return true;
+        });
+    }
+
+    // Count pairs that WOULD be hidden by current filter state.
+    // Used to populate the hidden-counter chip text.
+    function countHiddenByTag(pairs, tag) {
+        if (!pairs || !pairs.length) return 0;
+        var willHide = false;
+        if (_qualityFilters.onlyPriority && tag !== 'PRIORITY') {
+            willHide = true;
+        } else if (tag === 'CONTESTED' && _qualityFilters.hideContested) {
+            willHide = true;
+        } else if (tag === 'CAUTION' && _qualityFilters.hideCaution) {
+            willHide = true;
+        }
+        if (!willHide) return 0;
+        return pairs.filter(function(p) { return p && p.qualityTag === tag; }).length;
+    }
+
+    // Build the filter-bar HTML (chips + hidden counter).
+    // Returns empty string if no armed pairs (caller decides).
+    function buildFilterBarHtml() {
+        var f = _qualityFilters;
+        var chips = [
+            { key: 'hideContested', label: 'Hide CONTESTED', active: f.hideContested },
+            { key: 'hideCaution',   label: 'Hide CAUTION',   active: f.hideCaution   },
+            { key: 'onlyPriority',  label: 'Only PRIORITY',  active: f.onlyPriority  }
+        ];
+        var html = '<div class="armed-filter-bar" data-armed-filter-bar="1">';
+        chips.forEach(function(c) {
+            html += '<span class="armed-filter-chip' + (c.active ? ' active' : '') + '" '
+                  + 'data-filter-key="' + c.key + '" '
+                  + 'role="button" tabindex="0">'
+                  + (c.active ? '\u2713 ' : '') + c.label
+                  + '</span>';
+        });
+        // Hidden counter chip(s) -- ALWAYS VISIBLE when filter is hiding pairs
+        var hiddenContested = countHiddenByTag(_pairsBeforeQualityFilter, 'CONTESTED');
+        var hiddenCaution   = countHiddenByTag(_pairsBeforeQualityFilter, 'CAUTION');
+        if (f.onlyPriority) {
+            // In onlyPriority mode, hidden = everything except PRIORITY (and null)
+            var hiddenInPriorityMode = _pairsBeforeQualityFilter.filter(function(p) {
+                return p && p.qualityTag && p.qualityTag !== 'PRIORITY';
+            }).length;
+            if (hiddenInPriorityMode > 0) {
+                html += '<span class="hidden-counter-chip" data-reveal-hidden="1" '
+                      + 'role="button" tabindex="0" '
+                      + 'title="Click to reveal hidden pairs for one render cycle">'
+                      + '<span class="hidden-counter-chip-count">' + hiddenInPriorityMode + '</span>'
+                      + ' non-PRIORITY hidden'
+                      + '</span>';
+            }
+        } else {
+            if (hiddenContested > 0) {
+                html += '<span class="hidden-counter-chip" data-reveal-hidden="1" '
+                      + 'role="button" tabindex="0" '
+                      + 'title="Click to reveal hidden CONTESTED pairs for one render cycle">'
+                      + '<span class="hidden-counter-chip-count">' + hiddenContested + '</span>'
+                      + ' CONTESTED hidden'
+                      + '</span>';
+            }
+            if (hiddenCaution > 0) {
+                html += '<span class="hidden-counter-chip" data-reveal-hidden="1" '
+                      + 'role="button" tabindex="0" '
+                      + 'title="Click to reveal hidden CAUTION pairs for one render cycle">'
+                      + '<span class="hidden-counter-chip-count">' + hiddenCaution + '</span>'
+                      + ' CAUTION hidden'
+                      + '</span>';
+            }
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Toggle a filter and re-render. Called by chip click handler.
+    function toggleFilter(key) {
+        if (typeof _qualityFilters[key] !== 'boolean') return;
+        _qualityFilters[key] = !_qualityFilters[key];
+        saveFilters();
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
+    }
+
+    // Reveal hidden pairs for one render cycle. Called by hidden counter click.
+    function revealHiddenOnce() {
+        _revealOnce = true;
+        if (window._lastArmedData) renderArmedState(window._lastArmedData);
     }
 
     // Watchlist helpers
@@ -1279,6 +1427,11 @@
         var dismissedItems = allActivePairs.filter(function(p) { return !!_dismissedPairs[p.pair]; });
         var activePairs    = allActivePairs.filter(function(p) { return !_dismissedPairs[p.pair]; });
 
+        // v1.18.0 Phase 3b: snapshot pre-filter pairs for hidden-counter rendering,
+        // then apply quality filter. Tier/sort logic below operates on filtered set.
+        _pairsBeforeQualityFilter = activePairs.slice();
+        activePairs = applyQualityFilters(activePairs);
+
         var activeArmedCount = allActivePairs.length;
         countEl.textContent  = activeArmedCount;
         countEl.className    = 'armed-panel-count' + (activeArmedCount === 0 ? ' zero' : '');
@@ -1309,6 +1462,14 @@
             '<span class="armed-section-count' + (activeArmedCount > 0 ? ' armed' : '') + '">' + activeArmedCount + '</span>' +
             summaryHtml +
         '</div>';
+
+        // v1.18.0 Phase 3b: Quality filter bar
+        // Render only when there's something to filter (any pair with a qualityTag).
+        // This avoids visual noise on empty/legacy state.
+        var hasAnyQualityTag = _pairsBeforeQualityFilter.some(function(p) { return p && p.qualityTag; });
+        if (hasAnyQualityTag) {
+            html += buildFilterBarHtml();
+        }
 
         // Watched pairs section (ghost cards for BLOCKED pairs still within 8h watch)
         if (ghostWatches.length > 0) {
@@ -1404,6 +1565,7 @@
     // v1.5.3: await loadDismissed() before first fetchArmedState() to prevent
     // race condition where state renders before dismissed pairs are loaded
     (async function() {
+        loadFilters(); // v1.18.0 Phase 3b -- synchronous localStorage load
         await loadDismissed();
         await loadWatchlist();
         fetchArmedState();
@@ -1411,6 +1573,35 @@
         setInterval(fetchLocation, 5 * 60 * 1000);
         setInterval(fetchMacro, MACRO_REFRESH_INTERVAL);
     })();
+
+    // v1.18.0 Phase 3b: filter chip click delegation.
+    // Single handler at listEl level so it survives every renderArmedState() rebuild.
+    listEl.addEventListener('click', function(ev) {
+        var chip = ev.target.closest('.armed-filter-chip');
+        if (chip) {
+            var key = chip.getAttribute('data-filter-key');
+            if (key) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                toggleFilter(key);
+            }
+            return;
+        }
+        var counter = ev.target.closest('.hidden-counter-chip');
+        if (counter) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            revealHiddenOnce();
+        }
+    });
+    // Keyboard accessibility: Enter / Space on focused chip
+    listEl.addEventListener('keydown', function(ev) {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        var chip = ev.target.closest('.armed-filter-chip, .hidden-counter-chip');
+        if (!chip) return;
+        ev.preventDefault();
+        chip.click();
+    });
     
     // Global API
     window.refreshArmedPanel = fetchArmedState;

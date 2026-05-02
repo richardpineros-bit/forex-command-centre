@@ -646,126 +646,116 @@ values still feel "way off" on Monday/Tuesday cards.~~
 
 ---
 
-## 🔴 Priority 15 — Investigate STRUCT EXT epidemic across all armed pairs
+## ✅ Priority 15 — STRUCT EXT epidemic — DIAGNOSED 2026-05-02
 
-**Trigger:** Observed 2026-04-27 — every armed pair (21+) showing
-`STRUCT ✗ EXT` cell. Either every single pair has genuinely aged
-out of structure (unlikely) or the derivation is mis-calibrated.
+**Status:** Diagnostic complete. Action item is Pine recalibration on
+TradingView (operator-side, not committable in repo).
 
-**Scope:**
-- `gradeToStructExt()` in `forex-alert-server/index.js` returns FRESH only
-  for `PRIME / AT_ZONE / BREAKOUT_RETEST` location grades. Everything else
-  (OPPOSED, WAIT, BREAKOUT_EXT, NO_DIRECTION, IN_CLOUD, AT_CLOUD, FALSE_BREAK)
-  becomes EXTENDED.
-- That is 3 FRESH grades vs 7 EXTENDED grades. Distribution asymmetry alone
-  guarantees most pairs land EXTENDED most of the time.
-- Audit `loc-history.json` to confirm grade distribution across last 7
-  days. Expect dominant grades to be OPPOSED/WAIT/BREAKOUT_EXT — these
-  are the "default" states most of the time.
-- Decide: is FRESH supposed to be rare (current behaviour, by design) or
-  is the FCC-SRL Pine threshold for PRIME/AT_ZONE too tight, denying valid
-  in-zone classifications?
-- Cross-reference: when XAUUSD card showed `★ PRIME` on 2026-04-27,
-  STRUCT cell still showed EXT — may indicate `gradeToStructExt` is
-  not picking up the live location grade correctly.
+**Diagnostic data** (1121 events, 7 days, via
+`scripts/diagnostics/diagnostic_p15_p16_v1.0.1.sh`):
+- Final structExt: **94.5% EXTENDED / 5.5% FRESH** (epidemic confirmed)
+- Grade distribution: PRIME 5.4%, AT_ZONE 16.1%, BREAKOUT_RETEST 11.5%
+  (FRESH-eligible total: 32.9% — grade map is fine)
+- Sweep risk distribution: HIGH 56.2% / MED 27.9% / LOW 15.9%
+  (vs target LOW 55-65% / MED 25-35% / HIGH 5-15%)
+- Sweep override impact on FRESH grades: 83% downgraded
+  (209 by HIGH, 99 by MEDIUM, 62 preserved by LOW)
 
-**Why this matters:**
-Current display tells the trader "every pair is structurally extended,
-do not trade." If that's not literally true, the cell is providing
-disinformation. If it IS true, the watchlist is wrong (too many pairs
-arming at bad locations).
+**Root cause:** Sweep risk classifier severely mis-calibrated. Default
+`sweepLowMax=1` and `sweepMedMax=2` are too tight for FX, where most
+pairs have multiple S/R levels within 2 ATR.
 
-**Possible outcomes:**
-1. Genuine market state — leave alone, accept "extended" is normal
-   default and focus only on the rare FRESH cards
-2. FCC-SRL Pine threshold needs widening so PRIME/AT_ZONE fire more often
-3. `gradeToStructExt` map needs adjusting (e.g. AT_CLOUD or IN_CLOUD
-   should also count as FRESH)
+**Action — Pine recalibration on TradingView (operator-side):**
+- FX / Indices / Bonds: `sweepLowMax` 1 → 2; `sweepMedMax` 2 → 4
+- Energy / Crypto: same sweepMax tweaks + `magnetThreshAtr` 2.0 → 1.5
+- Keep `magnetThreshAtr` at 2.0 for FX
 
-**Dependencies:**
-- 5+ trading days of `loc-history.json` data
-- Visual verification of price location vs structure on 5 sample cards
+**What we did NOT change:**
+- `gradeToStructExt()` map in alert server is fine — leave alone.
+- Per-asset profiles for FCC-SRL deferred to Phase 3c calibration UI.
 
-**Estimated effort:** 30-60 min diagnostic; fix size depends on outcome.
+**Cross-reference:** Closes related concern in P16 — see below.
 
 ---
 
-## 🔴 Priority 16 — Investigate LOW CONF dominance across armed pairs
+## ✅ Priority 16 — LOW CONF dominance — DIAGNOSED 2026-05-02 (linked to P15)
 
-**Trigger:** Observed 2026-04-27 — most armed pairs showing
+**Status:** Resolved by P15 diagnosis. Not an independent problem.
+
+**Original hypothesis (incorrect):** LOW CONF driven by `tier`/`score` in
+UTCC alert payload.
+
+**Actual mechanics** (per `armed-panel.js` lines 510-575):
+CONF label is driven by 4-input satellite alignment score, not UTCC tier:
+- News bias ± 1
+- IG sentiment (contrarian) ± 1
+- **Structure (structExt FRESH=+1, EXTENDED=-1)**
+- Oanda order book ± 1
+- Thresholds: HIGH ≥ 3, MED ≥ 1, LOW ≤ 0
+
+**Why this links to P15:** With structExt EXTENDED 94.5% of the time,
+the structure satellite contributes -1 in 94.5% of cases. HIGH CONF
+mathematically requires structExt = FRESH. Ceiling on HIGH CONF
+frequency is 5.5% regardless of any other satellite behaviour.
+
+**Conclusion:** Fix sweep_risk calibration (P15 action) and LOW CONF
+dominance resolves automatically. No independent action needed.
+
+**TODO P16 wording about tier/score thresholds in `ultimate-utcc.pine`
+input parameters is wrong** — those control UTCC arming threshold,
+not the CONF badge. Leaving the original entry below for audit trail
+but the diagnosis above is the correct one.
+
+~~Original entry retained for audit:~~
+
+~~Trigger: Observed 2026-04-27 — most armed pairs showing
 "LOW CONF" badge next to direction (LONG/SHORT). Almost no MED CONF
-or HIGH CONF pairs visible.
-
-**Scope:**
-- Confirm what drives the CONF label — likely `tier` or `score` field
-  in the UTCC alert payload. Trace the rendering logic in
-  `armed-panel.js` to find the source field and threshold.
-- Pull 5+ days of UTCC alert payloads from `utcc-alerts.json` and
-  histogram the `tier` and `score` distributions.
-- v3.0.0 stack landed 2026-04-26. Compare distributions before and
-  after — has the new edge-triggered cadence shifted what gets
-  classified as STRONG/PERFECT/EXCELLENT vs TRADE-READY?
-- If thresholds need adjustment: input parameters in
-  `ultimate-utcc.pine` (tierStrong/tierPerfect/tierExcellent score
-  cutoffs).
-
-**Why this matters:**
-If LOW CONF is the new normal post-v3.0.0, the badge has lost
-discriminating value — every card looks the same. Trader can no
-longer use it to triage which alerts deserve attention.
-
-**Possible outcomes:**
-1. v3.0.0 edge-trigger correctly catches the moment quality drops below
-   STRONG — LOW CONF dominance reflects current market regime, not a
-   bug. Wait it out.
-2. Score thresholds were calibrated for the old polling cadence and
-   need lowering to match v3.0.0 behaviour.
-3. The conf classification is correctly placed, but the satellite
-   panel needs a visual filter to hide LOW CONF pairs by default.
-
-**Dependencies:**
-- 5+ days of post-v3.0.0 `utcc-alerts.json` data
-- Score histogram analysis (can run in next session)
-
-**Estimated effort:** 45 min diagnostic; threshold tweak ~10 min if
-that's the answer.
+or HIGH CONF pairs visible. Confirm what drives the CONF label —
+likely `tier` or `score` field in the UTCC alert payload.~~
 
 ---
 
-## 🟡 Priority 17 — Phase 3b: armed panel filter chips + hidden counter
+## ✅ Priority 17 — Phase 3b: armed panel filter chips + hidden counter — CLOSED 2026-05-02
 
-**Trigger:** After Priority 15 + 16 are diagnosed and quality tag data
-has stabilised (5+ days of post-Pine-v3.0.0 enrichment).
+**Status:** Shipped as `armed-panel.js` v1.18.0.
 
-**Scope:**
-Full spec in `forex-command-centre/docs/PHASE_3B_HANDOFF.md`.
+**What shipped:**
+- Three filter chips at top of armed panel (rendered only when at
+  least one armed pair has a `qualityTag` — avoids visual noise on
+  legacy/empty state):
+  - `Hide CONTESTED` (default ON — institutional protection per
+    CONTESTED-is-likely-loss hypothesis)
+  - `Hide CAUTION` (default OFF)
+  - `Only PRIORITY` (default OFF, overrides hide flags when active)
+- Hidden counter chip(s) — ALWAYS VISIBLE when filter is hiding pairs.
+  Format: `{n} CONTESTED hidden` / `{n} CAUTION hidden` /
+  `{n} non-PRIORITY hidden` (when onlyPriority is on).
+- One-cycle reveal: clicking the hidden counter chip bypasses the
+  filter for exactly one render. Next refresh re-applies.
+- Persistence: localStorage key `armed-quality-filters` (synchronous,
+  no server round-trip — these are personal display preferences).
+- Filter applied inside `renderArmedState()` after `_dismissedPairs`
+  filter, before tier/sort logic — tier counts and section headers
+  reflect filtered set.
+- Backward compat: pairs with `qualityTag = null/undefined` are NEVER
+  filtered. Missing data = always shown.
+- Keyboard accessibility: Enter / Space on focused chip toggles it.
 
-Three chips at top of armed panel:
-- `Hide CONTESTED` (default ON — institutional protection)
-- `Hide CAUTION` (default OFF)
-- `Only PRIORITY` (default OFF, overrides hide flags when active)
+**Diagnostic context (P15+P16 findings, 2026-05-02):**
+With current Pine sweep_risk mis-calibration (HIGH 56% vs target 5-15%),
+CONTESTED tag dominates the universe. The hide-by-default behaviour is
+essential trader protection until Pine thresholds are recalibrated
+(see P15 + P18 calibration plan).
 
-Hidden counter chip always visible when filter is hiding pairs.
-Format: `{n} CONTESTED hidden`. Click reveals temporarily.
-Persistence: localStorage key `armed-quality-filters`.
-
-**Why this matters:**
-Today every armed card is visible regardless of quality tag. Once
-quality data is reliable, the trader needs a way to default-hide
-CONTESTED pairs (the institutional CONTESTED-is-likely-loss
-hypothesis) while keeping a counter visible to maintain transparency.
-
-**Why this is P2 not P1:**
-Filter chips are pointless until quality tag distribution is
-representative. Today's data is too sparse and CAUTION-dominated
-to make hide/show decisions meaningful.
-
-**Dependencies:**
-- Quality tag data validated across ~150-200 enrichment events
-- Decision: Hide CONTESTED default ON or OFF for first week?
-- CSS classes already shipped in v1.15.0. Pure JS wiring.
-
-**Estimated effort:** ~80 lines of edits, single session, low risk.
+**Code location:**
+- New helpers: `loadFilters`, `saveFilters`, `applyQualityFilters`,
+  `countHiddenByTag`, `buildFilterBarHtml`, `toggleFilter`,
+  `revealHiddenOnce` (lines 151-280 of `armed-panel.js`)
+- Filter state: `_qualityFilters`, `_revealOnce`,
+  `_pairsBeforeQualityFilter` (lines 37-46)
+- Click delegation on `listEl` with keyboard fallback
+- CSS classes already shipped in v1.15.0
+  (`.armed-filter-bar`, `.armed-filter-chip`, `.hidden-counter-chip`)
 
 ---
 
@@ -820,14 +810,31 @@ charts. Need ~300+ events accumulated first.
 
 **Calibration plan post-build:**
 
-| Pine input        | Default | Adjust if...                                  |
-|-------------------|---------|-----------------------------------------------|
-| `magnetThreshAtr` | 2.0     | LOW > 80% → 1.5; HIGH > 25% → 2.5            |
-| `sweepLowMax`     | 1       | If 1 magnet harmless → raise to 2          |
-| `sweepMedMax`     | 2       | If MED catching too many → lower to 1      |
-| `adxThresh`       | 20      | If ADX < 20 frequently → 18 (FX ranges)    |
+| Pine input        | Default | Adjust if...                                                |
+|-------------------|---------|-------------------------------------------------------------|
+| `magnetThreshAtr` | 2.0     | LOW > 80% → **2.5** (catch more); HIGH > 25% → **1.5** (catch fewer) |
+| `sweepLowMax`     | 1       | If 1-2 magnets harmless → raise to 2 (more pairs stay LOW)  |
+| `sweepMedMax`     | 2       | If HIGH > 25% → raise to 3 or 4 (require more magnets for HIGH) |
+| `adxThresh`       | 20      | If ADX < 20 frequently → 18 (FX ranges)                     |
+
+**Direction note (corrected 2026-05-02 per FCC-SRL v3.0.0 source review):**
+`magnetThreshAtr` = ATR distance within which a magnet "counts". Larger
+threshold = more magnets in scope = more HIGH classification. Earlier
+calibration table direction was inverted; the table above is the
+mechanically correct version.
 
 Target distribution: LOW 55-65% / MED 25-35% / HIGH 5-15%.
+
+**Diagnostic finding 2026-05-02 (P15+P16 investigation, 1121 events,
+7-day window):**
+- Final structExt: 94.5% EXTENDED, 5.5% FRESH (epidemic confirmed)
+- Sweep risk distribution: HIGH 56.2% / MED 27.9% / LOW 15.9% (vs target)
+- Grade map is fine (32.9% FRESH-eligible from grade alone)
+- Sweep risk override kills 83% of FRESH grades
+- Per-asset class: ENERGY 2.8% FRESH, CRYPTO 3.3% FRESH (worst)
+- Recommended FX/Indices/Bonds tuning: sweepLowMax 1→2, sweepMedMax 2→4
+- Recommended Energy/Crypto: magnetThreshAtr 2.0→1.5 + same sweepMax tweaks
+- Pine changes are TradingView-side, must be applied on each indicator instance
 
 **Estimated effort:** ~400-600 lines across HTML + possibly server.
 Dedicated session.

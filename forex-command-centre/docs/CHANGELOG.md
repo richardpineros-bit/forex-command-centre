@@ -1,3 +1,91 @@
+## [armed-panel v1.18.0 + diagnostics] - 2026-05-02
+
+### TODO P15, P16, P17 closed: STRUCT EXT diagnosis + LOW CONF link + Phase 3b filter chips
+
+#### Diagnostic findings (P15 STRUCT EXT epidemic + P16 LOW CONF dominance)
+
+Pulled 1,121 location-history events across 7-day window via new
+`scripts/diagnostics/diagnostic_p15_p16_v1.0.1.sh`. Key results:
+
+- **STRUCT EXT epidemic confirmed:** 94.5% EXTENDED / 5.5% FRESH.
+- **Root cause is sweep_risk classifier, not the grade map.**
+  Grade map produces 32.9% FRESH-eligible (PRIME 5.4% + AT_ZONE 16.1%
+  + BREAKOUT_RETEST 11.5%) — fine. Sweep risk override then kills
+  83% of those (308 of 370 FRESH grades downgraded).
+- **Sweep risk distribution:** HIGH 56.2% / MED 27.9% / LOW 15.9%
+  (target: LOW 55-65% / MED 25-35% / HIGH 5-15%). Severely
+  mis-calibrated.
+- **LOW CONF dominance is a downstream symptom of P15, not an
+  independent problem.** CONF label is driven by 4-input satellite
+  alignment score, not UTCC tier as TODO P16 originally hypothesised.
+  Structure satellite contributes -1 in 94.5% of cases — HIGH CONF
+  becomes mathematically capped at 5.5%. Fixing P15 fixes P16.
+- **Per-asset class:** ENERGY 2.8% FRESH, CRYPTO 3.3% FRESH (worst).
+  Need per-asset profiles for `magnetThreshAtr`.
+
+**Recommended Pine recalibration (operator-side, on TradingView):**
+- FX / Indices / Bonds: `sweepLowMax` 1 → 2; `sweepMedMax` 2 → 4
+- Energy / Crypto: same + `magnetThreshAtr` 2.0 → 1.5
+
+**Also corrected:** TODO P18 calibration table had `magnetThreshAtr`
+adjustment direction inverted. Fixed in this commit. Mechanically:
+larger threshold catches more magnets in scope, producing more HIGH
+classification.
+
+#### armed-panel v1.18.0 (TODO P17 Phase 3b)
+
+Quality filter chips at top of armed panel. Pure JS wiring; CSS
+shipped previously in v1.15.0.
+
+- Three filter chips, persisted in `localStorage` under key
+  `armed-quality-filters`:
+  - `Hide CONTESTED` — default ON (institutional protection)
+  - `Hide CAUTION` — default OFF
+  - `Only PRIORITY` — default OFF, overrides Hide flags when active
+- Hidden counter chip(s) ALWAYS VISIBLE when filter is hiding pairs.
+  Format: `{n} CONTESTED hidden` / `{n} CAUTION hidden` /
+  `{n} non-PRIORITY hidden`. Click reveals filtered pairs for one
+  render cycle (next refresh re-applies filter).
+- Filter applied inside `renderArmedState()` after `_dismissedPairs`
+  filter, before tier/sort logic. Tier counts and section headers
+  reflect filtered set.
+- Backward compat: pairs with `qualityTag = null/undefined` are
+  NEVER filtered.
+- Filter bar renders only when at least one armed pair has a
+  `qualityTag` — avoids visual noise on legacy/empty state.
+- Keyboard accessibility: Enter / Space toggles focused chip.
+- Single click handler delegated on `listEl` survives every
+  `renderArmedState()` rebuild.
+
+**Why hide-by-default matters now:** With current Pine sweep_risk
+mis-calibration, CONTESTED dominates the universe. The chips give
+the trader an immediate escape from disinformation while Pine
+recalibration is pending.
+
+#### Diagnostic tooling
+
+New directory `forex-command-centre/scripts/diagnostics/`. First
+script `diagnostic_p15_p16_v1.0.1.sh` (v1.0.0 superseded — wrong
+port, silent abort on curl failure). Future diagnostics follow
+same versioning convention.
+
+#### Deploy steps
+```
+cd /mnt/user/appdata && git pull
+cp forex-command-centre/src/js/armed-panel.js /mnt/user/appdata/nginx/www/js/
+# Hard refresh PWA (Ctrl+Shift+R)
+```
+
+#### Out of scope (deferred)
+- Phase 3c (Intelligence Hub calibration tabs) — dedicated session.
+  Now well-justified given diagnostic data.
+- Pine recalibration on TradingView — operator action, not committable.
+- `utcc-alerts.json` location — not blocking. Run
+  `find /mnt/user/appdata -name 'utcc-alerts.json' 2>/dev/null` to
+  locate when needed.
+
+---
+
 ## [Alert Server v3.0.1 + armed-panel v1.17.0] - 2026-04-30
 
 ### TODO P14 + P20 closed: AEST week boundary + ZONE cell simplification
