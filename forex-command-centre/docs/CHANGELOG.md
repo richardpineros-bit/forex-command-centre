@@ -1,3 +1,83 @@
+## [FCC-SRL v3.1.1 + TODO P22/P23/P24] - 2026-05-02
+
+### FCC-SRL v3.1.1 — PATCH: fix Pine compile error (declaration order)
+
+v3.1.0 referenced per-asset profile identifiers (`fx_magnetThreshAtr`,
+`met_*`, `ene_*`, `idx_*`, `cr_*`, `bnd_*`) at line 157 but the input
+declarations sit at line 263+. Pine Script v6 is single-pass; identifiers
+must be declared before being referenced.
+
+TradingView compiler output: 18 errors, all undeclared-identifier on the
+profile resolution block.
+
+**Fix:** relocate the profile resolution block from line 157 to immediately
+after the last per-asset input declaration (`bnd_sweepMedMax`, line 281).
+New block lives at line 285-309. Replaced with a placeholder comment at
+the original location pointing to the new block (`Search for "PROFILE
+RESOLUTION (v3.1.1)" below`).
+
+`profileName` declaration kept at original location since it only
+references `assetClass`.
+
+PATCH bump (no behavioural change vs intended v3.1.0): same profiles,
+same defaults, same webhook payload, same chart label. This commit only
+resolves the compile error.
+
+**File:** `utcc-indicators/fcc-sr-location_v3.1.1.pine` — 1437 lines.
+
+**Operator note:** v3.1.0 indicator never compiled, so it was never
+deployed live. Use v3.1.1 going forward — paste this file into TradingView
+Pine Editor.
+
+**Risk Engineer note:** Pine Script lint is not run in this environment.
+Future Pine work must include manual declaration-before-use check via
+grep before commit. Added to internal practice; not a code change.
+
+### TODO.md updates
+
+**Closed:**
+- Priority 18 (Phase 3c: Intelligence Hub calibration tabs) — closed
+  2026-05-02. Full deployment summary appended to the priority entry
+  (4-chunk dashboard rollout v1.0.0 → v1.1.0 + FCC-SRL v3.1.1 + Alert
+  Server v3.1.0 + stale `fcc-sr-location.pine` deletion).
+
+**Added:**
+- Priority 22 — **UTCC Calibration Diagnostics tab (institutional shape)**.
+  New tab in `arm-history-dashboard.html` with score distribution, tier
+  pass-through funnel, per-criterion failure map, per asset class
+  breakdown, calibration diagnostics with statistical context. Critical
+  decision documented: NO pre-baked recommendations. Real institutional
+  tools surface evidence and let the trader decide; pre-cooked tips are
+  retail-flavoured and hide reasoning. Pass 1 ships distribution metrics
+  alone (~500 lines); Pass 2 adds risk-adjusted metrics once outcome
+  data is available (depends on P23).
+- Priority 23 — **Phase 3d: trade outcome logging tied to arm events**.
+  End-to-end pipeline that ties closed trades back to the originating
+  arm event. Server stamps `trade_id` at arm time (no timestamp-join
+  shortcuts — race conditions). Outcome capture: PnL, R-multiple,
+  duration, closure reason, max adverse excursion. New `/trade-outcomes`
+  aggregation endpoint. Required for cohort win rate analysis. ~600
+  lines, 2 sessions.
+- Priority 24 — **Pine input change audit log**. Track every Pine input
+  change so cohort analysis can split at calibration boundaries.
+  Recommended approach: Pine writes input snapshot on every webhook
+  (`pine_inputs` block on payload). Server captures and stores. Cohort
+  analysis layer (P22 Pass 2) splits cohorts at calibration era
+  boundaries and warns when a window straddles changes. Without this,
+  cohort win rate analysis is statistically dishonest. ~80 lines, 2
+  hours.
+
+**Sequencing recommendation in TODO entries:**
+
+1. P22 Pass 1 (distribution metrics, no outcome data needed)
+2. P24 (audit log scaffolding — cheap, ships before P23 cohort analysis)
+3. P23 (outcome logging end-to-end)
+4. P22 Pass 2 (cohort analysis using P23 data + P24 boundaries)
+
+This sequencing is documented in the TODO entries themselves.
+
+---
+
 ## [FCC-SRL v3.1.0 + Alert Server v3.1.0] - 2026-05-02
 
 ### Per-asset magnet/sweep profiles + Phase 3c calibration enablement

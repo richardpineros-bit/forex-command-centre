@@ -759,7 +759,7 @@ essential trader protection until Pine thresholds are recalibrated
 
 ---
 
-## 🟡 Priority 18 — Phase 3c: Intelligence Hub calibration tabs
+## ✅ Priority 18 — Phase 3c: Intelligence Hub calibration tabs — CLOSED 2026-05-02
 
 **Trigger:** ~5 trading days of `loc-history.json` data (~300+ enrichment
 events) accumulated post-FCC-SRL v2.0.0 deploy.
@@ -838,6 +838,53 @@ Target distribution: LOW 55-65% / MED 25-35% / HIGH 5-15%.
 
 **Estimated effort:** ~400-600 lines across HTML + possibly server.
 Dedicated session.
+
+**CLOSED 2026-05-02 — what shipped:**
+
+`arm-history-dashboard.html`: 2265 → 3037 lines (+772, +34%) across four
+chunked commits.
+
+- v1.0.0: version banner baseline (file was previously unversioned)
+- v1.0.1: NEW TAB **Sweep Risk Calibration** — grade distribution chart
+  (actual vs target 60/30/10), per asset class breakdown with deviation
+  flags, severity-coded auto-calibration tips. Range filter 7d/30d/90d/All.
+- v1.0.2: NEW TAB **Frequency × Sweep Matrix** — 3×3 cell grid (frequency
+  bins × sweep tiers) showing pair allocation by Quality Tag. Client-side
+  mirror of server `computeQualityTag()`. Drilldown chip view per tag.
+- v1.1.0: **Location Calibration** enhancements — sweep risk filter
+  dropdown, LOW/MED/HIGH columns in grade distribution table (HIGH
+  highlighted red on quality grades when >25%), per-pair 7-day sweep
+  trend sparklines (categorical dots, not lines), Sweep column added to
+  raw events table.
+
+Plus calibration enablement layer:
+
+- **FCC-SRL v3.1.1** (Pine): per-asset-class magnet/sweep profiles
+  replacing flat globals. Six profile groups (FX/METALS/ENERGY/INDICES/
+  CRYPTO/BONDS). Defaults locked to recalibration analysis values.
+  Webhook payload extended with `profile`, `profile_magnet_atr`,
+  `profile_sweep_low`, `profile_sweep_med`. Chart label shows active
+  profile values.
+- **Alert Server v3.1.0**: captures profile fields from webhook, stores
+  on `data.pairs[pair]` and appends to `location-history` events for
+  per-profile analytics.
+- Stale `fcc-sr-location.pine` (v1.0.0, no sweep logic) deleted as part
+  of cleanup.
+
+**Institutional decision documented in chat:** "Auto Calibration Tips"
+section (concrete numeric recommendations) is retail-flavoured. Real
+institutional tools show the metric + statistical context and let the
+trader decide. Current tips section retained because it's already shipped,
+but the pattern won't be carried into UTCC Calibration tab — see new
+**Priority 22**.
+
+**Operator deployment status (as of 2026-05-02):**
+- Frontend: ready, needs `cp` to nginx webroot + hard refresh
+- FCC-SRL Pine: needs paste into TradingView Pine Editor, save / republish
+- Alert server: needs `cp` to trading-state + `docker restart`
+- Pine recalibration: NOT applied yet (conservative path) — banner in
+  new tabs makes pre-recalibration baseline explicit. Once Pine v3.1.1
+  is deployed, defaults will apply automatically per asset class.
 
 ---
 
@@ -950,6 +997,353 @@ pushed to GitHub and lives in history forever.
 **Dependencies:** None.
 
 **Estimated effort:** ~10-15 min including audit + verification.
+
+---
+
+## 🟡 Priority 22 — UTCC Calibration Diagnostics tab (institutional shape)
+
+**Trigger:** After FCC-SRL v3.1.1 + Alert Server v3.1.0 deploy verified
+clean (Priority 18 follow-up). Don't stack new tabs on top of unverified
+foundation.
+
+**Scope:**
+
+New tab in `arm-history-dashboard.html`: **UTCC Calibration**.
+
+Bump `arm-history-dashboard.html` v1.1.0 → v1.2.0 (MINOR — new feature,
+same overall purpose).
+
+**Sections (institutional shape — NO pre-baked recommendations):**
+
+1. **Score Distribution** — bar chart of arm-event scores in 5-point
+   buckets (75-79, 80-84, 85-89, 90-94, 95+). Compare actual distribution
+   to expected. If 70% of arms cluster at 75-79 (the threshold), the
+   threshold is at the edge of noise — visible signal for the trader.
+   Show with sample size and 30d / 90d / 1y comparison where data
+   permits.
+
+2. **Tier Pass-Through Rate** — funnel analysis. What % of TRADE_READY
+   arms (score ≥ 75) escalate to STRONG (≥ 80), PERFECT (≥ 85),
+   EXCELLENT (≥ 90). Healthy benchmark: 50% / 25% / 10%. Show with
+   confidence intervals where sample size permits.
+
+3. **Per-Criterion Failure Map** — factor attribution. Of the 5 UTCC
+   criteria, which most often fails? If MTF alignment fails 60% of the
+   time, the gate is dominating — possibly too strict for current regime.
+   Show as stacked bar (each criterion's pass / fail / N-A breakdown)
+   plus 30d trend per criterion.
+
+4. **Per Asset Class breakdown** — same metrics split by asset class
+   (FX / METALS / ENERGY / INDICES / CRYPTO / BONDS).
+
+5. **Calibration Diagnostics (replaces 'Auto Calibration Tips' from
+   sister Sweep Risk tab pattern):**
+   - Each metric shown with **30d / 90d / 1y comparison + statistical
+     significance flag** (basic χ² test or proportion-difference test;
+     flag at p<0.05). Out of scope: full inferential framework. In
+     scope: "30d differs from 90d significantly".
+   - Each metric **split by regime** (Expansion / Rotation / Compression
+     / Distribution / Transition) where regime data available. Win
+     rates and pass-through rates are conditional on regime.
+   - **Sample size + thin-sample warnings** (n<50 flagged on every
+     section, mirrors Sweep Risk tab pattern).
+   - **NO pre-baked recommendations.** Trader reads the data, makes
+     their own calibration decision, applies on TradingView.
+
+6. **Phase 3d preview placeholder** — when outcome data ships
+   (Priority 23), this section becomes win rate / Sharpe / max DD per
+   tier per asset class per regime. Until then, placeholder card
+   reading "Awaiting Phase 3d outcome logging — see P23".
+
+**Out of scope for this priority (deferred to P23 then a P22 follow-up):**
+
+- Walk-forward validation widget (need outcome data)
+- Calibration audit log (P24)
+- Cohort lifecycle tracker (need outcome data + audit log)
+- Drawdown contribution per tier (need outcome data)
+- Sharpe / Calmar per tier (need outcome data)
+- Risk-adjusted metrics generally (need outcome data)
+
+**Why this matters:**
+
+Distribution diagnostics are bread-and-butter quant work — every desk
+monitors signal frequency distribution. If the alpha factory produces
+70% of trades at threshold edge, that is a calibration problem. Pass-
+through rate (tier funnel) is standard institutional reporting. Per-
+criterion failure analysis is factor attribution. These sections give
+the trader the data to reach their own calibration answer rather than
+showing a pre-cooked recommendation.
+
+**Why this is P2 not P1:**
+
+The real edge sits in **win rate per tier per regime** — Section 6
+above. Without outcome data (Priority 23), this tab measures distribution
+and pass-through only, which is second-order signal. Still worth shipping
+as Pass 1, but Pass 2 with outcome data is where it earns its institutional
+keep.
+
+**Why no auto-tips:**
+
+Pre-baked recommendations look helpful but they hide the reasoning.
+Real institutional tools show the metric, the historical trend, the
+sample size, the confidence interval, and let the human (or model
+committee) decide. The retail trap is to surface answers; the
+institutional discipline is to surface evidence. Risk Engineer principle:
+the human is the circuit breaker, and the circuit breaker needs to see
+the raw evidence — not the system's interpretation of it.
+
+**Dependencies:**
+
+- P18 (Phase 3c) — CLOSED. P22 builds on the same arm-history-dashboard
+  file and reuses the cached `_locHistoryAll` pattern.
+- P15 (structExt) — CLOSED. Pre-fix calibration baseline understood.
+- 5+ trading days of post-FCC-SRL-v3.1.1 events accumulated, otherwise
+  charts will look thin.
+- Decision needed: where does regime classification per arm event come
+  from? Currently `regime` is computed at arm time and stored in
+  `arm-history.json` payload. Verify this is captured before building
+  the per-regime section, otherwise that section becomes empty.
+
+**Estimated effort:**
+
+- New tab markup + filter row: ~80 lines
+- Five render functions (skip Section 6, leave placeholder): ~300 lines
+- Statistical significance helpers (chi-squared / proportion test): ~80
+  lines
+- Wire into existing arm-history-dashboard infrastructure: minimal
+- **Total: ~500 lines, 1 dedicated session**
+
+**Pass 2 (after P23 ships):** add Section 6 (win rate / Sharpe / max DD
+per tier per asset class per regime). Estimated +200 lines, 0.5
+session.
+
+---
+
+## 🟡 Priority 23 — Phase 3d: trade outcome logging tied to arm events
+
+**Trigger:** After P22 Pass 1 ships, OR earlier if P22 is deferred. The
+two priorities are independent in the sense that P22 Pass 1 is useful
+without outcomes, but **the institutional edge requires outcomes**.
+
+**Scope:**
+
+End-to-end pipeline that ties closed trades back to the arm event that
+triggered them, so per-tier / per-profile / per-regime win rate and
+risk-adjusted metrics become computable.
+
+**Components:**
+
+1. **Trade journal → arm-event linkage.** When a trade is logged in
+   `trades.json`, capture the originating `armedAt` timestamp + tier +
+   qualityTag + asset class + regime + active Pine profile snapshot.
+   Either the journal autofill grabs this from `/state` at journal time,
+   or the alert server stamps a `trade_id` onto the armed pair when the
+   trade fires (preferred — fewer race conditions).
+
+2. **Outcome capture.** When a trade closes (via Oanda fill or manual
+   journal close), record:
+   - PnL in account currency
+   - R-multiple (PnL / risked amount)
+   - Duration (arm timestamp to close timestamp)
+   - Closure reason (TP / SL / manual close / breakeven exit / time stop)
+   - Drawdown peak (max adverse excursion / risked amount)
+
+3. **Aggregation endpoint.** New alert server endpoint
+   `/trade-outcomes?range=30d&tier=PRIORITY&asset_class=FX&regime=Expansion`
+   returning aggregated metrics per cohort:
+   - Sample size (n)
+   - Win rate (% wins)
+   - Average R-multiple
+   - Sharpe (rolling, account-currency PnL)
+   - Max drawdown contribution
+   - Average time-in-trade
+
+4. **Schema versioning.** Existing `trades.json` schema bumps minor
+   version. Migration: pre-Phase-3d trades have null linkage fields.
+   They get filtered out of cohort analysis, not retroactively
+   reconstructed.
+
+**Why this matters:**
+
+Win rate without arm-event linkage is a black hole. You can see "PRIME
+tier won 60% last month" only if every trade was tagged at arm time
+with what tier it was in. Currently, the Quality Tag of an armed pair
+is computed at arm time but isn't necessarily preserved in the trade
+record — different code paths. This priority closes that gap.
+
+**Why no shortcut:**
+
+Could approximate the linkage by joining trades to nearest arm event
+by pair + timestamp window. **Don't.** Race conditions (re-arms,
+disarms, stop-out-then-re-arm) make timestamp joining unreliable. A
+trade fired between two arm events on the same pair within an hour
+could be attributed to either. Explicit tagging at arm time is the
+only audit-clean path.
+
+**Risk Engineer concerns:**
+
+- **Schema drift between journal and alert server.** If journal autofill
+  reads from `/state` and stamps a trade with what's there at that
+  moment, but `/state` updates between arm and trade fire, the snapshot
+  is stale. Mitigation: alert server stamps the snapshot at arm time,
+  not at journal time.
+- **Manual journal entries.** If trader fills journal by hand without
+  broker autofill, linkage is missing. Mitigation: journal autofill
+  becomes recommended path; manual entries get a "linkage incomplete"
+  flag and are excluded from cohort analysis with a visible counter
+  ("12 trades excluded — manual entries pre-autofill").
+- **Pine input changes mid-cohort.** If Pine inputs change while a
+  cohort is being measured, that cohort's data straddles two
+  calibrations. Hence Priority 24 — input change audit log — should
+  ship alongside this so the analysis layer can split cohorts at
+  calibration boundaries.
+
+**Dependencies:**
+
+- P22 Pass 1 ideally shipped first (to prove the surface before adding
+  data underneath).
+- P24 (Pine input audit log) ideally ships in parallel — without it,
+  cohort analysis can't honestly compare pre-vs-post calibration eras.
+- Existing trade journal infrastructure (`trade-journal.js`,
+  `journal-autofill.js`, `trades.json`) needs schema audit before
+  changes — likely already has some fields we can repurpose.
+
+**Estimated effort:**
+
+- Server side (trade_id stamping, linkage capture, aggregation
+  endpoint): ~200 lines
+- Frontend (journal capture, autofill update): ~150 lines
+- Schema migration + null-field handling: ~50 lines
+- Cohort analysis JS for arm-history-dashboard P22 Pass 2: ~200 lines
+- **Total: ~600 lines, 2 dedicated sessions**
+
+**Validation gate before claiming done:**
+
+Run a synthetic test trade through the full pipeline. Confirm:
+1. Arm fires → `armedAt` + tier + profile captured
+2. Trade fires → `trade_id` linked to arm event
+3. Trade closes → outcome captured with R-multiple
+4. `/trade-outcomes?tier=X` returns the trade in the right cohort
+
+If any step is silent failure (most likely failure mode), the linkage
+is broken and the data is poison.
+
+---
+
+## 🟡 Priority 24 — Pine input change audit log
+
+**Trigger:** Before P22 Pass 2 (cohort analysis with outcome data).
+Ideally before P22 Pass 1 too, as cheap insurance.
+
+**Scope:**
+
+Track every Pine input change to the indicators (Ultimate UTCC,
+FCC-SRL) so calibration analysis can honestly split cohorts at
+calibration boundaries.
+
+**Why this is necessary:**
+
+The current state of the system is that Pine input changes are made
+on TradingView (per-chart settings), are not visible to the alert
+server, are not logged anywhere, and are only inferable from git
+commit history of the Pine source files (which captures DEFAULTS but
+not per-chart overrides). When P23 ships and we start measuring "PRIME
+tier won 60% over last 60 days", that 60-day window may straddle
+calibration changes that materially shifted what "PRIME tier" even
+means. Cohort analysis without this is statistically dishonest.
+
+**Approach options (need decision before building):**
+
+**Option (a): Pine writes input snapshot on every alert.** Add to every
+TF_ARMED / TR_ARMED / location webhook payload a small block:
+`pine_inputs: {tfT:62, trT:70, magnetThreshAtr:1.5, sweepLowMax:2,
+sweepMedMax:4, ...}`. Alert server stores in arm-history /
+location-history events. Cohort analysis reads from these. Heaviest
+implementation but truest source.
+
+**Option (b): Manual log.** New file `pine-input-log.json` on alert
+server. Operator (you) appends an entry every time you change a Pine
+input on TradingView, via a small frontend form or direct edit. Lighter
+implementation but requires discipline. Risk: missed entries silently
+break cohort analysis.
+
+**Option (c): Hybrid.** Pine writes snapshot on first alert after
+script reload (use `var` flag set on `barstate.isfirst`); subsequent
+alerts skip the inputs block. Manual log captures intra-session
+changes. Most complex; not recommended unless Option (a) overhead
+proves real.
+
+**Recommended:** Option (a). Operator-discipline-dependent solutions
+(b, c) fail when operator is busy or distracted, which is exactly when
+the system most needs to remain audit-clean. A 200-byte inputs block
+on every webhook is cheap.
+
+**Schema:**
+
+Each arm-history / location-history event gains a `pine_inputs` field:
+
+```json
+{
+  "pine_indicator": "FCC-SRL",
+  "pine_version": "v3.1.1",
+  "magnetThreshAtr": 1.5,
+  "sweepLowMax": 2,
+  "sweepMedMax": 4,
+  "profile": "ENERGY"
+}
+```
+
+Plus a parallel `utcc_inputs` block from Ultimate UTCC alerts:
+
+```json
+{
+  "pine_indicator": "Ultimate UTCC",
+  "pine_version": "v2.7.0",
+  "tfT": 62,
+  "trT": 70,
+  "adxThresh": 20,
+  "atrFilter": 80
+}
+```
+
+**Deduplication:** No dedup at write time — every event captures its
+inputs. Server-side or analysis-layer dedup if storage becomes an issue
+(unlikely; Pine has small input surface, ~200 bytes per event).
+
+**Cohort split logic (consumed by P22 / P23 analysis):**
+
+When user requests `/trade-outcomes?range=60d&tier=PRIORITY`, the
+endpoint also returns:
+```json
+{
+  "calibration_eras": [
+    {"start": "2026-04-15", "end": "2026-04-30", "magnetThreshAtr": 2.0},
+    {"start": "2026-05-01", "end": "2026-05-15", "magnetThreshAtr": 1.5}
+  ],
+  "trades_per_era": [...],
+  "warning": "Calibration changed mid-cohort. Per-era metrics shown."
+}
+```
+
+UI shows each era as a separate vertical band on the win rate chart.
+
+**Why this is P2 not P1:**
+
+Cheap to add but only valuable once P23 ships. If we ship P22 Pass 1
+without P24, the diagnostics tab works on a single calibration era and
+this is fine — distribution metrics are time-local. The hazard begins
+at P22 Pass 2 (cohort analysis). Ship P24 before then.
+
+**Dependencies:**
+
+- Decide Option (a) vs (b) vs (c) — recommend (a)
+- Pine source edit on both Ultimate UTCC and FCC-SRL to inject inputs
+  block into payload (~30 lines per indicator)
+- Alert server: capture and store the new field (~20 lines)
+- No frontend change needed for P24 itself; consumed by P22/P23.
+
+**Estimated effort:** ~80 lines across two Pine files + alert server.
+~2 hours of focused work.
 
 ---
 
