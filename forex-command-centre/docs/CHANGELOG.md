@@ -1,4 +1,68 @@
-## [Alert server v3.2.0 — Scraper Health Monitoring (TODO P1a)] - 2026-05-02
+## [Deploy validation: P12 + P1a end-to-end on production] - 2026-05-02
+
+### Both prior entries validated live on Unraid
+
+After the two commits above shipped to GitHub, both were deployed and
+validated end-to-end on the production Unraid server. Captured here
+because deploy revealed two patterns worth recording for next time.
+
+**P12 deploy — OANDA env var plumbing**
+
+The Myfxbook scraper's new Oanda price fetch needs `OANDA_API_KEY` /
+`OANDA_ACCOUNT_ID` / `OANDA_ENV` available in the cron environment.
+The proven pattern (already in use by `mdi_event_matcher` User Script)
+is to grab them from the running `trading-state` container at cron time
+rather than duplicate the secret on disk:
+
+```bash
+#!/bin/bash
+OANDA_API_KEY=$(docker exec trading-state printenv OANDA_API_KEY 2>/dev/null)
+OANDA_ACCOUNT_ID=$(docker exec trading-state printenv OANDA_ACCOUNT_ID 2>/dev/null)
+OANDA_ENV=$(docker exec trading-state printenv OANDA_ENV 2>/dev/null || echo "live")
+export OANDA_API_KEY OANDA_ACCOUNT_ID OANDA_ENV
+/usr/bin/python3 .../myfxbook_sentiment_scraper_v1.1.0.py --unraid \
+  >> /mnt/user/appdata/trading-state/data/myfxbook-cron.log 2>&1
+```
+
+This is the right pattern for any future scraper that needs Oanda
+creds — single source of truth (the trading-state container env),
+no duplication, no .env files to maintain.
+
+**Validation:** First manual run of the new User Script returned
+`33/33 fetched, 0 failed, prices=32 (oanda)` — 33 minus BTCUSD = 32,
+exactly as designed.
+
+**P1a deploy — calendar.json copy permanence**
+
+The FF User Script previously copied `calendar.json` only to nginx
+webroot. After P1a deploy, `forex_calendar` reported MISSING because
+the trading-state container couldn't see it. Permanent fix added a
+second `cp` line to `forex-calendar-update`:
+
+```bash
+# Copy to trading-state so /health/scrapers can monitor freshness (TODO P1a)
+cp /mnt/user/appdata/forex-command-centre/src/calendar.json \
+   /mnt/user/appdata/trading-state/data/calendar.json
+```
+
+**Validation:** After fix, `curl /health/scrapers | jq .fleet_status`
+returned `"OK"` with all 5 scrapers reporting OK — myfxbook_orderbook
+fresh from cron at age 0.14h, others within their respective windows.
+
+**Token exposure note:** During deploy the operator pasted a fresh
+GitHub PAT in chat for push operations. Per pattern (set token in
+remote URL → push → reset to tokenless URL immediately) the working
+window was minimal, but the token now sits in chat history. Rotation
+recommended at next opportunity.
+
+**Trading-state host port reminder:** Container exposes 3847 internally,
+mapped to 3001 on host. Diagnostic curls go to `localhost:3001`, not
+`localhost:3847`. Public access via Cloudflare tunnel
+(`api.pineros.club`) hides this distinction.
+
+---
+
+
 
 ### Alert server v3.1.0 → v3.2.0 — MINOR: unified scraper health endpoint
 

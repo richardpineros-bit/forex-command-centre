@@ -51,6 +51,28 @@ reports `CRITICAL`, all-healthy reports `OK`. All 5 status types fire.
   `current_prices` is empty after deploy — that's the canary for the
   "OANDA env vars missing from cron" failure mode flagged in P12.
 
+**Deploy completed 2026-05-02 — production validation:**
+- Alert server upgraded in trading-state container; `curl /health`
+  returns `{"version":"3.2.0"}`.
+- `/health/scrapers` reports all 5 scrapers OK, fleet_status=OK after
+  applying the calendar.json User Script patch.
+- Trading-state host port mapping confirmed: container 3847 → host 3001
+  (Cloudflare tunnel hides this for public access at `api.pineros.club`).
+- 15-minute scheduled health check active. First push will fire on
+  next genuine OK→non-OK transition.
+
+**Reusable pattern unlocked (apply to any future scraper needing Oanda
+creds):** grab from `trading-state` container at cron time, single
+source of truth on the docker container env, no .env files:
+```bash
+OANDA_API_KEY=$(docker exec trading-state printenv OANDA_API_KEY 2>/dev/null)
+OANDA_ACCOUNT_ID=$(docker exec trading-state printenv OANDA_ACCOUNT_ID 2>/dev/null)
+OANDA_ENV=$(docker exec trading-state printenv OANDA_ENV 2>/dev/null || echo "live")
+export OANDA_API_KEY OANDA_ACCOUNT_ID OANDA_ENV
+```
+Already in use by `mdi_event_matcher` User Script; now also by
+`myfxbook_sentiment_scraper`.
+
 ---
 
 ## 🟢 Priority 1b — Scraper Health Dashboard widget (frontend)
@@ -584,6 +606,15 @@ Follow-up Tier 2.5 (Option B — `/pricing/latest` endpoint) only if
 this proves valuable.
 
 **No change to:** alert server, armed panel, live trading gates.
+
+**Deploy completed 2026-05-02 — production validation:**
+- Myfxbook User Script updated to call v1.1.0 + grab Oanda creds from
+  trading-state container env (mirrors `mdi_event_matcher` pattern).
+- First manual run of new script: `33/33 fetched, 0 failed,
+  prices=32 (oanda)` — 33 minus BTCUSD = 32 exactly as designed.
+- `/health/scrapers` confirms `myfxbook_orderbook: OK, age 0.14h` with
+  no sanity issues post-deploy.
+- v1.0.1 retained for 24h rollback window per session plan.
 
 ---
 
