@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- arm-history-dashboard.html v1.0.0 -->
+<!-- arm-history-dashboard.html v1.0.1 -->
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -383,6 +383,7 @@ body {
     <div class="tab" onclick="showTab('obhistory',this);loadOBHistory()">&#x1F4D6; Retail OB</div>
                 <div class="tab" onclick="showTab('pushlog',this);loadPushLog()">&#x1F514; Push Log</div>
     <div class="tab" onclick="showTab('mdi',this);loadMDI()">&#x1F310; Macro Dominance</div>
+    <div class="tab" onclick="showTab('sweepcal',this);loadSweepCal()">&#x1F9F2; Sweep Risk</div>
 </div>
 
 <!-- OVERVIEW -->
@@ -652,6 +653,78 @@ body {
             </table>
         </div>
     </div>
+</div>
+
+<!-- ============================================================
+     SWEEP RISK CALIBRATION (Phase 3c v1.0.1)
+     Source: /location-history endpoint
+     Purpose: Visualise sweep_risk distribution to inform Pine input
+              recalibration (sweepLowMax, sweepMedMax, magnetThreshAtr)
+     ============================================================ -->
+<div class="page" id="tab-sweepcal">
+
+    <!-- Pre-recalibration baseline banner -->
+    <div class="card mb" style="border-left:4px solid #FF8C00">
+        <div class="card-body" style="font-size:0.78rem;padding:10px 14px;line-height:1.5">
+            <strong style="color:#FF8C00">&#x26A0; Pre-recalibration baseline.</strong>
+            Current Pine inputs: <code>sweepLowMax=1</code>, <code>sweepMedMax=2</code>, <code>magnetThreshAtr=2.0</code>.
+            Target distribution: <strong style="color:#10b981">60% LOW</strong> / <strong style="color:#eab308">30% MED</strong> / <strong style="color:#ef4444">10% HIGH</strong>.
+            Use this view to decide on Pine input changes before applying calibration. Sample sizes &lt;50 are flagged as thin.
+        </div>
+    </div>
+
+    <!-- Range selector + sample size -->
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F9F2; Sweep Risk Calibration</span>
+            <span class="card-meta" id="sc-meta">Loading&#x2026;</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px">
+            <select id="sc-range" onchange="renderSweepCal()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="0">All time</option>
+            </select>
+            <select id="sc-asset" onchange="renderSweepCal()" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:0.75rem;">
+                <option value="">All Asset Classes</option>
+                <option value="FX">FX</option>
+                <option value="METALS">Metals</option>
+                <option value="ENERGY">Energy</option>
+                <option value="INDICES">Indices</option>
+                <option value="CRYPTO">Crypto</option>
+                <option value="BONDS">Bonds</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Section 1: Grade distribution -->
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F4CA; Grade Distribution</span>
+            <span class="card-meta">Actual vs Target (60/30/10)</span>
+        </div>
+        <div class="card-body" id="sc-distribution"><div class="loading">&#x23F3; Load data above</div></div>
+    </div>
+
+    <!-- Section 2: Per asset class breakdown -->
+    <div class="card mb">
+        <div class="card-header">
+            <span class="card-title">&#x1F310; Per Asset Class Breakdown</span>
+            <span class="card-meta">Deviations &gt;15pp from overall flagged</span>
+        </div>
+        <div class="card-body" id="sc-perasset"><div class="loading">&#x23F3;</div></div>
+    </div>
+
+    <!-- Section 3: Auto-calibration tips -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">&#x1F4CB; Auto Calibration Tips</span>
+            <span class="card-meta">Pine input adjustments based on observed distribution</span>
+        </div>
+        <div class="card-body" id="sc-tips" style="font-size:0.8rem;"><div class="loading">&#x23F3;</div></div>
+    </div>
+
 </div>
 
 <div class="page" id="tab-obhistory">
@@ -2259,6 +2332,258 @@ function renderMDIChart(pair, histData) {
         +   '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#60a5fa;vertical-align:middle;margin-right:4px"></span>LEANING (gap 30-59)</span>'
         +   '<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#64748b;vertical-align:middle;margin-right:4px"></span>BALANCED (gap &lt;30)</span>'
         + '</div>';
+}
+
+// ===========================================================================
+// SWEEP RISK CALIBRATION (Phase 3c v1.0.1)
+// Source: /location-history events. Reuses window._locHistoryAll cache when
+// available, otherwise fetches fresh.
+// ===========================================================================
+
+function loadSweepCal() {
+    if (window._locHistoryAll && window._locHistoryAll.events) {
+        renderSweepCal();
+        return;
+    }
+    fetch(API_BASE + '/location-history?limit=2000')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            window._locHistoryAll = d;
+            renderSweepCal();
+        })
+        .catch(function(e) {
+            document.getElementById('sc-distribution').innerHTML =
+                '<p style="color:var(--color-fail)">Failed to load: ' + e.message + '</p>';
+        });
+}
+
+function renderSweepCal() {
+    var d = window._locHistoryAll;
+    if (!d) return;
+    var events = (d.events || []).slice();
+
+    // Apply range filter
+    var rangeDays = parseInt(document.getElementById('sc-range').value) || 0;
+    if (rangeDays > 0) {
+        var cutoff = Date.now() - (rangeDays * 24 * 60 * 60 * 1000);
+        events = events.filter(function(e) {
+            return new Date(e.timestamp).getTime() >= cutoff;
+        });
+    }
+
+    // Apply asset class filter
+    var assetF = document.getElementById('sc-asset').value;
+    if (assetF) {
+        events = events.filter(function(e) { return e.asset_class === assetF; });
+    }
+
+    var n = events.length;
+    var thinFlag = n < 50 ? ' &#x26A0; THIN SAMPLE' : '';
+    document.getElementById('sc-meta').innerHTML = 'n=' + n + ' events' + thinFlag;
+
+    renderSweepDistribution(events);
+    renderSweepPerAsset(events);
+    renderSweepTips(events);
+}
+
+function _sweepCounts(events) {
+    var c = { LOW:0, MEDIUM:0, HIGH:0 };
+    events.forEach(function(e) {
+        var s = e.sweep_risk || 'LOW';
+        if (c[s] === undefined) c[s] = 0;
+        c[s]++;
+    });
+    return c;
+}
+
+function _pct(n, total) { return total ? Math.round(n / total * 1000) / 10 : 0; }
+
+function renderSweepDistribution(events) {
+    var n = events.length;
+    if (!n) {
+        document.getElementById('sc-distribution').innerHTML =
+            '<p style="color:var(--text-muted);text-align:center">No events in selected range</p>';
+        return;
+    }
+    var c = _sweepCounts(events);
+    var rows = [
+        { tier:'LOW',    count:c.LOW,    target:60, color:'#10b981' },
+        { tier:'MEDIUM', count:c.MEDIUM, target:30, color:'#eab308' },
+        { tier:'HIGH',   count:c.HIGH,   target:10, color:'#ef4444' }
+    ];
+
+    var html = '<table class="data-table"><thead><tr>' +
+               '<th>Tier</th><th class="r">Count</th><th class="r">Actual %</th>' +
+               '<th class="r">Target %</th><th class="r">Delta</th><th>Visual</th>' +
+               '</tr></thead><tbody>';
+
+    rows.forEach(function(r) {
+        var actualPct = _pct(r.count, n);
+        var delta = Math.round((actualPct - r.target) * 10) / 10;
+        var deltaStr = (delta >= 0 ? '+' : '') + delta + 'pp';
+        var deltaCol = Math.abs(delta) <= 5 ? 'var(--text-muted)' :
+                       (Math.abs(delta) <= 15 ? '#eab308' : '#ef4444');
+        var actualW  = Math.round(actualPct * 1.5);
+        var targetW  = Math.round(r.target * 1.5);
+        // Two-bar visual: actual on top, target below in muted
+        var visual = '<div style="position:relative;width:160px;height:18px">' +
+                       '<div style="position:absolute;top:0;left:0;height:8px;width:' + actualW + 'px;background:' + r.color + ';border-radius:2px"></div>' +
+                       '<div style="position:absolute;top:10px;left:0;height:6px;width:' + targetW + 'px;background:' + r.color + ';opacity:0.25;border-radius:2px;border:1px dashed ' + r.color + '"></div>' +
+                     '</div>';
+        html += '<tr>' +
+                '<td><span style="color:' + r.color + ';font-weight:700">' + r.tier + '</span></td>' +
+                '<td class="r">' + r.count + '</td>' +
+                '<td class="r">' + actualPct + '%</td>' +
+                '<td class="r" style="color:var(--text-muted)">' + r.target + '%</td>' +
+                '<td class="r" style="color:' + deltaCol + ';font-weight:600">' + deltaStr + '</td>' +
+                '<td>' + visual + '</td>' +
+                '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="margin-top:8px;font-size:0.7rem;color:var(--text-muted)">Solid bar = actual. Dashed bar = target. Delta colour: grey &le;5pp, amber &le;15pp, red &gt;15pp.</div>';
+
+    document.getElementById('sc-distribution').innerHTML = html;
+}
+
+function renderSweepPerAsset(events) {
+    var n = events.length;
+    if (!n) {
+        document.getElementById('sc-perasset').innerHTML =
+            '<p style="color:var(--text-muted);text-align:center">No events</p>';
+        return;
+    }
+
+    // Overall distribution (used as deviation baseline)
+    var overall = _sweepCounts(events);
+    var oLow  = _pct(overall.LOW, n);
+    var oMed  = _pct(overall.MEDIUM, n);
+    var oHigh = _pct(overall.HIGH, n);
+
+    // Group by asset class
+    var byAsset = {};
+    events.forEach(function(e) {
+        var a = e.asset_class || 'UNKNOWN';
+        if (!byAsset[a]) byAsset[a] = [];
+        byAsset[a].push(e);
+    });
+
+    var classes = Object.keys(byAsset).sort();
+    var html = '<table class="data-table"><thead><tr>' +
+               '<th>Class</th><th class="r">n</th>' +
+               '<th class="r" style="color:#10b981">LOW %</th>' +
+               '<th class="r" style="color:#eab308">MED %</th>' +
+               '<th class="r" style="color:#ef4444">HIGH %</th>' +
+               '<th>Flag</th>' +
+               '</tr></thead><tbody>';
+
+    classes.forEach(function(a) {
+        var ev = byAsset[a];
+        var cn = ev.length;
+        var c  = _sweepCounts(ev);
+        var lo = _pct(c.LOW, cn);
+        var me = _pct(c.MEDIUM, cn);
+        var hi = _pct(c.HIGH, cn);
+
+        var flags = [];
+        if (cn < 50) flags.push('<span style="color:#888">&#x26A0; thin (n&lt;50)</span>');
+        if (Math.abs(lo - oLow)  > 15) flags.push('<span style="color:#ef4444">LOW dev ' + (lo > oLow ? '+' : '') + Math.round(lo - oLow) + 'pp</span>');
+        if (Math.abs(me - oMed)  > 15) flags.push('<span style="color:#ef4444">MED dev ' + (me > oMed ? '+' : '') + Math.round(me - oMed) + 'pp</span>');
+        if (Math.abs(hi - oHigh) > 15) flags.push('<span style="color:#ef4444">HIGH dev ' + (hi > oHigh ? '+' : '') + Math.round(hi - oHigh) + 'pp</span>');
+        var flagHtml = flags.length ? flags.join(' &middot; ') : '<span style="color:var(--text-muted)">&#x2014;</span>';
+
+        html += '<tr>' +
+                '<td><strong>' + a + '</strong></td>' +
+                '<td class="r">' + cn + '</td>' +
+                '<td class="r">' + lo + '%</td>' +
+                '<td class="r">' + me + '%</td>' +
+                '<td class="r">' + hi + '%</td>' +
+                '<td style="font-size:0.72rem">' + flagHtml + '</td>' +
+                '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="margin-top:8px;font-size:0.7rem;color:var(--text-muted)">Overall baseline: LOW ' + oLow + '% / MED ' + oMed + '% / HIGH ' + oHigh + '%. Per asset deviations &gt;15pp suggest class-specific Pine override.</div>';
+
+    document.getElementById('sc-perasset').innerHTML = html;
+}
+
+function renderSweepTips(events) {
+    var n = events.length;
+    if (!n) {
+        document.getElementById('sc-tips').innerHTML =
+            '<p style="color:var(--text-muted);text-align:center">No events</p>';
+        return;
+    }
+
+    var c = _sweepCounts(events);
+    var lo = _pct(c.LOW, n);
+    var me = _pct(c.MEDIUM, n);
+    var hi = _pct(c.HIGH, n);
+    var medHigh = me + hi;
+
+    var tips = [];
+
+    // Sample size guard
+    if (n < 50) {
+        tips.push({ sev:'warn', text:'Insufficient data (n=' + n + '). Collect at least 50 events before tuning. Tips below treat sample as indicative only.' });
+    }
+
+    // Distribution tips
+    if (lo > 80) {
+        tips.push({ sev:'fail', text:'LOW = ' + lo + '% (target 60%, &gt;80%). System too permissive. Tighten <code>magnetThreshAtr</code> 2.0 &rarr; 1.5 to count more nearby levels as magnets.' });
+    } else if (lo < 40 && hi > 20) {
+        tips.push({ sev:'fail', text:'LOW = ' + lo + '% AND HIGH = ' + hi + '%. Calibration is broken at both ends. Review <code>magnetThreshAtr</code> AND <code>sweepMedMax</code> together; do not tune in isolation.' });
+    } else if (lo < 40) {
+        tips.push({ sev:'warn', text:'LOW = ' + lo + '% (target 60%, &lt;40%). System too strict on what counts as clean. Loosen <code>magnetThreshAtr</code> 2.0 &rarr; 2.5 OR raise <code>sweepLowMax</code> 1 &rarr; 2.' });
+    }
+
+    if (hi > 25) {
+        tips.push({ sev:'fail', text:'HIGH = ' + hi + '% (target 10%, &gt;25%). Too many setups flagged contested. Loosen <code>magnetThreshAtr</code> 2.0 &rarr; 2.5 to require closer proximity for magnets.' });
+    } else if (hi > 15 && hi <= 25) {
+        tips.push({ sev:'warn', text:'HIGH = ' + hi + '% (target 10%, mildly elevated). Monitor; do not tune yet unless persistent across 30d.' });
+    }
+
+    if (medHigh > 50) {
+        tips.push({ sev:'fail', text:'MED + HIGH combined = ' + medHigh + '% (target 40%, &gt;50%). Capturing too many obstructed paths. Lower <code>sweepMedMax</code> 2 &rarr; 1 so 2 magnets escalate straight to HIGH.' });
+    }
+
+    // Per-asset deviation tips
+    var byAsset = {};
+    events.forEach(function(e) {
+        var a = e.asset_class || 'UNKNOWN';
+        if (!byAsset[a]) byAsset[a] = [];
+        byAsset[a].push(e);
+    });
+    Object.keys(byAsset).forEach(function(a) {
+        var ev = byAsset[a];
+        var cn = ev.length;
+        if (cn < 50) return;
+        var ac = _sweepCounts(ev);
+        var aHi = _pct(ac.HIGH, cn);
+        var aLo = _pct(ac.LOW, cn);
+        if (Math.abs(aHi - hi) > 15) {
+            tips.push({ sev:'info', text:'Asset class <strong>' + a + '</strong>: HIGH = ' + aHi + '% (overall ' + hi + '%, deviation ' + (aHi > hi ? '+' : '') + Math.round(aHi - hi) + 'pp). Consider asset-class-specific <code>magnetThreshAtr</code> override.' });
+        } else if (Math.abs(aLo - lo) > 15) {
+            tips.push({ sev:'info', text:'Asset class <strong>' + a + '</strong>: LOW = ' + aLo + '% (overall ' + lo + '%, deviation ' + (aLo > lo ? '+' : '') + Math.round(aLo - lo) + 'pp). Consider asset-class-specific Pine override.' });
+        }
+    });
+
+    // Healthy default
+    if (!tips.length) {
+        tips.push({ sev:'ok', text:'Distribution within target tolerances. No calibration changes recommended at this time.' });
+    }
+
+    var sevColor = { ok:'#10b981', info:'#60a5fa', warn:'#eab308', fail:'#ef4444' };
+    var sevLabel = { ok:'OK', info:'INFO', warn:'WARN', fail:'ACTION' };
+    var html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    tips.forEach(function(t) {
+        html += '<div style="padding:8px 12px;background:var(--bg-tertiary);border-left:3px solid ' + sevColor[t.sev] + ';border-radius:3px">' +
+                  '<span style="display:inline-block;font-size:0.65rem;font-weight:700;color:' + sevColor[t.sev] + ';margin-right:8px;letter-spacing:0.5px">' + sevLabel[t.sev] + '</span>' +
+                  t.text +
+                '</div>';
+    });
+    html += '</div>';
+
+    document.getElementById('sc-tips').innerHTML = html;
 }
 
 </script>
