@@ -1,3 +1,90 @@
+## [FCC-SRL v3.1.0 + Alert Server v3.1.0] - 2026-05-02
+
+### Per-asset magnet/sweep profiles + Phase 3c calibration enablement
+
+The Phase 3c diagnosis (TODO P15/P16) recommended Pine input changes
+that vary by asset class. Rather than hard-coding the new values into
+flat globals (forcing one preset for everything), this commit adds
+per-asset profile groups so each asset class gets its own magnet/sweep
+calibration that can be tuned independently going forward.
+
+#### Pine: utcc-indicators/fcc-sr-location_v3.1.0.pine
+
+Six new input groups in TradingView UI:
+- Liquidity Magnets - FX
+- Liquidity Magnets - Metals (TEST)
+- Liquidity Magnets - Energy
+- Liquidity Magnets - Indices
+- Liquidity Magnets - Crypto
+- Liquidity Magnets - Bonds
+
+Plus retained 'Liquidity Magnets - Global' group with enableMagnets
+and magnetMaxShown (profile-agnostic).
+
+Defaults locked in by the 2026-05-02 recalibration analysis:
+
+| Asset Class | magnetThreshAtr | sweepLowMax | sweepMedMax |
+|-------------|-----------------|-------------|-------------|
+| FX          | 2.0             | 2           | 4           |
+| Indices     | 2.0             | 2           | 4           |
+| Bonds       | 2.0             | 2           | 4           |
+| Metals      | 2.0 (TEST)      | 2           | 4           |
+| Energy      | 1.5             | 2           | 4           |
+| Crypto      | 1.5             | 2           | 4           |
+
+Metals starts on FX values as a TEST profile. The institutional
+decision: observe a separate population separately. If Sweep Risk
+tab shows Metals diverging from FX post-fix, we tune the Metals
+profile in TradingView without disturbing FX/Indices/Bonds.
+
+Resolution logic uses the manualClass-or-detectedClass pattern
+already in the file. FX is the explicit default fallback for any
+unclassified ticker.
+
+Webhook payload extended with four new fields:
+- `profile`            - asset class name
+- `profile_magnet_atr` - effective magnetThreshAtr
+- `profile_sweep_low`  - effective sweepLowMax
+- `profile_sweep_med`  - effective sweepMedMax
+
+Chart label appended with active profile values for institutional
+transparency:
+```
+[FCC-SRL] [METALS] LONG | PRIME | mag:2 sw:2/4
+```
+
+#### Alert server: forex-alert-server/index.js (v3.0.1 -> v3.1.0)
+
+Both /webhook/location handler and appendLocHistory() now capture
+the four new profile fields. Backward compatible: missing fields
+default to null, older Pine continues to work.
+
+This is required for Phase 3d per-profile win-rate analytics.
+
+#### Stale file deleted: utcc-indicators/fcc-sr-location.pine
+
+The unversioned canonical file (1043 lines, v1.0.0) had no
+sweep/magnet logic. It diverged silently from the actually-deployed
+v3.0.0. Removed to eliminate the landmine. Single canonical source
+going forward: fcc-sr-location_v3.1.0.pine.
+
+#### Operator deployment
+
+1. Open the chart that owns the location webhook alert in TradingView
+2. Open Pine Editor, paste fcc-sr-location_v3.1.0.pine
+3. Save / Add to chart - existing settings will reset to v3.1.0 defaults
+4. Server: `cd /mnt/user/appdata && git pull && cp forex-alert-server/index.js trading-state/index.js && docker restart trading-state`
+5. Verify next location webhook in server logs carries profile fields
+
+#### Wait 24-48h
+
+Then open arm-history-dashboard.html -> Sweep Risk tab. Filter by
+asset class. If any class still shows HIGH > 25% post-fix, tune that
+class's profile (per-chart Pine input override) without affecting
+others.
+
+---
+
 ## [arm-history-dashboard v1.0.0 -> v1.1.0] - 2026-05-02
 
 ### Phase 3c: Intelligence Hub calibration tabs
