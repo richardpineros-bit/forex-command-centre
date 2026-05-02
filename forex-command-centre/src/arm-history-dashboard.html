@@ -2157,6 +2157,38 @@ function renderOBHistory() {
         return n.toFixed(4);
     }
     var latest = history[history.length - 1];
+    var latestPrices = (latest && latest.current_prices) ? latest.current_prices : {};
+
+    // P12 / OB Tier 2 — trapped-crowd status per pair.
+    // Inputs: latest avg_long_price, avg_short_price, and current mid price.
+    // Tolerance: max(0.1% of price, 0.0001) — absorbs decimal noise + tiny moves.
+    function computeStatus(e, currentPrice, isThin) {
+        if (isThin) return { label: '\u2014', col: 'var(--text-muted)', tt: 'Thin sample — status not computed' };
+        if (!currentPrice || currentPrice <= 0) return { label: '\u2014', col: 'var(--text-muted)', tt: 'No current price available' };
+        var avgL = e.avg_long_price;
+        var avgS = e.avg_short_price;
+        if (!avgL || !avgS || avgL <= 0 || avgS <= 0) return { label: '\u2014', col: 'var(--text-muted)', tt: 'Avg prices missing' };
+        var tol = Math.max(currentPrice * 0.001, 0.0001);
+        var shortTrapped = currentPrice > avgS + tol;
+        var longTrapped  = currentPrice < avgL - tol;
+        if (shortTrapped && !longTrapped) {
+            return { label: 'TRAPPED SHORT', col: 'var(--color-warning)',
+                     tt: 'Price above avg short entry — shorts in loss, longs in profit. Fade the shorts (bullish bias).' };
+        }
+        if (longTrapped && !shortTrapped) {
+            return { label: 'TRAPPED LONG', col: 'var(--color-warning)',
+                     tt: 'Price below avg long entry — longs in loss, shorts in profit. Fade the longs (bearish bias).' };
+        }
+        if (shortTrapped && longTrapped) {
+            // avgS < price < avgL — both sides underwater
+            return { label: 'MIXED', col: 'var(--text-muted)',
+                     tt: 'Both sides trapped (price between avg long and avg short). No clear contrarian edge.' };
+        }
+        // Neither trapped — avgL < price < avgS — both sides in profit
+        return { label: 'IN PROFIT', col: 'var(--text-secondary)',
+                 tt: 'Both sides in profit. Crowd has momentum — caution on contrarian fade.' };
+    }
+
     var latestHtml = '';
     if (latest && latest.order_book) {
         var rows = '';
@@ -2171,6 +2203,7 @@ function renderOBHistory() {
                 : '';
             var sigColour = isThin ? 'var(--color-warning)' : sigCol(e.contrarian_signal);
             var labelTxt  = isThin ? 'THIN SAMPLE' : (e.label || 'NEUTRAL');
+            var status    = computeStatus(e, latestPrices[p], isThin);
 
             rows += '<tr style="opacity:' + rowOpacity + '">' +
                 '<td><strong>' + p + '</strong>' +
@@ -2184,6 +2217,7 @@ function renderOBHistory() {
                     '<span style="color:#f87171;font-weight:600">' + Math.round(e.short_pct||0) + '%</span>' +
                 '</td>' +
                 '<td style="color:' + sigColour + ';font-weight:700;font-size:0.7rem;white-space:nowrap">' + labelTxt + thinTag + '</td>' +
+                '<td title="' + status.tt + '" style="color:' + status.col + ';font-weight:700;font-size:0.68rem;white-space:nowrap">' + status.label + '</td>' +
                 '<td style="font-size:0.68rem;white-space:nowrap;color:var(--text-secondary)">' +
                     fmtNum(e.long_positions) + ' / ' + fmtNum(e.short_positions) +
                 '</td>' +
@@ -2200,6 +2234,7 @@ function renderOBHistory() {
                 '<strong style="font-size:0.75rem;color:var(--text-secondary)">LATEST SNAPSHOT</strong>' +
                 '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;margin-bottom:6px">' +
                     'Contrarian signal (fade the crowd). ' +
+                    '<span style="color:var(--color-warning)">TRAPPED</span> side = stronger contrarian setup. ' +
                     '<span style="color:var(--color-warning)">&#x26A0;</span> = thin sample (<' + THIN_SAMPLE + ' positions) &mdash; ignore signal.' +
                 '</div>' +
                 '<div style="overflow-x:auto">' +
@@ -2208,6 +2243,7 @@ function renderOBHistory() {
                         '<th>Pair</th>' +
                         '<th>L/S Split</th>' +
                         '<th>Signal</th>' +
+                        '<th title="Trapped-crowd status: TRAPPED SHORT (price above avg short — fade shorts) / TRAPPED LONG (price below avg long — fade longs) / MIXED (both sides underwater) / IN PROFIT (both sides comfortable). Computed from current mid price vs avg entry prices.">Status</th>' +
                         '<th title="Number of open long/short positions — sample size indicator">Positions L/S</th>' +
                         '<th title="Total volume (lots) on long/short side">Volume L/S</th>' +
                         '<th title="Average entry price of long/short positions — reference for trapped-crowd analysis">Avg Price L/S</th>' +

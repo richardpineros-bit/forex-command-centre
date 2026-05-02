@@ -473,7 +473,52 @@ them nightly.
 
 ---
 
-## 🟡 Priority 12 — Intel Hub OB Tier 2: trapped-crowd analysis
+## ✅ Priority 12 — Intel Hub OB Tier 2: trapped-crowd analysis — CLOSED 2026-05-02
+
+**Status:** Shipped via Myfxbook scraper v1.1.0 + `arm-history-dashboard.html`
+Status column. Option C (recommended path) implemented as scoped.
+
+**What shipped:**
+- `myfxbook_sentiment_scraper_v1.1.0.py` — adds best-effort Oanda
+  `/v3/accounts/{ACCOUNT}/pricing` call after Myfxbook logout. Output
+  JSON gains top-level `current_prices: {pair: mid, ...}` block.
+  History entries also carry `current_prices` for back-testing later.
+- Fail-open on enrichment data: missing `OANDA_API_KEY` /
+  `OANDA_ACCOUNT_ID` env vars OR Oanda API failure leaves
+  `current_prices: {}` with sentiment data intact.
+- `pair_to_oanda` mapping with overrides (`WTICOUSD → WTICO_USD`,
+  `BCOUSD → BCO_USD`) and explicit skip set (`BTCUSD` — Oanda v20
+  standard accounts don't trade BTC; including it would fail the entire
+  batch pricing call).
+- `arm-history-dashboard.html` Latest Snapshot table — new **Status**
+  column between Signal and Positions L/S. Computes per-pair status
+  client-side from `latest.current_prices[p]` vs `e.avg_long_price` /
+  `e.avg_short_price`:
+  - `TRAPPED SHORT` (amber) — price > avg_short + tol only. Bullish bias.
+  - `TRAPPED LONG` (amber) — price < avg_long - tol only. Bearish bias.
+  - `MIXED` (grey) — both sides trapped. No clear edge.
+  - `IN PROFIT` (muted) — both sides comfortable. Crowd has momentum.
+  - `—` for thin-sample, missing prices, or missing avg entry data.
+- Tolerance: `max(price * 0.001, 0.0001)` — 0.1% with absolute floor.
+
+**Deploy notes (operator):**
+- New file path requires User Script schedule update (v1.0.1 → v1.1.0)
+- Cron environment must export `OANDA_API_KEY`, `OANDA_ACCOUNT_ID`
+- v1.0.1 retained for rollback; remove after 24h of clean v1.1.0 cycles
+
+**Acknowledged limitation:** 4-hour staleness — Status reflects the
+crowd at last cron run, not real-time. Acceptable for Intel Hub
+historical view; not suitable for live armed-panel integration.
+Follow-up Tier 2.5 (Option B — `/pricing/latest` endpoint) only if
+this proves valuable.
+
+**No change to:** alert server, armed panel, live trading gates.
+
+---
+
+## (Closed below — original P12 spec retained for audit)
+
+## 🟡 Priority 12 — Intel Hub OB Tier 2: trapped-crowd analysis (original spec)
 
 **Trigger:** When Tier 1 (live in Intel Hub OB tab from 2026-04-22, commit
 `df5ef1e`) has been observed for a few weeks and the raw bonus fields

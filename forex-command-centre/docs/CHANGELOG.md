@@ -1,4 +1,73 @@
-## [FCC-SRL v3.1.1 + TODO P22/P23/P24] - 2026-05-02
+## [Myfxbook scraper v1.1.0 + Intel Hub OB Tier 2 — TODO P12] - 2026-05-02
+
+### Scraper v1.0.1 → v1.1.0 — MINOR: best-effort Oanda price enrichment
+
+Closes TODO P12 (Intel Hub OB Tier 2: trapped-crowd analysis), Option C.
+
+After the Myfxbook outlook fetch + logout, the scraper now makes a single
+best-effort call to Oanda `/v3/accounts/{ACCOUNT}/pricing` for all
+mappable UTCC pairs and writes a new top-level `current_prices` block to
+the output JSON: `{ "EURUSD": 1.10523, ... }`. History entries also carry
+`current_prices` for back-testing trapped-crowd → price-move correlation
+later.
+
+**Fail-open on enrichment data.** If `OANDA_API_KEY` /
+`OANDA_ACCOUNT_ID` env vars are missing, or the Oanda call times out /
+errors, the scraper still writes sentiment data with `current_prices: {}`.
+The dashboard simply shows `—` in the Status column for affected pairs.
+Sentiment is the primary value; prices are additive enrichment.
+
+**Pair mapping.** 6-char pairs use `XXX_YYY` convention. Overrides for
+`WTICOUSD → WTICO_USD` and `BCOUSD → BCO_USD`. `BTCUSD` explicitly
+skipped — Oanda v20 standard accounts don't trade BTC, and including it
+would fail the entire batch pricing call (so we'd lose all 32 other
+prices). Skipping at mapping time keeps the request clean.
+
+**New env vars (cron environment must export):**
+- `OANDA_API_KEY` — Oanda REST API personal token
+- `OANDA_ACCOUNT_ID` — Oanda account ID (for pricing endpoint)
+- `OANDA_ENV` — 'live' or 'practice' (default: 'live')
+
+**Deploy:** new file `myfxbook_sentiment_scraper_v1.1.0.py`. User Script
+schedule must be updated to call v1.1.0 (v1.0.1 path retained for
+rollback). v1.0.1 file is left in place; remove only after v1.1.0 has
+proven stable across at least 6 cron cycles (24 hours).
+
+### Intel Hub OB tab — Status column
+
+`arm-history-dashboard.html` LATEST SNAPSHOT table gains a **Status**
+column between Signal and Positions L/S, computed client-side from
+`latest.current_prices[pair]` vs `e.avg_long_price` / `e.avg_short_price`:
+
+- `TRAPPED SHORT` (amber) — current price > avg_short + tolerance only.
+  Shorts in loss, longs in profit. Fade the shorts (bullish bias).
+- `TRAPPED LONG` (amber) — current price < avg_long - tolerance only.
+  Longs in loss, shorts in profit. Fade the longs (bearish bias).
+- `MIXED` (grey) — both sides trapped (price between avg long and avg
+  short). No clear contrarian edge.
+- `IN PROFIT` (muted) — both sides comfortable (avg_long < price <
+  avg_short). Crowd has momentum, fade with caution.
+- `—` for thin-sample pairs (WTICOUSD / BCOUSD typically), missing
+  prices, or missing avg entry data.
+
+**Tolerance:** `max(price * 0.001, 0.0001)` — 0.1% of price with absolute
+floor. Absorbs decimal noise and tiny moves that would otherwise flip
+the status flag at the boundary.
+
+**Limitation (acknowledged in TODO P12):** 4-hour staleness because
+status reflects the crowd at the last cron run, not right now. Acceptable
+for the Intel Hub historical view; not suitable for live armed-panel
+integration. If Tier 2 proves valuable, a follow-up Tier 2.5 (Option B)
+would expose a `/pricing/latest` endpoint for real-time use in the
+armed panel.
+
+**Backwards compatibility.** Old history entries without `current_prices`
+render as `—` in Status. No impact on existing armed panel, alert
+server, or any live trading gate.
+
+---
+
+
 
 ### FCC-SRL v3.1.1 — PATCH: fix Pine compile error (declaration order)
 
