@@ -16,7 +16,19 @@ forex-command-centre/data/regime.json
 forex-command-centre/data/playbook.json
 forex-command-centre/data/circuit-breaker.json
 forex-command-centre/data/settings.json
+forex-command-centre/data/armed-dismissed.json
+forex-command-centre/data/armed-exclude.json
+forex-command-centre/data/armed-validation.json
+forex-command-centre/data/armed-watchlist.json
+forex-command-centre/data/bias-history.json
+forex-command-centre/data/bias-history.json.lock
+forex-command-centre/data/dashboard-theme.json
+forex-command-centre/src/scraper_health.json
 forex-command-centre/backups/
+
+# Scratch / probe files (not source-of-truth)
+forex-command-centre/backend/scripts/ig-sentiment-config.json
+forex-command-centre/backend/scripts/myfxbook_probe_*.py
 
 # Alert server runtime
 forex-alert-server/data/armed.json
