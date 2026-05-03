@@ -1,12 +1,39 @@
 // This Pine Script® code is subject to the Mozilla Public License 2.0
 // © forex-command-centre
 // =============================================================================
-// ULTIMATE UTCC v2.7.0
+// ULTIMATE UTCC v3.1.0
 // Dual System: Trend Following (TF) + Trend Reversal (TR)
 // Multi-instrument: FX | CRYPTO | METALS | ENERGY | BONDS | INDICES
 // Full institutional architecture: Regime | Reason Codes | Risk Governor
-// Ported core engine from UTCC Universal v3.0.0
 // Display: Compact (default) | Full (settings toggle)
+//
+// v3.1.0 (MINOR - new features, backward-compatible payloads):
+//   * P13: Edge-triggered DISARM webhook. Fires once on the rising edge of
+//     a non-empty disarm code for TF or TR. Same envelope as ARMED but
+//     `"type":"BLOCKED"` with `"disarm_code"` field carrying the existing
+//     internal codes (TF-DISARM-*, TR-DISARM-*, CONFLICT-SYSTEM-DIVERGENCE).
+//     Closes the stale-armed gap introduced by v3.0.0 edge-triggered arming
+//     -- silent intra-bar invalidations now produce a BLOCKED event.
+//     Alert server pushBlocked() handler already in place; no server changes
+//     required for this part.
+//   * P24: Pine input audit log. Every webhook payload (TF_ARMED, TR_ARMED,
+//     BLOCKED) now carries a `"pine_inputs":{...}` block with the resolved
+//     per-asset-class thresholds + arm/disarm parameters at the moment of
+//     fire. Enables honest cohort analysis later when input changes happen
+//     mid-window. Block is parallel to `context`, NOT nested inside it.
+//
+// v3.0.0 (MAJOR - breaking change to alert cadence):
+//   * Edge-triggered alerts: webhook fires ONCE on the rising edge of arm state
+//     (transition from disarmed -> armed), no longer once per bar close.
+//   * Removed `barstate.isconfirmed` gate from alert block. Alerts now fire
+//     intra-bar the moment all conditions cross threshold + persistence is met.
+//   * Existing `armPersist` (bars) acts as anti-flap. Existing `disarmDrop`
+//     gives hysteresis. State machine was already edge-aware; only the alert
+//     firing block was bar-close gated.
+//   * Eliminates the ~4H latency between conditions aligning and notification.
+//   * Eliminates 4H repeat-fires while a pair stays armed (no more inflated
+//     arm-history events). Backend dedup logic must align - see alert server v3.0.0.
+//
 // v2.7.0: Entry location pts removed from TF score (now server-side via FCC-SRL). Max TF score 100->75. TF thresholds recalibrated x0.75.
 // v2.6.0: TF scoring: RSI multi-TF momentum replaced with ADX directional bias (diPlus/diMinus). RSI retained for display only.
 // v2.5.0: TR gate 2 replaced: RSI divergence removed, 1H structure break (higher low/lower high) is now hard gate
@@ -1187,32 +1214,77 @@ if barstate.islast
             table.cell(tbl, 1, 28, timerStr,    text_color=timerCol,  text_size=size.tiny)
             table.cell(tbl, 2, 28, timerStr,    text_color=timerCol,  text_size=size.tiny)
 
-// SECTION 18: ALERT PAYLOADS
+// SECTION 18: ALERT PAYLOADS  (v3.1.0 - edge-triggered ARMED + edge-triggered BLOCKED)
 // =============================================================================
 // JSON format matches Universal UTCC so FCC parses without changes.
-// type: TF_ARMED or TR_ARMED (FCC armed panel distinguishes by type field)
+// type: TF_ARMED | TR_ARMED | BLOCKED
+//
+// CADENCE MODEL:
+//   * ARMED fires on RISING EDGE of (armed AND direction).
+//   * BLOCKED fires on RISING EDGE of (disarmCode != "") - the bar/tick where
+//     a disarm condition first sets a code. Subsequent bars do NOT re-fire.
+//   * `alert.freq_once_per_bar` is a safety net.
+//   * Anti-flap: `armPersist` (bars-above-threshold) + `disarmDrop` (hysteresis).
+//   * NO `barstate.isconfirmed` gate. Latency from condition alignment to
+//     notification is now seconds, not up to 4 hours.
+//
+// PINE_INPUTS (P24):
+//   Every payload carries `"pine_inputs":{...}` parallel to `context`,
+//   capturing resolved per-asset-class thresholds + arm/disarm parameters.
+//   Enables honest cohort analysis when input changes happen mid-window.
 
 showTFAlerts = alertModeSel == "TF Only" or alertModeSel == "Both"
 showTRAlerts = alertModeSel == "TR Only" or alertModeSel == "Both"
 
-if barstate.isconfirmed
-    if showTFAlerts and tfArmed and tfDirBull
-        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"LONG","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBullCt) + '/4 BULL","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"}}', alert.freq_once_per_bar)
+// Edge detection - true ONLY on the bar/tick where state transitions to armed.
+// `[1]` reads the value as it was at the close of the previous bar (stable),
+// so this evaluates true continuously through the bar where arming occurred,
+// and `alert.freq_once_per_bar` ensures a single fire.
+tfJustArmedBull  = tfArmed and tfDirBull  and not (tfArmed[1] and tfDirBull[1])
+tfJustArmedBear  = tfArmed and tfDirBear  and not (tfArmed[1] and tfDirBear[1])
+trJustArmedLong  = trArmed and trDirLong  and not (trArmed[1] and trDirLong[1])
+trJustArmedShort = trArmed and trDirShort and not (trArmed[1] and trDirShort[1])
 
-    if showTFAlerts and tfArmed and tfDirBear
-        alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"SHORT","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBearCt) + '/4 BEAR","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"}}', alert.freq_once_per_bar)
+// Edge detection for disarm - rising edge of non-empty disarm code.
+// On the bar where disarm fires, code transitions from "" to a tag.
+// On the next bar (if pair stays disarmed), code is still set but [1] is also
+// set, so this stays false - one fire per disarm event.
+tfJustDisarmed = tfDisarmCode != "" and tfDisarmCode[1] == ""
+trJustDisarmed = trDisarmCode != "" and trDisarmCode[1] == ""
 
-    if showTRAlerts and trArmed and trDirLong
-        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"ltf_break":"1H_HIGHER_LOW","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
+// Pine inputs snapshot (P24). Built once per bar; injected into every payload.
+// Resolved per-asset-class values (post detectedClass dispatch) + arm/disarm params.
+inputsJson = '"pine_inputs":{"pine_indicator":"Ultimate UTCC","pine_version":"v3.1.0","tfThresh":' + str.tostring(tfThresh) + ',"trThresh":' + str.tostring(trThresh) + ',"adxThresh":' + str.tostring(adxThresh) + ',"atrFilter":' + str.tostring(atrPctFilt) + ',"acceptQuiet":' + (acceptQuiet ? "true" : "false") + ',"armPersist":' + str.tostring(armPersist) + ',"disarmDrop":' + str.tostring(disarmDrop) + '}'
 
-    if showTRAlerts and trArmed and trDirShort
-        alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"ltf_break":"1H_LOWER_HIGH","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"}}', alert.freq_once_per_bar)
+if showTFAlerts and tfJustArmedBull
+    alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"LONG","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBullCt) + '/4 BULL","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"},' + inputsJson + '}', alert.freq_once_per_bar)
 
-// Named alert conditions (for TradingView alert dialog)
-alertcondition(tfArmed and tfDirBull,  "TF LONG",  "TF Armed: LONG")
-alertcondition(tfArmed and tfDirBear,  "TF SHORT", "TF Armed: SHORT")
-alertcondition(trArmed and trDirLong,  "TR LONG",  "TR Armed: LONG")
-alertcondition(trArmed and trDirShort, "TR SHORT", "TR Armed: SHORT")
+if showTFAlerts and tfJustArmedBear
+    alert('{"type":"TF_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"SHORT","score":' + str.tostring(math.round(tfScore)) + ',"tier":"' + tfTier + '","reason":"' + tfReason + '","regime":"' + regime + '","permission":"' + tfPerm + '","risk_state":"' + riskCode + '","position_size":"' + tfSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","entry_zone":"' + entryZone + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"rsi":"' + str.tostring(rsiBearCt) + '/4 BEAR","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + tfPlaybook + '"},' + inputsJson + '}', alert.freq_once_per_bar)
+
+if showTRAlerts and trJustArmedLong
+    alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"LONG","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBearCt) + '/3 BEAR","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"ltf_break":"1H_HIGHER_LOW","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"},' + inputsJson + '}', alert.freq_once_per_bar)
+
+if showTRAlerts and trJustArmedShort
+    alert('{"type":"TR_ARMED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"SHORT","score":' + str.tostring(math.round(trScore)) + ',"tier":"' + trTier + '","reason":"' + trReason + '","regime":"' + regime + '","permission":"' + trPerm + '","risk_state":"' + riskCode + '","position_size":"' + trSize + '","context":{"mtf":"' + str.tostring(mtfBullCt) + '/3 BULL","structure":"' + structStr + '","vol_state":"' + atrState + '","atr_pct":' + str.tostring(math.round(atrPctl)) + ',"ltf_break":"1H_LOWER_HIGH","adx":"' + (adxPeaked ? "PEAK" : "RISING") + '","session":"' + currentSession + '","news":"' + newsStr + '","playbook":"' + trPlaybook + '"},' + inputsJson + '}', alert.freq_once_per_bar)
+
+// BLOCKED webhooks (v3.1.0 P13). Disarm code ladder is set in Section 13/14
+// state machines. Edge detection ensures one push per disarm event.
+// `primary` field maps to disarm_code so existing pushBlocked() reason ladder
+// in alert server can render it (or pass through verbatim if unrecognised).
+if showTFAlerts and tfJustDisarmed
+    alert('{"type":"BLOCKED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TF","direction":"' + (tfDirBull ? "LONG" : tfDirBear ? "SHORT" : "NONE") + '","disarm_code":"' + tfDisarmCode + '","primary":"' + tfDisarmCode + '","score":' + str.tostring(math.round(tfScore)) + ',"regime":"' + regime + '","context":{"session":"' + currentSession + '","vol_state":"' + atrState + '"},' + inputsJson + '}', alert.freq_once_per_bar)
+
+if showTRAlerts and trJustDisarmed
+    alert('{"type":"BLOCKED","pair":"' + syminfo.ticker + '","asset_class":"' + detectedClass + '","system":"TR","direction":"' + (trDirLong ? "LONG" : trDirShort ? "SHORT" : "NONE") + '","disarm_code":"' + trDisarmCode + '","primary":"' + trDisarmCode + '","score":' + str.tostring(math.round(trScore)) + ',"regime":"' + regime + '","context":{"session":"' + currentSession + '","vol_state":"' + atrState + '"},' + inputsJson + '}', alert.freq_once_per_bar)
+
+// Named alert conditions (for TradingView alert dialog) - also edge-triggered
+alertcondition(tfJustArmedBull,  "TF LONG",  "TF Armed: LONG")
+alertcondition(tfJustArmedBear,  "TF SHORT", "TF Armed: SHORT")
+alertcondition(trJustArmedLong,  "TR LONG",  "TR Armed: LONG")
+alertcondition(trJustArmedShort, "TR SHORT", "TR Armed: SHORT")
+alertcondition(tfJustDisarmed,   "TF BLOCK", "TF Disarmed")
+alertcondition(trJustDisarmed,   "TR BLOCK", "TR Disarmed")
 
 // Hidden plots for alert reference
 plot(tfScore, "TF Score", display=display.none)
