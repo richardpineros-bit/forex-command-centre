@@ -712,6 +712,50 @@ small change if scoped as Option C.
 
 ---
 
+## ✅ Priority 13 — UTCC v3.1.0 disarm webhook (close the stale-armed gap) — CLOSED 2026-05-03
+
+**Status:** Shipped via Ultimate UTCC v3.1.0 (commit `b12a9c0`) + alert
+server v3.3.0 (commit `c5add7e`). Bundled with P24 in the same Pine
+edit since both touched the alert payload.
+
+**What shipped:**
+- `ultimate-utcc_v3.0.0.pine` -> `_v3.1.0.pine`. Edge-triggered BLOCKED
+  webhook fires once on the rising edge of `tfDisarmCode != ""` or
+  `trDisarmCode != ""`. Same envelope as TF_ARMED/TR_ARMED but
+  `type=BLOCKED` with `disarm_code` field carrying the existing internal
+  codes. `primary` field mirrors `disarm_code` so existing
+  `pushBlocked()` reason ladder in alert server renders or passes
+  through verbatim — no server changes required for this part.
+- New named alert conditions added: `TF BLOCK`, `TR BLOCK`.
+- Alert server already had BLOCKED handler in place (v2.7.0+). New
+  webhook flows through existing path: removes pair from state, clears
+  EMA cache, cancels FOMO timer, fires push notification.
+
+**Operator deploy step:**
+- Paste `ultimate-utcc_v3.1.0.pine` into TradingView Pine Editor on
+  every chart instance. Save / republish.
+- Add the two new named alert conditions to existing TradingView alerts
+  if you want disarm fires logged separately from arming fires (the
+  webhook fire happens regardless via the `alert()` calls — the named
+  conditions are for TradingView's alert dialog UX only).
+
+**Verification post-deploy:**
+First setup that invalidates intra-bar (most common: MTF break or
+structure damage) should produce a BLOCKED push notification with the
+disarm code visible in the body. If nothing fires after 24h of normal
+trading conditions, suspect deploy didn't land.
+
+**Note on canonical filename:**
+Bare `utcc-indicators/ultimate-utcc.pine` is still at v2.7.0 (pre-v3.0.0
+deploy didn't update the canonical pointer). Not touched by this work.
+Operator decision whether to fast-forward the canonical to v3.1.0.
+
+**Original entry retained for audit trail below.**
+
+---
+
+## (Closed below — original P13 spec retained for audit)
+
 ## 🟡 Priority 13 — UTCC v3.1.0 disarm webhook (close the stale-armed gap)
 
 **Trigger:** First time a setup invalidates intra-bar after the v3.0.0
@@ -1100,6 +1144,43 @@ Option B based on empirical evidence + institutional principles.~~
 
 ---
 
+## ✅ Priority 21 — `.gitignore` audit for runtime state files — CLOSED 2026-05-03
+
+**Status:** Shipped via commit `401103a`. Single .gitignore edit, no code
+or runtime changes.
+
+**What shipped:**
+Added 8 untracked runtime state files in `forex-command-centre/data/`
+and `src/` to `.gitignore`:
+- `armed-dismissed.json`, `armed-exclude.json`, `armed-validation.json`,
+  `armed-watchlist.json` (operator armed-panel state)
+- `bias-history.json` + `bias-history.json.lock` (scraper output)
+- `dashboard-theme.json` (operator UI preference)
+- `src/scraper_health.json` (P1a runtime output)
+
+Plus scratch/probe files in `backend/scripts/`:
+- `ig-sentiment-config.json` (config with credentials; `.template`
+  remains tracked as the schema)
+- `myfxbook_probe_*.py` (one-off probes — glob pattern catches future
+  probe files too)
+
+**What was deliberately NOT touched:**
+- Currently-tracked `daily-context.json` left as-is (separate decision
+  needed if it should be untracked — runtime state but currently
+  tracked, would need `git rm --cached` not just .gitignore)
+- Currently-tracked `manifest.json` left as-is (likely source-of-truth)
+- Globs avoided in favour of explicit file paths to prevent accidentally
+  ignoring future source files
+
+**Verification:** `git status` post-change shows clean working tree on
+the targeted files.
+
+**Original entry retained for audit trail below.**
+
+---
+
+## (Closed below — original P21 spec retained for audit)
+
 ## 🟢 Priority 21 — `.gitignore` audit for runtime state files
 
 **Trigger:** Low-risk cleanup session. Not urgent but cheap to do.
@@ -1376,6 +1457,70 @@ If any step is silent failure (most likely failure mode), the linkage
 is broken and the data is poison.
 
 ---
+
+## ✅ Priority 24 — Pine input change audit log — CLOSED 2026-05-03
+
+**Status:** Shipped Option (a) — Pine writes input snapshot on every alert.
+Three commits: Pine v3.1.0 (`b12a9c0`), Pine FCC-SRL v3.2.0 (same commit),
+alert server v3.3.0 (`c5add7e`).
+
+**What shipped:**
+
+1. **Ultimate UTCC v3.1.0**: `pine_inputs` JSON block injected into every
+   webhook payload (TF_ARMED, TR_ARMED, BLOCKED). Built once per bar via
+   local `inputsJson` var, concatenated parallel to `context`. Carries:
+   `pine_indicator`, `pine_version`, `tfThresh`, `trThresh`, `adxThresh`,
+   `atrFilter`, `acceptQuiet`, `armPersist`, `disarmDrop`. Resolved per-
+   asset-class values (post `detectedClass` dispatch).
+
+2. **FCC-SRL v3.2.0**: `pine_inputs` block added to webhook payload with
+   `pine_indicator=FCC-SRL`, `pine_version=v3.2.0`, `magnetThreshAtr`,
+   `sweepLowMax`, `sweepMedMax`, `profile`. Existing top-level `profile_*`
+   fields retained for backward compat — `pine_inputs` is the canonical
+   audit-log location going forward.
+
+3. **Alert server v3.3.0**: reads `pine_inputs` from incoming webhooks
+   via `parseNewAlert()` JSON path, propagates as `alert.pineInputs`,
+   stored on:
+   - arm-history events (via `appendArmEvent` — UTCC ARMED only)
+   - location-history events (via `appendLocHistory` — FCC-SRL events)
+   Backward compat: missing `pine_inputs` defaults to `null`. Older Pine
+   indicators continue to work — their events just have
+   `pine_inputs: null` in history.
+
+**Why Option (a):**
+Operator-discipline-dependent solutions (b, c) fail when operator is busy
+or distracted, which is exactly when the system most needs to remain
+audit-clean. ~200 bytes per webhook is cheap insurance.
+
+**Cohort split logic (deferred to consumer side):**
+The `calibration_eras` aggregation logic specced in the original entry
+is NOT shipped here — that's P22 Pass 2 / P23 territory. This priority
+just captures the data. Consumer code reads `pine_inputs` from history
+events and groups by distinct input combinations.
+
+**Operator deploy steps:**
+- Paste `ultimate-utcc_v3.1.0.pine` into TradingView Pine Editor on
+  every chart instance. Save / republish.
+- Paste `fcc-sr-location_v3.2.0.pine` into TradingView Pine Editor on
+  every chart instance. Save / republish.
+- `cp forex-alert-server/index.js /mnt/user/appdata/trading-state/index.js`
+- `docker restart trading-state`
+- Verify via `curl /health`: should return `{"version":"3.3.0"}`.
+- After first ARMED fire post-deploy, inspect `arm-history.json` — newest
+  event should have a non-null `pine_inputs` field. Same for first
+  location event in `location-history.json`.
+
+**Cohort analysis preflight:**
+P22 Pass 2 / P23 must filter on `pine_inputs != null` or split eras at
+the v3.1.0/v3.2.0 deploy boundary (today). Pre-deploy events have null
+inputs — they cannot be honestly attributed to a specific calibration.
+
+**Original entry retained for audit trail below.**
+
+---
+
+## (Closed below — original P24 spec retained for audit)
 
 ## 🟡 Priority 24 — Pine input change audit log
 
