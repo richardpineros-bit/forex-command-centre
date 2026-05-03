@@ -29,8 +29,9 @@ const OANDA_ENV        = process.env.OANDA_ENV        || 'live';
 // ============================================================================
 // VERSION INFO
 // ============================================================================
-const VERSION = '3.2.0';
+const VERSION = '3.3.0';
 const CHANGES = [
+    '3.3.0 - MINOR: P24 Pine input audit log capture. Reads pine_inputs block from Ultimate UTCC v3.1.0+ and FCC-SRL v3.2.0+ webhook payloads. Stored on arm-history events (via appendArmEvent) and location-history events (via appendLocHistory). Backward compatible: missing pine_inputs defaults to null. Enables P22 Pass 2 / P23 cohort analysis to honestly split data at calibration boundaries. NOTE: BLOCKED events (P13) are not archived to history — this is intentional, BLOCKED is a removal event, not a setup event.',
     '3.2.0 - MINOR: Scraper health monitoring (TODO P1a). New GET /health/scrapers endpoint reports fleet status (OK / DEGRADED / CRITICAL) plus per-scraper status (OK / WARN / STALE / MISSING / CORRUPT) for all 5 scrapers (forex_calendar, trading_economics, ig_sentiment, myfxbook_orderbook, macro_dominance). Includes file age, size, sanity-check issues, and configurable stale thresholds (FF/TE: 9h after 6h cadence; IG/OB/MDI: 6h after 4h cadence). 15-minute periodic check runs in-process; sends push notification (prefKey: scraperHealth) when any scraper transitions OK->non-OK or recovers. First run after startup establishes baseline only (no push). Tier 3 sanity layer added: per-scraper checks for empty events arrays, all-zero percentages, missing instruments, out-of-range MDI scores, and silently-empty current_prices block (catches the "Oanda env vars not set in cron" failure mode for myfxbook v1.1.0). New env var CALENDAR_FILE (default /data/calendar.json) — operator must ensure FF User Script copies calendar.json to this path or override via env. Frontend dashboard widget deferred to P1b.',
     '3.1.0 - MINOR: FCC-SRL v3.1.0 per-asset magnet/sweep profile capture. Webhook handler and appendLocHistory now read profile, profile_magnet_atr, profile_sweep_low, profile_sweep_med from payload. Stored on data.pairs[pair] and appended to location-history events. Backward compat: missing fields default to null/0 (older Pine indicator pre-v3.1.0 still works). Required for Phase 3d per-profile win-rate analytics.',
     '3.0.1 - PATCH: weekSignalCount/twoWeekSignalCount week boundary now uses Monday 00:00 Australia/Sydney (was Monday 00:00 UTC). Resolves TODO P14: pairs armed Monday morning AEST (Sunday night UTC) were being counted to LAST week, not this week. New getSydneyOffsetMs() helper uses Intl API to handle AEST (UTC+10) / AEDT (UTC+11) DST automatically. Single-operator system, hard-coded to Australia/Sydney timezone.',
@@ -1061,6 +1062,12 @@ function appendArmEvent(alert, timestamp) {
             maxRisk:      alert.maxRisk      || '1.0R',
             permission:   alert.permission   || 'FULL',
 
+            // ── P24: Pine input audit log ─────────────────────────
+            // Captures resolved per-asset-class thresholds + arm/disarm
+            // params at the moment of fire. Used by P22 Pass 2 / P23
+            // cohort analysis to split data at calibration boundaries.
+            pine_inputs:  alert.pineInputs   || null,
+
             // ── News bias at arm time (from bias-history.json) ──────────────
             news_bias:    (function() {
                 try {
@@ -1345,7 +1352,9 @@ function appendLocHistory(payload) {
             profile:             payload.profile             || null,
             profile_magnet_atr:  parseFloat(payload.profile_magnet_atr) || null,
             profile_sweep_low:   parseInt(payload.profile_sweep_low)    || null,
-            profile_sweep_med:   parseInt(payload.profile_sweep_med)    || null
+            profile_sweep_med:   parseInt(payload.profile_sweep_med)    || null,
+            // P24: Pine input audit log (FCC-SRL v3.2.0+)
+            pine_inputs:         payload.pine_inputs         || null
         };
         data.events.push(event);
         data.total        = data.events.length;
@@ -1562,7 +1571,11 @@ function parseNewAlert(body) {
                 structExt:    jStructExt,
                 ltfBreak:     jCtx.ltf_break || '',
                 rsi:          parseInt(jCtx.rsi) || 0,
-                playbook:     jsonAlert.playbook || jCtx.playbook || ''
+                playbook:     jsonAlert.playbook || jCtx.playbook || '',
+                // P24: Pine input audit log — captured at arm time for cohort analysis
+                pineInputs:   jsonAlert.pine_inputs || null,
+                // P13: disarm code from BLOCKED webhooks (Ultimate UTCC v3.1.0+)
+                disarmCode:   jsonAlert.disarm_code || ''
             };
         } catch (e) {
             // Not valid JSON - fall through to pipe parser
