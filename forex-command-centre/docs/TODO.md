@@ -1639,6 +1639,53 @@ at P22 Pass 2 (cohort analysis). Ship P24 before then.
 
 ---
 
+## 🟢 Priority 25 — Bar close time on armed alerts (precision upgrade for fired-time display)
+
+**Status:** DEFERRED — added 2026-05-04. Currently displaying webhook arrival time
+(p.timestamp) which is accurate to seconds in normal conditions. Bar close time
+would be a precision upgrade.
+
+**Trigger to start this:** Operator (Rianpi) reports a case where webhook arrival
+time materially mismatched the actual bar close on the chart — e.g. TradingView
+delivery lagged by minutes on a busy bar, leading to candle-identification
+confusion when reviewing alerts post-hoc. If this never happens, leave it parked.
+
+**Background — what we shipped instead (2026-05-04):**
+armed-panel.js v1.19.0 + quick-access-bar.js v1.3.0 added `formatArmedTime()`
+displaying webhook arrival time as `Fired 14:23 AEST · 3h 12m ago`. Solves the
+core "find the candle hours later" problem to the precision normally needed.
+
+**Why deferred:** The bar close upgrade requires:
+1. `ultimate-utcc.pine` — add `time` field to alert JSON payload (Pine v6
+   `time` built-in returns the bar open time in ms; bar close = `time + timeframe.in_seconds(timeframe.period)*1000`)
+2. `forex-alert-server/index.js` — capture incoming `barTime` field, persist
+   on the armed record alongside existing `timestamp`
+3. `armed-panel.js` + `quick-access-bar.js` — prefer `barTime` when present,
+   fall back to `timestamp` (backward compatibility for pre-upgrade alerts)
+4. **Manual TradingView re-save of every UTCC alert** (33 pairs × TF + TR
+   variants = 60+ alerts) to pick up the new payload format. This is the real
+   cost — ~30–60 minutes of unbroken TV UI work.
+
+**Decision:** Not worth it until the operator hits a real case where arrival
+time misled them. When that happens, log the case (which alert, what the chart
+showed, what arrival time displayed) and bump this to active.
+
+**Implementation notes for whoever picks this up:**
+- Backward compat is non-negotiable — old alerts (no barTime) must keep working
+- Display logic stays the same; just changes the data source
+- Worth confirming with Pine docs whether `time` in alert message body uses
+  the bar-open or bar-close timestamp; current assumption is bar-open + period
+- Could also expose both arrival and bar close in the tooltip for diagnostic
+  parity ("Bar 12:00 · Arrived 12:00:04 · 3h 12m ago")
+
+**Estimated effort:** ~30 min code + 30–60 min manual TV alert re-save.
+
+**Reminder for future Claude session:** When this conversation comes back up,
+ASK Rianpi if the arrival-time display has actually misled him on candle
+identification. If not, leave it parked. If yes, plan the rollout above.
+
+---
+
 ## Closed — for audit trail
 
 ### 2026-04-21 — Stale calendar.json in nginx webroot
