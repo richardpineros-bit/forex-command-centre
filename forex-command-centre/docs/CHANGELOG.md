@@ -1,3 +1,43 @@
+## [Fired-time visibility on armed pairs] - 2026-05-04
+
+### Problem
+Armed alerts often fire while the trader is at work and aren't reviewed until 2-3 hours later. The armed panel showed READY/EXTENDED/STALE states but no actual fire time, forcing the trader to guess which candle on the chart triggered the alert. Retrospective setup validation is impossible if you can't pin the alert to a specific bar.
+
+### Change
+Added `formatArmedTime()` helper to both armed-panel.js (v1.18.0 -> v1.19.0) and quick-access-bar.js (v1.2.1 -> v1.3.0). Helper returns AEST clock time and human-readable relative age, with a date prefix when the pair was armed on a prior day.
+
+**Armed panel cards** -- new muted line under the TTL status badge:
+```
+Fired 14:23 AEST . 3h 12m ago
+```
+For pairs armed yesterday or earlier:
+```
+Fired 04/05 22:47 AEST . 14h 36m ago
+```
+
+**Quick Access Bar chips** -- tooltip extended from `EURUSD - TF - READY` to `EURUSD - TF - READY - Fired 14:23 (3h 12m ago)`. Inline tiny age string (`3h 12m ago`) added under the status label for at-a-glance triage without hovering.
+
+### Implementation notes
+- Data source: `p.timestamp` (webhook arrival time at api.pineros.club). Bar close time would require a Pine alert payload change -- out of scope for this round, but logged as a future enhancement.
+- Timezone handled via `toLocaleTimeString('en-AU', timeZone: Australia/Sydney)` -- auto-handles AEST/AEDT transitions, no manual offset arithmetic.
+- No alert server change. No CSS file change (inline styles, consistent with existing armed-panel.js patterns).
+- ASCII-only edits; no emoji corruption risk.
+
+### Files changed
+- `src/js/armed-panel.js`            v1.18.0 -> v1.19.0
+- `src/js/quick-access-bar.js`       v1.2.1  -> v1.3.0
+- `docs/CHANGELOG.md`                this entry
+
+### Deploy
+```bash
+cd /mnt/user/appdata && git pull
+cp forex-command-centre/src/js/armed-panel.js     /mnt/user/appdata/nginx/www/js/
+cp forex-command-centre/src/js/quick-access-bar.js /mnt/user/appdata/nginx/www/js/
+# Hard refresh PWA
+```
+
+---
+
 ## [Deploy validation: P12 + P1a end-to-end on production] - 2026-05-02
 
 ### Both prior entries validated live on Unraid

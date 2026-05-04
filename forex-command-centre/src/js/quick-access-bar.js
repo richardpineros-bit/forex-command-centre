@@ -1,4 +1,4 @@
-// quick-access-bar.js v1.2.1 - Apply armed panel isExcluded filter (bonds etc.); v1.2.0 - Filter dismissed pairs via ArmedPanel.getDismissedPairs(); v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
+// quick-access-bar.js v1.3.0 - Fired-time visibility on QAB chips. Adds formatArmedTime() helper (mirrors armed-panel.js v1.19.0). Tooltip extended from 'PAIR — TF — STATUS' to 'PAIR — TF — STATUS — Fired HH:MM (Xh ago)'. Inline tiny age string ('3h ago') displayed under the status label so trader can triage at-a-glance which armed pairs are fresh vs stale without hovering. AEST-formatted via Australia/Sydney timezone. | v1.2.1 - Apply armed panel isExcluded filter (bonds etc.); v1.2.0 - Filter dismissed pairs via ArmedPanel.getDismissedPairs(); v1.1.0 - TF_ARMED (blue) / TR_ARMED (orange) badges on chips; fixed raw emoji
 // Quick Access Bar Manager
 const QuickAccessBar = (function() {
     const STATE_URL = 'https://api.pineros.club/state';
@@ -26,7 +26,48 @@ const QuickAccessBar = (function() {
         if (ageHours < 1) return { state: 'fomo', label: 'FOMO', colour: '#ef4444' };
         return { state: 'ready', label: 'READY', colour: '#22c55e' };
     }
-    
+
+    // v1.3.0 — Format armed timestamp for tooltip + inline age display.
+    // Matches armed-panel.js helper for consistency.
+    function formatArmedTime(timestamp) {
+        if (!timestamp) return { aestTime: '\u2014', ageString: '\u2014' };
+        var ts  = new Date(timestamp);
+        var now = new Date();
+        if (isNaN(ts.getTime())) return { aestTime: '\u2014', ageString: '\u2014' };
+
+        var hhmm = ts.toLocaleTimeString('en-AU', {
+            hour: '2-digit', minute: '2-digit', hour12: false,
+            timeZone: 'Australia/Sydney'
+        });
+        var dateNow = now.toLocaleDateString('en-AU', { timeZone: 'Australia/Sydney' });
+        var dateTs  = ts.toLocaleDateString('en-AU',  { timeZone: 'Australia/Sydney' });
+        var aestTime;
+        if (dateNow === dateTs) {
+            aestTime = hhmm;
+        } else {
+            var dm = ts.toLocaleDateString('en-AU', {
+                day: '2-digit', month: '2-digit', timeZone: 'Australia/Sydney'
+            });
+            aestTime = dm + ' ' + hhmm;
+        }
+
+        var ageMins = Math.max(0, Math.floor((now - ts) / 60000));
+        var ageString;
+        if (ageMins < 1)        ageString = 'just now';
+        else if (ageMins < 60)  ageString = ageMins + 'm ago';
+        else {
+            var h = Math.floor(ageMins / 60);
+            var m = ageMins % 60;
+            if (h < 24)  ageString = m > 0 ? h + 'h ' + m + 'm ago' : h + 'h ago';
+            else {
+                var d  = Math.floor(h / 24);
+                var rh = h % 24;
+                ageString = rh > 0 ? d + 'd ' + rh + 'h ago' : d + 'd ago';
+            }
+        }
+        return { aestTime: aestTime, ageString: ageString };
+    }
+
     function renderOpenTrades() {
         // Fetch open trades from localStorage (from broker-manager or trade-journal)
         try {
@@ -95,18 +136,22 @@ const QuickAccessBar = (function() {
         if (armedInstruments && armedInstruments.length > 0) {
             armedInstruments.filter(function(a) { return a.primary !== 'R-OFFSESSION' && !_dismissed[a.pair] && !_isExcluded(a.pair); }).forEach(armed => {
                 const ttlStatus = calculateTTLStatus(armed.timestamp);
+                const armedFt   = formatArmedTime(armed.timestamp);  // v1.3.0
                 var alertT = (armed.alertType || 'TF_ARMED').toUpperCase();
                 var tfColour = alertT === 'TR_ARMED' ? '#fb923c' : '#60a5fa';
                 var tfLabel  = alertT === 'TR_ARMED' ? 'TR' : 'TF';
                 var dirEmoji = '\u25c6';
                 const itemClass = ttlStatus.state === 'fomo' ? 'armed-fomo' : 'armed-ready';
                 const statusLabel = ttlStatus.state === 'fomo' ? 'FOMO' : 'READY';
-                
-                html += '<div class="quick-item ' + itemClass + '" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (armed.pair || '') + '\'; updateInstitutionalChecklist(); checkCorrelation(); }, 100);" title="' + (armed.pair || '') + ' \u2014 ' + tfLabel + ' \u2014 ' + statusLabel + '">' +
+                const tooltip = (armed.pair || '') + ' \u2014 ' + tfLabel + ' \u2014 ' + statusLabel +
+                                ' \u2014 Fired ' + armedFt.aestTime + ' (' + armedFt.ageString + ')';
+
+                html += '<div class="quick-item ' + itemClass + '" onclick="window._lastArmedNavTime = Date.now(); showTab(\'validation\'); setTimeout(function() { document.getElementById(\'val-pair\').value = \'' + (armed.pair || '') + '\'; updateInstitutionalChecklist(); checkCorrelation(); }, 100);" title="' + tooltip + '">' +
                     '<span class="quick-item-emoji" style="color:' + tfColour + '">' + dirEmoji + '</span>' +
                     '<span class="quick-item-label">' +
                         '<span class="quick-item-pair">' + (armed.pair || '?') + ' <span style="font-size:0.55rem;color:' + tfColour + ';font-weight:800">' + tfLabel + '</span></span>' +
                         '<span class="quick-item-status" style="color:' + ttlStatus.colour + '">' + statusLabel + '</span>' +
+                        '<span class="quick-item-fired" style="font-size:0.55rem;color:var(--text-muted);font-weight:500;display:block;line-height:1.1">' + armedFt.ageString + '</span>' +
                         ((armed.structExt || armed.struct_ext) ? '<span class="quick-item-struct" style="color:' + ((armed.structExt || armed.struct_ext) === 'EXTENDED' ? 'var(--color-fail)' : (armed.structExt || armed.struct_ext) === 'DEVELOPING' ? '#eab308' : '#4ade80') + ';font-size:0.6rem;font-weight:700;display:block;line-height:1.1">' + (armed.structExt || armed.struct_ext) + '</span>' : '') +
                     '</span>' +
                 '</div>';
