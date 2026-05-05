@@ -212,11 +212,42 @@ verification window.
 
 ---
 
-## 🔴 Priority 3 — Authority Promotion Framework (SOFT → MEDIUM decision path)
+## 🟡 Priority 3 — Authority Promotion Framework (framework SHIPPED 2026-05-06; first application pending P6 + data)
 
-**Trigger:** When MDI has N≥30 DOMINANT-flagged COMPLETE events captured
-AND the hit-rate analysis shows meaningful separation between tiers
-(e.g., DOMINANT REACTED_AND_RESUMED % is materially higher than BALANCED).
+**Status update 2026-05-06:** Framework document shipped as
+`docs/AUTHORITY_PROMOTION_FRAMEWORK_v1.0.0.md`. Stub register file
+`data/authority-decisions.json` shipped with all signals registered at
+SOFT. The framework is now binding policy. No machinery to apply it has
+been built yet — that is intentional, since the policy must gate the
+machinery and not the other way round.
+
+**What's now blocked behind P3:** Nothing. The policy exists; signals
+remain SOFT. Future promotion attempts must follow the ceremony in §11
+of the framework.
+
+**What still needs to ship to apply the framework (lower-case priorities):**
+- P6 (MDI Phase 3 UI analysis) — surfaces whether a signal meets
+  promotion criteria. Trigger remains: stats.dominant_complete >= 30.
+- Snapshot tool — small utility that takes a SHA-256-hashed snapshot of
+  signal source data into `data/snapshots/`. ~50 lines of Python.
+- Authority watchdog — 30-day review cron that writes auto-demotions.
+- Frontend tier consumer — reads `authority-decisions.json` to render
+  PROMOTED/DEMOTED banners on Intel Hub.
+- Signal-config hot-load — alert server or frontend re-reads
+  authority-decisions.json on tier change.
+
+These are tracked as implementation phases in §16 of the framework doc,
+not as separate priorities here, because none are urgent until MDI
+crosses N>=30.
+
+**Original trigger (now subordinate to framework §4):** When MDI has
+N>=30 DOMINANT-flagged COMPLETE events captured AND the hit-rate analysis
+shows meaningful separation between tiers (e.g., DOMINANT
+REACTED_AND_RESUMED % is materially higher than BALANCED).
+
+---
+
+### (Below — original P3 spec retained for audit; superseded by framework doc)
 
 **Why this is a priority:** MDI exists to eventually answer the question
 "should this signal have authority to modify gates?" Without a written

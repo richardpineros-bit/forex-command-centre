@@ -1,4 +1,61 @@
-## [Fired-time visibility on armed pairs] - 2026-05-04
+## [P3 — Authority Promotion Framework v1.0.0 shipped (policy)] - 2026-05-06
+
+### Problem
+Satellite signals (MDI, IG sentiment, Myfxbook OB, news bias, future additions) sit at SOFT — display only — with no written rule for how a signal earns the right to influence trading decisions. Without a framework, two failure modes become inevitable: (a) gut-feel promotions when a chart "looks good", or (b) permanent display-only paralysis even when data is excellent. Both are spec drift. The Risk Committee principle "policy before code" required a written framework before any signal crosses out of SOFT.
+
+The existing TODO.md spec for P3 (lines 215+) outlined the shape but was not itself binding policy and predated several institutional refinements (snapshot integrity, Wilson CI, Bonferroni for multi-signal evaluation, OOS-clock reset on Pine input changes, grandfathering of the news safety gate, etc.).
+
+### Change
+Shipped framework as a versioned policy document plus a stub register file. Zero code changes — this is policy, not implementation. Implementation phases are tracked in §16 of the framework doc and gate behind P6 + N>=30 MDI events.
+
+**New files:**
+- `docs/AUTHORITY_PROMOTION_FRAMEWORK_v1.0.0.md` — 17-section binding policy covering tier definitions (SOFT / MEDIUM / STRONG), promotion criteria with statistical test spec (two-proportion z-test, Fisher's exact small-sample fallback, Wilson 95% CI, Bonferroni for multi-signal), automatic demotion triggers, snapshot integrity rule (SHA-256 hashed immutable snapshots), audit-log JSON schema, the ban list, the promotion ceremony, review cadence, generalisation note (signal-agnostic), initial register, and framework versioning rules.
+- `data/authority-decisions.json` — append-only audit log stub. Schema locked. All four current signals registered at SOFT (or SOFT_GRANDFATHERED for news bias). Empty `decisions[]` array — no decisions made under this framework yet, by design.
+
+**TODO.md update:**
+- P3 status changed from open 🔴 to 🟡 (framework shipped; first application pending P6 + data).
+- Status block prepended to P3 section noting what shipped and what still needs to ship to *apply* the framework (P6 UI, snapshot tool, watchdog, frontend tier consumer, signal-config hot-load).
+- Original P3 spec retained below the status block, marked superseded.
+
+### Why institutional shape (key design choices)
+
+1. **OOS protocol is non-negotiable and Pine-input-aware.** Any Pine input change captured by P24's audit log resets the OOS clock. Prevents the "tune until it looks promotable" failure mode.
+2. **Demotion is system-enforced, not operator-chosen.** No override flag. The operator cannot save a signal from auto-demotion.
+3. **Tier-skipping is forbidden.** SOFT → STRONG directly cannot happen. Every signal must serve at MEDIUM under live capital before earning veto authority.
+4. **Snapshot integrity.** Every promotion or demotion decision references an SHA-256-hashed immutable data snapshot in `data/snapshots/`. Audit reproducibility is mandatory.
+5. **Bonferroni correction.** When multiple signals are evaluated in the same window, alpha is divided. Prevents fishing across ten signals to find one that crosses 0.05 by chance.
+6. **News bias grandfathered.** The news safety gate (UTCC criterion 5) predates this framework and is grandfathered as effective STRONG. Marked SOFT_GRANDFATHERED in the register so it is visibly distinct from signals subject to the framework's machinery.
+7. **Per-signal adapter specs.** The framework is signal-agnostic. A per-signal adapter (e.g. `MDI_AUTHORITY_ADAPTER_v1.0.0.md`, future) translates the signal's data into the (top-tier rate vs baseline-tier rate) form the framework expects. Adapter specs cannot relax any framework criterion.
+
+### What's unblocked
+Nothing immediately. Signals stay at SOFT. The point of this entry is that future promotion attempts now have a rail to run on. When MDI hits N>=30 (estimated 2026-07 based on event flow), P6 (Intel Hub MDI analysis UI) becomes the natural next ship — it is the mechanism that surfaces "promotion eligible" against the framework's §4 criteria.
+
+### Files changed
+- `docs/AUTHORITY_PROMOTION_FRAMEWORK_v1.0.0.md`     **NEW**
+- `data/authority-decisions.json`                     **NEW** (stub register)
+- `docs/TODO.md`                                       P3 section status updated
+- `docs/CHANGELOG.md`                                  this entry
+
+### Deploy
+```bash
+cd /mnt/user/appdata && git pull
+# Copy stub register to live data dir
+cp forex-command-centre/data/authority-decisions.json /mnt/user/appdata/nginx/www/data/
+# No restart, no docker cycle, no PHP whitelist edit needed yet.
+# storage-api.php whitelist entry will be added when frontend tier consumer ships
+# (per framework §16 — that is a future task, not this one).
+```
+
+### Sanity check after deploy
+```bash
+# Confirm stub file is readable and parses as JSON
+cat /mnt/user/appdata/nginx/www/data/authority-decisions.json | python3 -m json.tool | head -20
+# Should show schema_version 1.0.0, four signals at SOFT, empty decisions array.
+```
+
+---
+
+
 
 ### Problem
 Armed alerts often fire while the trader is at work and aren't reviewed until 2-3 hours later. The armed panel showed READY/EXTENDED/STALE states but no actual fire time, forcing the trader to guess which candle on the chart triggered the alert. Retrospective setup validation is impossible if you can't pin the alert to a specific bar.

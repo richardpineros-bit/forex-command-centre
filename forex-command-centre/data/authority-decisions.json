@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0.0",
+  "framework_version": "1.0.0",
+  "framework_doc": "docs/AUTHORITY_PROMOTION_FRAMEWORK_v1.0.0.md",
+  "created_at": "2026-05-06T00:00:00+10:00",
+  "description": "Append-only audit log of every authority-tier promotion or demotion decision. See framework doc for schema, ban list, ceremony, and demotion triggers. Manual edits are forbidden — corrections are appended as new decision_type='correction' entries.",
+  "current_register": {
+    "MDI": {
+      "tier": "SOFT",
+      "since": "2026-04-21",
+      "last_decision_id": null,
+      "notes": "Phase 3 data accumulating. First promotion review eligible when N>=30 DOMINANT-flagged COMPLETE events captured."
+    },
+    "IG_SENTIMENT": {
+      "tier": "SOFT",
+      "since": "2026-04-21",
+      "last_decision_id": null,
+      "notes": "Display only. No promotion candidacy in scope."
+    },
+    "MYFXBOOK_ORDERBOOK": {
+      "tier": "SOFT",
+      "since": "2026-05-02",
+      "last_decision_id": null,
+      "notes": "Replaces Oanda OB. Display only."
+    },
+    "NEWS_BIAS": {
+      "tier": "SOFT_GRANDFATHERED",
+      "since": "n/a",
+      "last_decision_id": null,
+      "notes": "News safety gate (UTCC criterion 5) predates this framework and is grandfathered as an effective STRONG-tier gate. Not subject to this framework's machinery. Future news-derived signals (e.g. event surprise quantification) would be governed here."
+    }
+  },
+  "decisions": []
+}
